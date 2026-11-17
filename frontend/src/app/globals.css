@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+:root {
+  --bg-canvas: #FAFAFA;
+  --bg-surface: #F5F5F7;
+  --bg-elevated: #FFFFFF;
+  --border-hairline: rgba(24, 34, 32, 0.08);
+  --border-active: rgba(58, 114, 105, 0.35);
+  --text-primary: #182220;
+  --text-secondary: #52605D;
+  --accent-primary: #3A7269;
+  --accent-soft: #EBF3F1;
+  --status-safe: #15803D;
+  --status-safe-soft: #ECFDF3;
+  --status-caution: #B45309;
+  --status-caution-soft: #FEF7EC;
+  --status-alert: #BE123C;
+  --status-alert-soft: #FFF1F3;
+  --ease-studio: cubic-bezier(0.22, 1, 0.36, 1);
+  --font-heading: "Plus Jakarta Sans", sans-serif;
+  --font-sans: var(--font-geist-sans), "Geist", sans-serif;
+  --font-mono: var(--font-geist-mono), "Geist Mono", monospace;
+}
+
+@layer base {
+  html {
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    scroll-padding-top: 84px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-sans), "Geist", "DM Sans", sans-serif;
+    line-height: 1.55;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-heading), "Plus Jakarta Sans", sans-serif;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+  }
+
+  ::selection {
+    background-color: var(--accent-soft);
+    color: var(--text-primary);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+  }
+
+  /* Subtle daylight scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--bg-surface);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(24, 34, 32, 0.16);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(58, 114, 105, 0.45);
+  }
+}
+
+.squircle-outer {
+  border-radius: 20px;
+}
+
+.squircle-inner {
+  border-radius: 12px;
+}
+
+@supports (corner-shape: squircle) {
+  .squircle-outer {
+    corner-shape: squircle;
+  }
+  .squircle-inner {
+    corner-shape: squircle;
+  }
+}
+
+.tabular-telemetry {
+  font-family: var(--font-geist-mono), "Geist Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.hairline-border {
+  border: 1px solid var(--border-hairline);
+}
+
+.active-hairline-border {
+  border: 1px solid var(--border-active);
+}

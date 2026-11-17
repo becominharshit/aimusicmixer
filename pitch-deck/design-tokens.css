@@ -1,0 +1,20 @@
+:root {
+  --bg-canvas: #FAFAFA;
+  --bg-surface: #F5F5F7;
+  --bg-elevated: #FFFFFF;
+  --border-hairline: rgba(24, 34, 32, 0.08);
+  --border-active: rgba(58, 114, 105, 0.35);
+  --text-primary: #182220;
+  --text-secondary: #52605D;
+  --accent-primary: #3A7269;
+  --accent-soft: #EBF3F1;
+  --status-safe: #15803D;
+  --status-caution: #B45309;
+  --status-alert: #BE123C;
+  --color-primary: var(--accent-primary);
+  --color-background: var(--bg-canvas);
+  --slide-bg: var(--bg-canvas);
+  --typography-font-heading: "Plus Jakarta Sans", system-ui, sans-serif;
+  --typography-font-body: "Geist", "DM Sans", system-ui, sans-serif;
+  --typography-font-mono: "JetBrains Mono", "Geist Mono", ui-monospace, monospace;
+}

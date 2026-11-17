@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MixBench — AARAMBHATHON 2.0 Pitch Deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./design-tokens.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      font-family: var(--typography-font-body);
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    .progress-bar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 3px;
+      background: var(--color-primary);
+      transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1);
+      z-index: 1000;
+    }
+    .slide-deck {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--slide-bg);
+    }
+    @media (min-width: 769px) {
+      .slide-deck {
+        max-width: calc(100vh * 16 / 9);
+        max-height: calc(100vw * 9 / 16);
+        margin: auto;
+        position: absolute;
+        inset: 0;
+        border: 1px solid var(--border-hairline);
+      }
+    }
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 48px 64px 80px;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 260ms cubic-bezier(0.22, 1, 0.36, 1);
+      background: var(--slide-bg);
+    }
+    .slide.active { opacity: 1; visibility: visible; }
+    .slide-content {
+      width: 100%;
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    h1, h2, h3 {
+      font-family: var(--typography-font-heading);
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+    }
+    h1 { font-size: clamp(30px, 4.4vw, 56px); line-height: 1.08; }
+    h2 { font-size: clamp(24px, 3.2vw, 40px); line-height: 1.15; }
+    p, li { font-size: clamp(14px, 1.4vw, 18px); color: var(--text-secondary); line-height: 1.55; }
+    .mono { font-family: var(--typography-font-mono); font-variant-numeric: tabular-nums; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-hairline);
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .card-soft {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: 16px;
+      padding: 18px;
+    }
+    .tag {
+      display: inline-block;
+      background: var(--accent-soft);
+      color: var(--accent-primary);
+      padding: 5px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      width: fit-content;
+    }
+    .card h3 { font-size: 18px; margin-bottom: 6px; }
+    .card p, .card-soft p { font-size: 14px; }
+    .chart-box {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-hairline);
+      border-radius: 16px;
+      padding: 18px;
+      height: 290px;
+    }
+    .nav-controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-hairline);
+      border-radius: 999px;
+      padding: 6px 14px;
+      z-index: 1000;
+    }
+    .nav-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      color: var(--text-primary);
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 15px;
+    }
+    .nav-btn:hover { background: var(--accent-soft); }
+    .slide-counter { font-size: 13px; color: var(--text-secondary); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border-hairline); }
+    th { color: var(--text-primary); font-weight: 600; background: var(--bg-surface); }
+    td { color: var(--text-secondary); }
+    @media (max-width: 768px) {
+      .slide { padding: 28px 20px 72px; overflow-y: auto; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress-bar" id="progressBar"></div>
+  <div class="slide-deck">
+
+    <!-- Slide 1: Problem Statement -->
+    <section class="slide active">
+      <div class="slide-content">
+        <span class="tag">AARAMBHATHON 2.0 · Problem Statement</span>
+        <h1>Bedroom producers mix in the dark—and one-click "AI mastering" hides why</h1>
+        <p>Independent musicians struggle to judge true loudness, low-end buildup, and phone/laptop speaker translation without expensive acoustic rooms. Generic AI tools rewrite audio blindly without teaching craft or respecting unreleased IP.</p>
+        <div class="grid-3">
+          <div class="card">
+            <h3>1. Loudness Bias</h3>
+            <p>Comparing tracks without LUFS level-matching fools ears into thinking louder = better.</p>
+          </div>
+          <div class="card">
+            <h3>2. Hidden Inter-Sample Overs</h3>
+            <p>Standard sample-peak meters miss +1 dBTP overs created during AAC/Spotify transcoding.</p>
+          </div>
+          <div class="card">
+            <h3>3. Unconsented Audio Uploads</h3>
+            <p>Uploading unreleased stems to opaque AI clouds risks leaks and unrequested training.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 2: Introduction -->
+    <section class="slide">
+      <div class="slide-content">
+        <span class="tag">Introduction · MixBench</span>
+        <h2>Learn mixing and mastering by doing mixing and mastering</h2>
+        <p>MixBench is a privacy-first acoustic telemetry and coaching workbench powered by one deterministic Python DSP engine and one canonical schema (<span class="mono">AnalysisReport v1.0</span>).</p>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Simple Mix Check</h3>
+            <p>Beginner-friendly top 3 prioritized findings tailored to genre &amp; production stage—following <strong>What happened → Why it matters → Listen → What to try → Recheck</strong>.</p>
+          </div>
+          <div class="card">
+            <h3>Advanced Mix Check</h3>
+            <p>60fps waveform with clickable issue pins, loudness-matched A/B reference switching, Device Translation Lab, user-stem overlap matrix, v1/v2 deltas, and opt-in Gemini Mentor.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 3: Objectives -->
+    <section class="slide">
+      <div class="slide-content">
+        <span class="tag">Core Objectives</span>
+        <h2>Precision measurement paired with strict privacy guarantees</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Standards-Compliant DSP</h3>
+            <p>ITU-R BS.1770 integrated LUFS &amp; LRA via <span class="mono">pyloudnorm</span>, plus 4× polyphase oversampled True Peak (<span class="mono">scipy.signal.resample_poly</span>) and FFmpeg <span class="mono">ebur128</span> verification.</p>
+          </div>
+          <div class="card">
+            <h3>Zero AI Stem Separation</h3>
+            <p>Never fabricates instrument blame from a stereo mixdown. Stem diagnostics unlock strictly when the artist uploads 2–8 aligned original stems.</p>
+          </div>
+          <div class="card">
+            <h3>Granular 3-Tier Consent</h3>
+            <p>Metrics-Only AI (Toggle A), Multimodal Audio Opt-In (Toggle B), and Training Opt-In (Toggle C) are independent switches—all defaulting to OFF.</p>
+          </div>
+          <div class="card">
+            <h3>Evidence Over Fake Scores</h3>
+            <p>Zero arbitrary "84/100" quality scores. Every UI finding carries a traceable <span class="mono">evidence_id</span> and exact timestamp window.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 4: Key Features -->
+    <section class="slide">
+      <div class="slide-content">
+        <span class="tag">Key Capabilities</span>
+        <h2>Built like an authentic daylight acoustic laboratory</h2>
+        <div class="grid-3">
+          <div class="card-soft">
+            <h3>60fps Waveform Pins</h3>
+            <p>Decoupled <span class="mono">requestAnimationFrame</span> playhead with clickable marker pins that jump &amp; loop exact problem bars.</p>
+          </div>
+          <div class="card-soft">
+            <h3>Click-Free A/B &amp; Mono</h3>
+            <p>15 ms exponential <span class="mono">GainNode</span> ramps and equal-power mono folding (<span class="mono">0.5L + 0.5R</span>) eliminate clicks and +6 dB clipping.</p>
+          </div>
+          <div class="card-soft">
+            <h3>Device Translation Lab</h3>
+            <p>Calibrated <span class="mono">BiquadFilterNode</span> approximations for Full Range, Smartphone, and Laptop speakers.</p>
+          </div>
+          <div class="card-soft">
+            <h3>LUFS Reference Match</h3>
+            <p>Automatic integrated-LUFS level matching removes loudness bias during A/B listening.</p>
+          </div>
+          <div class="card-soft">
+            <h3>Stem Overlap Matrix</h3>
+            <p>Checks 50 ms alignment tolerance and highlights potential pairwise masking between Kick, Bass, Synth, and Drums.</p>
+          </div>
+          <div class="card-soft">
+            <h3>Before / After v1 vs v2</h3>
+            <p>Tracks exact deltas (<span class="mono">ΔLUFS, ΔdBTP, ΔLRA</span>) and classifies findings as Improved, Unchanged, or Regressed.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 5: Project Use Case (Chart.js Real Metrics) -->
+    <section class="slide">
+      <div class="slide-content">
+        <span class="tag">Project Use Case · Live Revision Workflow</span>
+        <h2>From flawed v1 mixdown to verified v2 improvement</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Creator Loop</h3>
+            <p>1. Producer uploads <span class="mono">unmastered_mix_v1.wav</span>.<br/>
+            2. MixBench flags <span class="mono">+3.4 dB</span> buildup at 60–250 Hz and <span class="mono">-0.2 dBTP</span> tight headroom.<br/>
+            3. Producer auditions Laptop preview, trims 125 Hz in DAW, exports <span class="mono">v2</span>.<br/>
+            4. MixBench verifies headroom and tonal balance improvement.</p>
+          </div>
+          <div class="chart-box">
+            <canvas id="revisionChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 6: Methodology -->
+    <section class="slide">
+      <div class="slide-content">
+        <span class="tag">Methodology &amp; Hybrid Architecture</span>
+        <h2>Browser Web Audio meets stateless Python DSP &amp; Gemini Mentor</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Client Web Audio Engine (Next.js 15)</h3>
+            <p>• Direct browser-to-FastAPI uploads (bypasses proxy payload caps)<br/>
+            • Lightweight 44.1 kHz playback proxies keep browser RAM low<br/>
+            • <span class="mono">motion/react</span> springs (<span class="mono">stiffness: 380, damping: 30</span>) + daylight squircle UI</p>
+          </div>
+          <div class="card">
+            <h3>Python DSP &amp; Gemini API (FastAPI)</h3>
+            <p>• Native sample rates via <span class="mono">soundfile</span> + <span class="mono">SciPy</span> (zero <span class="mono">librosa</span> bloat)<br/>
+            • Deterministic genre/stage/vision evaluator<br/>
+            • Opt-in <span class="mono">google-genai</span> structured output with deterministic offline fallback</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 7: Project Timeline -->
+    <section class="slide">
+      <div class="slide-content">
+        <span class="tag">Execution Roadmap</span>
+        <h2>Six-Phase Engineering &amp; Design Delivery</h2>
+        <table>
+          <thead>
+            <tr><th>Phase</th><th>Milestone</th><th>Key Deliverable</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">Phase 1</td><td>Design System &amp; Canonical Contract</td><td><span class="mono">MASTER.md</span>, Daylight tokens, Pydantic ↔ TS <span class="mono">AnalysisReport v1.0</span></td></tr>
+            <tr><td class="mono">Phase 2</td><td>Core Python DSP &amp; Simple Check</td><td>4× True Peak, LUFS, 6-band Welch PSD, Top 3 pedagogical findings</td></tr>
+            <tr><td class="mono">Phase 3</td><td>Advanced Workbench &amp; Web Audio</td><td>60fps Canvas timeline, LUFS-matched A/B, Smartphone/Laptop lab</td></tr>
+            <tr><td class="mono">Phase 4</td><td>Stems &amp; Revision Delta Tracking</td><td>2–8 stem alignment gate, pairwise overlap matrix, v1 vs v2 comparison</td></tr>
+            <tr><td class="mono">Phase 5</td><td>AI Mentor &amp; Granular Consent</td><td>Evidence-bound Gemini structured output + offline mentor fallback</td></tr>
+            <tr><td class="mono">Phase 6</td><td>Edge-Case Validation &amp; Deck</td><td>12 backend pytest + Vitest + Playwright E2E + deployment manifests</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Slide 8: Expected Result (Chart.js True Peak Overshoot) -->
+    <section class="slide">
+      <div class="slide-content">
+        <span class="tag">Expected Result · Verification</span>
+        <h2>Catching inter-sample clipping invisible to standard sample meters</h2>
+        <div class="grid-2">
+          <div class="chart-box">
+            <canvas id="truePeakChart"></canvas>
+          </div>
+          <div class="card">
+            <h3>Verified Against Synthetic Signals</h3>
+            <p>• <span class="mono">fs/4</span> phase-shifted test sine proves sample peak reads <span class="mono">-1.57 dBFS</span> while 4× polyphase <span class="mono">resample_poly</span> accurately catches <span class="mono">+1.44 dBTP</span>.<br/><br/>
+            • Pure mono (<span class="mono">r = +1.0</span>), anti-phase (<span class="mono">r = -1.0</span>), 96 kHz hi-res retention, and corrupt headers all verified automatically in <span class="mono">pytest</span>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 9: Impact -->
+    <section class="slide">
+      <div class="slide-content">
+        <span class="tag">Impact</span>
+        <h2>Democratizing studio telemetry without surrendering creative ownership</h2>
+        <div class="grid-3">
+          <div class="card">
+            <h3>Skill Transfer</h3>
+            <p>Every session trains producers' ears across playback devices instead of outsourcing decisions to black-box presets.</p>
+          </div>
+          <div class="card">
+            <h3>IP Protection</h3>
+            <p>Ephemeral 60-minute storage with instant session deletion and zero default external audio transmission.</p>
+          </div>
+          <div class="card">
+            <h3>Honest Engineering</h3>
+            <p>Artist Vision profiles shape coaching tone while physical limits like clipping remain unmuted.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 10: Data & Resources -->
+    <section class="slide">
+      <div class="slide-content">
+        <span class="tag">Data, Standards &amp; Open Resources</span>
+        <h2>Grounded in broadcast standards and reproducible test signals</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Acoustic Standards &amp; DSP Stack</h3>
+            <p>• ITU-R BS.1770-4 / EBU R128 loudness &amp; 4× True Peak<br/>
+            • FastAPI, Pydantic v2, SciPy, NumPy, soundfile, pyloudnorm, FFmpeg<br/>
+            • Next.js 15, Web Audio API, Motion, Recharts, Google GenAI SDK</p>
+          </div>
+          <div class="card">
+            <h3>Copyright-Free Verification Assets</h3>
+            <p>• Original synthesized <span class="mono">unmastered_mix_v1.wav</span> &amp; <span class="mono">revised_mix_v2.wav</span><br/>
+            • Loudness-matched <span class="mono">reference_track.wav</span><br/>
+            • 4 sample-aligned stems (<span class="mono">Kick</span>, <span class="mono">Bass</span>, <span class="mono">Synth</span>, <span class="mono">Drums</span>)</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="nav-controls">
+    <button class="nav-btn" type="button" onclick="prevSlide()" aria-label="Previous slide">←</button>
+    <span class="slide-counter mono"><span id="current">1</span> / <span id="total">10</span></span>
+    <button class="nav-btn" type="button" onclick="nextSlide()" aria-label="Next slide">→</button>
+  </div>
+
+  <script>
+    let current = 1;
+    const slides = document.querySelectorAll('.slide');
+    const total = slides.length;
+    document.getElementById('total').textContent = total;
+
+    function showSlide(n) {
+      current = Math.max(1, Math.min(total, n));
+      slides.forEach((s, i) => s.classList.toggle('active', i === current - 1));
+      document.getElementById('current').textContent = current;
+      document.getElementById('progressBar').style.width = (current / total * 100) + '%';
+    }
+    function nextSlide() { showSlide(current + 1); }
+    function prevSlide() { showSlide(current - 1); }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); prevSlide(); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.nav-controls') && !e.target.closest('canvas')) nextSlide();
+    });
+    showSlide(1);
+
+    // Chart 1: v1 vs v2 Spectral Band Delta Improvement
+    new Chart(document.getElementById('revisionChart'), {
+      type: 'bar',
+      data: {
+        labels: ['Sub 20-60', 'Low 60-250', 'LowMid 250-800', 'HiMid 0.8-4k', 'Pres 4-10k', 'Air 10-20k'],
+        datasets: [
+          { label: 'Mix v1 (dB vs median)', data: [1.4, 3.4, 0.7, -1.1, -0.9, -1.5], backgroundColor: '#B45309', borderRadius: 6 },
+          { label: 'Mix v2 (dB vs median)', data: [0.6, 0.8, 0.3, -0.4, 0.2, -0.3], backgroundColor: '#3A7269', borderRadius: 6 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { grid: { color: 'rgba(24,34,32,0.06)' }, ticks: { color: '#52605D' } },
+          x: { grid: { display: false }, ticks: { color: '#52605D' } }
+        }
+      }
+    });
+
+    // Chart 2: Sample Peak vs 4x Oversampled True Peak
+    new Chart(document.getElementById('truePeakChart'), {
+      type: 'bar',
+      data: {
+        labels: ['Mix v1', 'Mix v2', 'fs/4 ISP Signal'],
+        datasets: [
+          { label: 'Sample Peak (dBFS)', data: [-0.22, -3.8, -1.57], backgroundColor: '#52605D', borderRadius: 6 },
+          { label: '4x True Peak (dBTP)', data: [-0.15, -3.72, 1.44], backgroundColor: '#BE123C', borderRadius: 6 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { grid: { color: 'rgba(24,34,32,0.06)' }, ticks: { color: '#52605D' } },
+          x: { grid: { display: false }, ticks: { color: '#52605D' } }
+        }
+      }
+    });
+  </script>
+</body>
+</html>
