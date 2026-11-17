@@ -4,7 +4,7 @@
 **Hackathon:** AARAMBHATHON 2.0  
 **Motto:** *Learn mixing and mastering by doing mixing and mastering, with meaningful insights from AI.*  
 **Development Window:** 48 hours (with a 36-hour reduced-scope contingency)  
-**Repository:** `https://github.com/nilabhhu/aarambhathon-sikandar-k-chukandar-project`  
+**Repository:** `https://github.com/becominharshit/aimusicmixer`  
 **Primary Build Engine:** **Google Antigravity — Gemini 4 Hydrogen (`xhigh` thinking level)** + **Google AI Studio** *(Zero Claude usage)*  
 **Installed Antigravity Skill Stack:** `ui-ux-pro-max` (+ `design-system`, `ui-styling`, `design`, `brand`, `slides`, `banner-design`), `frontend-design`, `emil-design-eng`, `impeccable`, and `uipro` CLI (`v2.15.0`)  
 **Status:** Complete Audited Engineering, UI/UX, and Motion Architecture Plan
@@ -489,7 +489,7 @@ aarambhathon-sikandar-k-chukandar-project/
 
 ## 8. Pre-Phase-1 Environment & Workspace Checklist
 
-- [ ] **Git & GitHub:** Confirm write/push access to `https://github.com/nilabhhu/aarambhathon-sikandar-k-chukandar-project` and create `dev` branch.
+- [x] **Git & GitHub:** Confirm write/push access to `https://github.com/becominharshit/aimusicmixer` and create `dev` branch.
 - [ ] **Antigravity Session Refresh:** Run `/skills reload` in Antigravity so `impeccable`, `ui-ux-pro-max`, `frontend-design`, and `emil-design-eng` are active in the workspace session.
 - [ ] **Workspace Skill Init:** Run `uipro init --ai antigravity` inside the cloned repository root to generate `.agents/skills/` and `MASTER.md`.
 - [ ] **Runtimes & FFmpeg:** Verify Node.js LTS (`20+`), Python `3.12+`, and `ffmpeg` / `ffprobe` on system `PATH`.
