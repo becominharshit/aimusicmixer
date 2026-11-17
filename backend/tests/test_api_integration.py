@@ -40,10 +40,16 @@ from app.services import analyze_audio_to_report, session_store
 
 
 def test_health_and_mock_schema_contract() -> None:
+    from app.main import root
+
+    assert root() == {"status": "ok", "service": "mixbench-dsp"}
+
     health = health_check()
     assert health["status"] == "ok"
     assert health["ffmpeg_available"] is True
-    assert "gemini_model" in health
+    assert health["gemini_model"] == "gemini-2.5-flash"
+    assert settings.max_single_file_mb == 50
+    assert settings.max_stem_total_mb == 150
 
     mock_report = get_mock_report()
     parsed = AnalysisReport.model_validate(mock_report.model_dump())
@@ -289,3 +295,124 @@ def test_corrupt_upload_rejected_and_missing_session_404(tmp_path) -> None:
     with pytest.raises(HTTPException) as exc_info:
         load_demo_stems("sess_nonexistent_999")
     assert exc_info.value.status_code == 404
+
+
+def test_lifespan_keep_alive_task(monkeypatch) -> None:
+    import asyncio
+
+    from app import main as main_mod
+
+    called_urls: list[str] = []
+    sleep_delays: list[float] = []
+    created_coros: list[object] = []
+
+    def fake_ping(url: str, timeout_sec: float = 10.0) -> int:
+        called_urls.append(url)
+        if len(called_urls) == 1:
+            raise RuntimeError("transient network hiccup")
+        if len(called_urls) >= 2:
+            raise asyncio.CancelledError()
+        return 200
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    async def fake_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    class _DummyTask:
+        def __init__(self, coro) -> None:
+            self.coro = coro
+            self.cancelled = False
+            coro.close()
+
+        def cancel(self) -> None:
+            self.cancelled = True
+
+        def __await__(self):
+            if False:
+                yield None
+            raise asyncio.CancelledError()
+
+    def fake_create_task(coro):
+        created_coros.append(coro)
+        return _DummyTask(coro)
+
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://mixbench-dsp.onrender.com/")
+    monkeypatch.setattr(main_mod, "KEEP_ALIVE_INTERVAL_SEC", 600.0)
+    monkeypatch.setattr(main_mod, "_ping_health_sync", fake_ping)
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(asyncio, "create_task", fake_create_task)
+
+    # 1. Verify lifespan creates and cancels keep-alive task cleanly
+    async def _exercise_lifespan() -> None:
+        async with main_mod.lifespan(main_mod.app):
+            assert len(created_coros) == 1
+
+    _run_coro_sync(_exercise_lifespan())
+
+    # 2. Verify keep-alive loop sleeps 600s, hits /health, and survives transient errors
+    with pytest.raises(asyncio.CancelledError):
+        _run_coro_sync(main_mod._keep_alive_loop("https://mixbench-dsp.onrender.com/"))
+
+    assert sleep_delays == [600.0, 600.0]
+    assert called_urls == [
+        "https://mixbench-dsp.onrender.com/health",
+        "https://mixbench-dsp.onrender.com/health",
+    ]
+
+
+def test_oversized_upload_returns_413_and_cleans_up(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "max_single_file_mb", 1)
+    oversized_bytes = b"0" * (1024 * 1024 + 64)
+    upload = _MemUpload(oversized_bytes, "too_big.wav")
+
+    uploads_dir = Path(tempfile.gettempdir()) / "mixbench_uploads"
+    before_files = set(uploads_dir.iterdir()) if uploads_dir.exists() else set()
+
+    with pytest.raises(HTTPException) as exc_info:
+        _run_coro_sync(
+            analyze_mix(
+                file=upload,  # type: ignore[arg-type]
+                genre="electronic",
+                stage="unmastered_mix",
+                artist_vision="[]",
+                daw="",
+                bus_routing="",
+                plugin_notes="",
+            )
+        )
+
+    assert exc_info.value.status_code == 413
+    after_files = set(uploads_dir.iterdir()) if uploads_dir.exists() else set()
+    assert after_files == before_files
+
+
+def test_gemini_api_error_triggers_deterministic_fallback(monkeypatch) -> None:
+    import google.genai as real_genai
+
+    mock_report = get_mock_report()
+
+    class BrokenInteractions:
+        def create(self, **kwargs):
+            raise RuntimeError("404 NOT_FOUND: model not found")
+
+    class BrokenClient:
+        def __init__(self, api_key: str) -> None:
+            self.interactions = BrokenInteractions()
+
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key-123")
+    monkeypatch.setattr(real_genai, "Client", BrokenClient)
+
+    resp = standalone_ai_mentor(
+        MentorStandaloneRequest(
+            report=mock_report,
+            allow_metrics_ai=True,
+            allow_audio_ai=False,
+            allow_training_opt_in=False,
+            question="Help me fix clipping",
+        )
+    )
+    assert resp.mode == "deterministic_fallback"
+    assert "Offline Mentor fallback" in resp.summary

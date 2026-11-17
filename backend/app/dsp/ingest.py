@@ -132,15 +132,28 @@ def load_audio_file(file_path: Path, max_bytes: int | None = None) -> LoadedAudi
         elif "16" in subtype:
             bit_depth = 16
 
-        # Stream blocks cleanly to keep memory predictable on large files
-        chunks: list[np.ndarray] = []
+        # Pre-allocate when frame count is known to avoid 2x RAM spikes from vstack
         with sf.SoundFile(str(file_path)) as f:
             sample_rate = f.samplerate
             channels = f.channels
-            for block in f.blocks(blocksize=262144, dtype="float64", always_2d=True):
-                chunks.append(block)
-        if chunks:
-            samples = np.vstack(chunks)
+            total_frames = int(f.frames or 0)
+            if total_frames > 0:
+                buf = np.empty((total_frames, channels), dtype="float64")
+                offset = 0
+                for block in f.blocks(blocksize=262144, dtype="float64", always_2d=True):
+                    n_read = block.shape[0]
+                    end = min(total_frames, offset + n_read)
+                    if end > offset:
+                        buf[offset:end] = block[: end - offset]
+                        offset = end
+                samples = buf[:offset] if offset < total_frames else buf
+            else:
+                chunks: list[np.ndarray] = []
+                for block in f.blocks(blocksize=262144, dtype="float64", always_2d=True):
+                    chunks.append(block)
+                if chunks:
+                    samples = np.vstack(chunks)
+                    chunks.clear()
     except Exception:
         samples = None
 

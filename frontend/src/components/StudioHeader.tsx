@@ -16,7 +16,7 @@ import { formatTimecode } from "@/lib/utils";
 import type { AnalysisReport, BackendHealth } from "@/types/report";
 
 export type WorkspaceMode = "simple" | "advanced";
-export type HealthStatus = "checking" | "online" | "offline";
+export type HealthStatus = "checking" | "waking" | "online" | "offline";
 
 interface StudioHeaderProps {
   mode: WorkspaceMode;
@@ -26,6 +26,8 @@ interface StudioHeaderProps {
   healthStatus: HealthStatus;
   healthData: BackendHealth | null;
   healthError: string | null;
+  wakeAttempt?: number;
+  wakeMaxAttempts?: number;
   onRetryHealth: () => void;
 }
 
@@ -37,6 +39,8 @@ export function StudioHeader({
   healthStatus,
   healthData,
   healthError,
+  wakeAttempt = 0,
+  wakeMaxAttempts = 15,
   onRetryHealth,
 }: StudioHeaderProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -69,9 +73,11 @@ export function StudioHeader({
   const statusText =
     healthStatus === "online"
       ? "DSP Engine Online"
-      : healthStatus === "offline"
-        ? "Backend Unreachable — Check API URL"
-        : "Checking DSP Engine";
+      : healthStatus === "waking"
+        ? "Waking DSP Engine (~45s)…"
+        : healthStatus === "offline"
+          ? "Backend Unreachable — Check API URL"
+          : "Checking DSP Engine";
 
   return (
     <header className="border-b border-[rgba(24,34,32,0.08)] bg-[#FAFAFA]/94 backdrop-blur-md sm:sticky sm:top-0 sm:z-40">
@@ -190,9 +196,11 @@ export function StudioHeader({
               className={`inline-flex min-h-[32px] items-center gap-2 px-3 py-1.5 text-xs font-medium squircle-inner cursor-pointer transition-colors ${
                 healthStatus === "online"
                   ? "bg-[#FFFFFF] text-[#182220] hairline-border hover:border-[rgba(58,114,105,0.35)]"
-                  : healthStatus === "offline"
-                    ? "bg-[#FFF1F3] text-[#BE123C] border border-[rgba(190,18,60,0.28)] hover:bg-[#FFE4E8]"
-                    : "bg-[#F5F5F7] text-[#52605D] hairline-border"
+                  : healthStatus === "waking"
+                    ? "bg-[#FEF7EC] text-[#B45309] border border-[rgba(180,83,9,0.28)] hover:bg-[#FDEFD9]"
+                    : healthStatus === "offline"
+                      ? "bg-[#FFF1F3] text-[#BE123C] border border-[rgba(190,18,60,0.28)] hover:bg-[#FFE4E8]"
+                      : "bg-[#F5F5F7] text-[#52605D] hairline-border"
               }`}
             >
               <span
@@ -200,9 +208,11 @@ export function StudioHeader({
                 className={`h-2 w-2 rounded-full ${
                   healthStatus === "online"
                     ? "bg-[#3A7269]"
-                    : healthStatus === "offline"
-                      ? "bg-[#BE123C]"
-                      : "bg-[#52605D]/50 animate-pulse"
+                    : healthStatus === "waking"
+                      ? "bg-[#D97706] animate-pulse"
+                      : healthStatus === "offline"
+                        ? "bg-[#BE123C]"
+                        : "bg-[#52605D]/50 animate-pulse"
                 }`}
               />
               <span>{statusText}</span>
@@ -223,6 +233,8 @@ export function StudioHeader({
                     <span className="inline-flex items-center gap-1.5 font-semibold text-[#182220]">
                       {healthStatus === "online" ? (
                         <CheckCircle2 className="h-4 w-4 text-[#15803D]" aria-hidden="true" />
+                      ) : healthStatus === "waking" ? (
+                        <RefreshCw className="h-4 w-4 text-[#B45309] animate-spin" aria-hidden="true" />
                       ) : (
                         <AlertCircle className="h-4 w-4 text-[#BE123C]" aria-hidden="true" />
                       )}
@@ -257,10 +269,19 @@ export function StudioHeader({
                         <span>Gemini Mentor Key</span>
                         <span className="font-medium text-[#182220]">
                           {healthData.gemini_configured
-                            ? `Configured (${healthData.gemini_model || "gemini-3.8-flash"})`
+                            ? `Configured (${healthData.gemini_model || "gemini-2.5-flash"})`
                             : "Offline Fallback Mode"}
                         </span>
                       </div>
+                    </div>
+                  ) : healthStatus === "waking" ? (
+                    <div className="space-y-1.5 text-[11px] text-[#52605D]">
+                      <p className="font-medium text-[#B45309]">
+                        Cold-starting DSP container ({wakeAttempt > 0 ? `retry ${wakeAttempt}/${wakeMaxAttempts}` : "connecting…"}).
+                      </p>
+                      <p>
+                        Retrying <code className="text-[#182220]">/health</code> automatically every 5 seconds for up to 75 seconds while the backend boots.
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-1.5 text-[11px] text-[#52605D]">

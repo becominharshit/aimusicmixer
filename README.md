@@ -105,7 +105,7 @@ Copy the example env files or configure variables cleanly:
 - **Backend (`backend/.env`):**
   - `ALLOWED_ORIGINS`: Comma-separated allowed browser origins (e.g., `http://localhost:3000,https://your-app.vercel.app`, or `*`).
   - `GEMINI_API_KEY`: Optional Google Gemini API key. Leave blank to operate strictly with the built-in Offline Deterministic Mentor fallback.
-  - `GEMINI_MODEL`: Defaults to `gemini-3.8-flash` (overridable via env var; `gemini-2.5-flash` is substituted with `gemini-3.8-flash` per current Google GenAI SDK model lifecycle guidance).
+  - `GEMINI_MODEL`: Defaults to `gemini-2.5-flash` (overridable via env var).
 - **Frontend (`frontend/.env.local`):**
   - `NEXT_PUBLIC_API_URL`: HTTPS/HTTP origin of your FastAPI server (defaults to `http://localhost:8000`).
 
@@ -155,7 +155,7 @@ Open `http://localhost:3000` and click **Try Sample Flawed Mix** right below the
   - Configure Space/Railway environment variables:
     - `ALLOWED_ORIGINS` = `https://<your-vercel-domain>.vercel.app`
     - `GEMINI_API_KEY` = *(optional)*
-    - `GEMINI_MODEL` = `gemini-3.8-flash`
+    - `GEMINI_MODEL` = `gemini-2.5-flash`
 
 ---
 

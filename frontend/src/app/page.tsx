@@ -57,6 +57,7 @@ export default function MixBenchPage() {
   const [healthStatus, setHealthStatus] = useState<HealthStatus>("checking");
   const [healthData, setHealthData] = useState<BackendHealth | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
+  const [wakeAttempt, setWakeAttempt] = useState(0);
 
   const [report, setReport] = useState<AnalysisReport | null>(null);
   const [referenceMeta, setReferenceMeta] = useState<ReferenceTrackMeta | null>(null);
@@ -76,27 +77,104 @@ export default function MixBenchPage() {
 
   const [audioState, setAudioState] = useState(() => studioAudioEngine.getState());
   const stepTimerRef = useRef<number | null>(null);
+  const wakeTimerRef = useRef<number | null>(null);
+  const healthCycleRef = useRef(0);
+  const healthStatusRef = useRef<HealthStatus>("checking");
 
-  const refreshHealth = useCallback(async () => {
-    setHealthStatus("checking");
-    setHealthError(null);
-    try {
-      const data = await checkBackendHealth();
-      setHealthData(data);
-      setHealthStatus("online");
-    } catch (err) {
-      setHealthData(null);
-      setHealthStatus("offline");
-      setHealthError(err instanceof Error ? err.message : "Backend /health unreachable.");
+  const clearWakeTimer = useCallback(() => {
+    if (wakeTimerRef.current !== null) {
+      window.clearTimeout(wakeTimerRef.current);
+      wakeTimerRef.current = null;
     }
   }, []);
 
+  const setHealthState = useCallback((next: HealthStatus) => {
+    healthStatusRef.current = next;
+    setHealthStatus(next);
+  }, []);
+
+  const refreshHealth = useCallback(async () => {
+    const cycleId = ++healthCycleRef.current;
+    clearWakeTimer();
+    setWakeAttempt(0);
+    setHealthState("checking");
+    setHealthError(null);
+
+    try {
+      const data = await checkBackendHealth();
+      if (healthCycleRef.current !== cycleId) return;
+      setHealthData(data);
+      setHealthState("online");
+      return;
+    } catch (err) {
+      if (healthCycleRef.current !== cycleId) return;
+      setHealthData(null);
+      setHealthError(err instanceof Error ? err.message : "Backend /health unreachable.");
+      setHealthState("waking");
+      setWakeAttempt(1);
+    }
+
+    const MAX_WAKE_ATTEMPTS = 15;
+    const WAKE_RETRY_MS = 5000;
+
+    const scheduleWakeAttempt = (attempt: number) => {
+      wakeTimerRef.current = window.setTimeout(async () => {
+        if (healthCycleRef.current !== cycleId) return;
+        try {
+          const data = await checkBackendHealth();
+          if (healthCycleRef.current !== cycleId) return;
+          setHealthData(data);
+          setHealthError(null);
+          setWakeAttempt(0);
+          setHealthState("online");
+        } catch (err) {
+          if (healthCycleRef.current !== cycleId) return;
+          setHealthError(err instanceof Error ? err.message : "Backend /health unreachable.");
+          if (attempt >= MAX_WAKE_ATTEMPTS) {
+            setHealthState("offline");
+          } else {
+            setWakeAttempt(attempt + 1);
+            scheduleWakeAttempt(attempt + 1);
+          }
+        }
+      }, WAKE_RETRY_MS);
+    };
+
+    scheduleWakeAttempt(1);
+  }, [clearWakeTimer, setHealthState]);
+
   useEffect(() => {
     void refreshHealth();
-    return studioAudioEngine.subscribe(() => {
+
+    const ACTIVE_HEARTBEAT_MS = 540_000; // 9 minutes
+    const heartbeatId = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      if (healthStatusRef.current === "waking" || healthStatusRef.current === "checking") return;
+      void checkBackendHealth()
+        .then((data) => {
+          setHealthData(data);
+          setHealthError(null);
+          setWakeAttempt(0);
+          setHealthState("online");
+        })
+        .catch(() => {
+          if (healthStatusRef.current === "online") {
+            void refreshHealth();
+          }
+        });
+    }, ACTIVE_HEARTBEAT_MS);
+
+    const unsubscribeAudio = studioAudioEngine.subscribe(() => {
       setAudioState(studioAudioEngine.getState());
     });
-  }, [refreshHealth]);
+
+    return () => {
+      healthCycleRef.current += 1;
+      clearWakeTimer();
+      window.clearInterval(heartbeatId);
+      unsubscribeAudio();
+    };
+  }, [refreshHealth, clearWakeTimer, setHealthState]);
 
   const startStepper = () => {
     setActiveStepIndex(0);
@@ -114,6 +192,12 @@ export default function MixBenchPage() {
   };
 
   const hydrateSessionReport = async (nextReport: AnalysisReport) => {
+    healthCycleRef.current += 1;
+    clearWakeTimer();
+    setWakeAttempt(0);
+    setHealthError(null);
+    setHealthState("online");
+
     setReport(nextReport);
     setSubTab("diagnosis");
     setReferenceMeta(null);
@@ -121,7 +205,6 @@ export default function MixBenchPage() {
     setStemError(null);
     setRevisionError(null);
     setActiveFindingId(nextReport.findings[0]?.evidence_id ?? null);
-    setHealthStatus("online");
 
     try {
       await studioAudioEngine.loadSlot(
@@ -365,6 +448,8 @@ export default function MixBenchPage() {
         healthStatus={healthStatus}
         healthData={healthData}
         healthError={healthError}
+        wakeAttempt={wakeAttempt}
+        wakeMaxAttempts={15}
         onRetryHealth={() => void refreshHealth()}
       />
 

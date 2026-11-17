@@ -11,8 +11,8 @@ import type {
 } from "@/types/report";
 
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
+  process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/+$/, "") ||
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, "") ||
   "http://localhost:8000";
 
 export function resolveApiUrl(path: string): string {
@@ -38,7 +38,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 export async function checkBackendHealth(): Promise<BackendHealth> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 5000);
+  const timer = window.setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(resolveApiUrl("/health"), {
       method: "GET",

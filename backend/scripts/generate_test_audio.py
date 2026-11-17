@@ -11,7 +11,6 @@ from scipy.signal import butter, sosfilt
 
 def _make_musical_stems(sr: int = 48000, duration_sec: float = 16.0) -> dict[str, np.ndarray]:
     n = int(sr * duration_sec)
-    t = np.arange(n) / sr
     bpm = 120.0
     beat_period = 60.0 / bpm  # 0.5s per beat
 

@@ -299,6 +299,18 @@ export function UploadStage({
           )}
         </AnimatePresence>
 
+        {healthStatus === "waking" && !errorMessage && (
+          <div
+            role="status"
+            className="mt-5 flex max-w-lg items-start gap-2 bg-[#FEF7EC] px-4 py-3 text-left text-xs text-[#B45309] border border-[rgba(180,83,9,0.22)] squircle-inner"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>
+              Waking DSP Engine (~45s)… The backend container is spinning up and will connect automatically.
+            </span>
+          </div>
+        )}
+
         {healthStatus === "offline" && !errorMessage && (
           <div
             role="status"

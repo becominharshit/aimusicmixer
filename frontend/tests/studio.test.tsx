@@ -207,7 +207,7 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(state.loudnessOffsetDb).toBe(0);
   });
 
-  it("renders live backend health states in StudioHeader and actionable offline popover", () => {
+  it("renders live backend health states in StudioHeader including waking cold-start and offline popover", () => {
     const { rerender } = render(
       <StudioHeader
         mode="simple"
@@ -221,6 +221,26 @@ describe("MixBench UI & Privacy Contracts", () => {
       />
     );
     expect(screen.getByText("DSP Engine Online")).toBeInTheDocument();
+
+    rerender(
+      <StudioHeader
+        mode="simple"
+        onModeChange={vi.fn()}
+        report={null}
+        onClearSession={vi.fn()}
+        healthStatus="waking"
+        healthData={null}
+        healthError="Timed out"
+        wakeAttempt={3}
+        wakeMaxAttempts={15}
+        onRetryHealth={vi.fn()}
+      />
+    );
+    const wakingBtn = screen.getByRole("button", { name: /Waking DSP Engine \(~45s\)/i });
+    expect(wakingBtn).toBeInTheDocument();
+    fireEvent.click(wakingBtn);
+    expect(screen.getByText(/retry 3\/15/i)).toBeInTheDocument();
+    fireEvent.click(wakingBtn);
 
     rerender(
       <StudioHeader

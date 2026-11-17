@@ -9,6 +9,6 @@ services:
       - key: ALLOWED_ORIGINS
         value: https://frontend-tau-kohl-prgmf10seo.vercel.app
       - key: GEMINI_MODEL
-        value: gemini-3.8-flash
+        value: gemini-2.5-flash
       - key: GEMINI_API_KEY
         sync: false

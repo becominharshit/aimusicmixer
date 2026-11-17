@@ -20,14 +20,14 @@ class Settings(BaseSettings):
     backend_port: int = 8000
     allowed_origins: str = ""
     cors_origins: str = "*"
-    max_single_file_mb: int = 100
-    max_stem_total_mb: int = 350
+    max_single_file_mb: int = 50
+    max_stem_total_mb: int = 150
     session_ttl_minutes: int = 60
     tmp_sessions_dir: Path = Path(tempfile.gettempdir()) / "mixbench_sessions"
     sample_assets_dir: Path = _default_sample_assets_dir()
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-2.5-flash"
 
     @property
     def cors_origin_list(self) -> list[str]:
