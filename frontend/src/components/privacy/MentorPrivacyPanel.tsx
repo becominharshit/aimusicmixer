@@ -4,6 +4,10 @@ import React, { useState } from "react";
 import { ShieldCheck, Sliders, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import {
+  DEFAULT_PRIVACY_PREFERENCES,
+  type PrivacyPreferences,
+} from "@/lib/supabase/storage";
 import type { AnalysisReport, MentorRequest, MentorResponse } from "@/types/report";
 
 interface MentorPrivacyPanelProps {
@@ -13,6 +17,9 @@ interface MentorPrivacyPanelProps {
   onAskMentor: (req: MentorRequest) => void;
   onSaveDawContext: (ctx: { daw: string; bus_routing: string; plugin_notes: string }) => void;
   onJumpToEvidence: (evidenceId: string) => void;
+  privacyPrefs?: PrivacyPreferences;
+  onPrivacyPrefsChange?: (prefs: PrivacyPreferences) => void;
+  isSignedIn?: boolean;
 }
 
 export function MentorPrivacyPanel({
@@ -22,10 +29,28 @@ export function MentorPrivacyPanel({
   onAskMentor,
   onSaveDawContext,
   onJumpToEvidence,
+  privacyPrefs,
+  onPrivacyPrefsChange,
+  isSignedIn = false,
 }: MentorPrivacyPanelProps) {
-  const [allowMetricsAi, setAllowMetricsAi] = useState(false);
-  const [allowAudioAi, setAllowAudioAi] = useState(false);
-  const [allowTrainingOptIn, setAllowTrainingOptIn] = useState(false);
+  const [localPrefs, setLocalPrefs] = useState<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
+  const effectivePrefs = privacyPrefs ?? localPrefs;
+  const allowMetricsAi = effectivePrefs.allowMetricsAi;
+  const allowAudioAi = effectivePrefs.allowMetricsAi && effectivePrefs.allowAudioAi;
+  const allowTrainingOptIn = effectivePrefs.allowTrainingOptIn;
+
+  const updatePrefs = (next: PrivacyPreferences) => {
+    const normalized: PrivacyPreferences = {
+      allowMetricsAi: next.allowMetricsAi,
+      allowAudioAi: next.allowMetricsAi ? next.allowAudioAi : false,
+      allowTrainingOptIn: next.allowTrainingOptIn,
+    };
+    if (!privacyPrefs) {
+      setLocalPrefs(normalized);
+    }
+    onPrivacyPrefsChange?.(normalized);
+  };
+
   const [question, setQuestion] = useState("");
 
   const [daw, setDaw] = useState(report.context.user_reported_context?.daw || "");
@@ -38,23 +63,24 @@ export function MentorPrivacyPanel({
   const [contextSaved, setContextSaved] = useState(false);
 
   const handleToggleMetrics = (next: boolean) => {
-    setAllowMetricsAi(next);
-    if (!next) {
-      setAllowAudioAi(false);
-    }
+    updatePrefs({
+      allowMetricsAi: next,
+      allowAudioAi: next ? allowAudioAi : false,
+      allowTrainingOptIn,
+    });
   };
 
   return (
     <div className="space-y-4">
       {/* Three-Tier Independent Granular Privacy Controls */}
       <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner space-y-3">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-2 text-xs font-semibold text-[#182220]">
             <ShieldCheck className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
             Privacy &amp; AI Data Consent Controls
           </span>
           <span className="bg-[#ECFDF3] px-2 py-0.5 text-[10px] font-semibold text-[#15803D] squircle-inner">
-            Default Off
+            {isSignedIn ? "Synced to Profile (Default Off)" : "Default Off"}
           </span>
         </div>
 
@@ -87,7 +113,13 @@ export function MentorPrivacyPanel({
             <Switch
               checked={allowAudioAi}
               disabled={!allowMetricsAi}
-              onCheckedChange={setAllowAudioAi}
+              onCheckedChange={(checked) =>
+                updatePrefs({
+                  allowMetricsAi,
+                  allowAudioAi: checked,
+                  allowTrainingOptIn,
+                })
+              }
               aria-label="Toggle B Direct Audio Listening Opt-In"
             />
           </div>
@@ -103,7 +135,13 @@ export function MentorPrivacyPanel({
             </div>
             <Switch
               checked={allowTrainingOptIn}
-              onCheckedChange={setAllowTrainingOptIn}
+              onCheckedChange={(checked) =>
+                updatePrefs({
+                  allowMetricsAi,
+                  allowAudioAi,
+                  allowTrainingOptIn: checked,
+                })
+              }
               aria-label="Toggle C Future Model Training Opt-In"
             />
           </div>

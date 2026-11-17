@@ -66,7 +66,7 @@ MixBench is an educational acoustic telemetry workbench that pairs a **determini
 ├── PRODUCT.md                     # Product truth & non-negotiable guardrails
 ├── DESIGN.md                      # Daylight acoustic studio design system
 ├── backend/                       # FastAPI DSP & Gemini Mentor API
-│   ├── Dockerfile                 # python:3.12-slim + ffmpeg (PORT 7860 default)
+│   ├── Dockerfile                 # python:3.12-slim + ffmpeg (PORT 10000 default, 1 worker)
 │   ├── pyproject.toml             # uv / PEP 621 project & tool config
 │   ├── requirements.txt           # Pip deployment dependencies
 │   ├── railway.json               # Railway Docker deployment config
@@ -107,7 +107,8 @@ Copy the example env files or configure variables cleanly:
   - `GEMINI_API_KEY`: Optional Google Gemini API key. Leave blank to operate strictly with the built-in Offline Deterministic Mentor fallback.
   - `GEMINI_MODEL`: Defaults to `gemini-2.5-flash` (overridable via env var).
 - **Frontend (`frontend/.env.local`):**
-  - `NEXT_PUBLIC_API_URL`: HTTPS/HTTP origin of your FastAPI server (defaults to `http://localhost:8000`).
+  - `NEXT_PUBLIC_API_URL`: HTTPS/HTTP origin of your FastAPI server (defaults to `http://localhost:8000`; trailing slashes are stripped automatically).
+  - `NEXT_PUBLIC_SUPABASE_URL` & `NEXT_PUBLIC_SUPABASE_ANON_KEY` *(optional)*: Enable Supabase Auth, per-user privacy preference sync (`public.profiles`), and cross-session Saved Mix History (`public.analyses`). Leave blank for 100% anonymous local usage.
 
 ### Step 2: Run Backend (Port 8000 locally)
 
@@ -134,28 +135,41 @@ npm run build
 npm run dev
 ```
 
-Open `http://localhost:3000` and click **Try Sample Flawed Mix** right below the upload dropzone (loads `/demo/demo-flawed-v1.wav` via `POST /api/analyze`), or upload any local WAV, FLAC, AIFF, MP3, or OGG file up to 100 MB.
+Open `http://localhost:3000` and click **Try Sample Flawed Mix** right below the upload dropzone (loads `/demo/demo-flawed-v1.wav` via `POST /api/analyze`), or upload any local WAV, FLAC, AIFF, MP3, or OGG file up to 50 MB.
 
 ---
 
-## 5. Cloud Deployment
+## 5. Cloud Deployment (Vercel + Render + Supabase)
 
 ### Frontend (Vercel)
 1. Import this repository in [Vercel](https://vercel.com/new) and set **Root Directory** to `frontend`.
-2. Set environment variable:
-   - `NEXT_PUBLIC_API_URL` = `https://<your-backend-origin>` (no trailing slash)
-3. Deploy. Audio files upload directly from the browser to FastAPI over HTTPS, completely bypassing Vercel's 4.5 MB serverless body limit.
+2. Set environment variables:
+   - `NEXT_PUBLIC_API_URL` = `https://<your-render-service>.onrender.com`
+   - `NEXT_PUBLIC_SUPABASE_URL` = *(optional, from Supabase Project Settings -> API)*
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = *(optional, from Supabase Project Settings -> API)*
+3. Deploy. Audio files upload directly from the browser to FastAPI over HTTPS, completely bypassing Vercel's 4.5 MB serverless body limit. On cold boots, the frontend polls `/health` every 5 seconds for up to 120 seconds (`Waking DSP Engine…`) and pings every 9 minutes while active.
 
-### Backend (Railway or Hugging Face Docker Spaces)
-`backend/Dockerfile` builds from the repository root (`python:3.12-slim` + `ffmpeg` + `libsndfile1`) and runs `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}`.
+### Backend (Render / Railway / Docker)
+`backend/Dockerfile` builds from the repository root (`python:3.12-slim` + `ffmpeg` + `libsndfile1`) and runs:
+`uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1`
 
-- **Hugging Face Spaces (Docker Space):**
-  - Select **Docker** Space SDK (uses default port `7860` exposed in `backend/Dockerfile`).
-  - Point `Dockerfile` context or copy `backend/Dockerfile` at Space root if hosting backend-only, or set Railway `dockerfilePath: backend/Dockerfile` (already configured in `backend/railway.json` and `render.yaml`).
-  - Configure Space/Railway environment variables:
-    - `ALLOWED_ORIGINS` = `https://<your-vercel-domain>.vercel.app`
+- **Render Blueprint (`render.yaml`):**
+  - `healthCheckPath: /health` and root `GET /` returns `{"status": "ok", "service": "mixbench-dsp"}`.
+  - When `RENDER_EXTERNAL_URL` is injected by Render, the FastAPI lifespan spawns an async keep-alive task pinging `{RENDER_EXTERNAL_URL}/health` every 600s.
+  - Configure environment variables:
+    - `ALLOWED_ORIGINS` = `https://<your-vercel-domain>.vercel.app` (or `*` for public testing with `allow_credentials=False`)
+    - `MAX_SINGLE_FILE_MB` = `50` / `MAX_STEM_TOTAL_MB` = `150`
     - `GEMINI_API_KEY` = *(optional)*
     - `GEMINI_MODEL` = `gemini-2.5-flash`
+
+### Database & Auth (Supabase — Optional)
+1. Create a Supabase project and open **SQL Editor**.
+2. Execute [supabase/schema.sql](supabase/schema.sql) to provision:
+   - `public.profiles` (with `allow_metrics_ai`, `allow_audio_ai`, and `allow_dataset_retention` strictly `false` by default)
+   - `public.analyses` (storing canonical `AnalysisReport v1.0` JSON telemetry)
+   - Row-Level Security (`RLS`) policies restricting access to `auth.uid()`
+   - Automatic `handle_new_user` signup trigger
+3. Enable Email/Password and Google OAuth under **Authentication -> Providers** and add your Vercel domain to **Redirect URLs**.
 
 ---
 

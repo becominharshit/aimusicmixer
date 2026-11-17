@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import type { User } from "@supabase/supabase-js";
 import {
   studioAudioEngine,
   type AudioSourceSlot,
@@ -14,6 +15,8 @@ import { UploadStage } from "@/components/UploadStage";
 import { AdvancedWorkbench } from "@/components/advanced/AdvancedWorkbench";
 import { RevisionInspector } from "@/components/advanced/RevisionInspector";
 import { StemsInspector } from "@/components/advanced/StemsInspector";
+import { AuthModal } from "@/components/auth/AuthModal";
+import { SavedMixHistoryDrawer } from "@/components/auth/SavedMixHistoryDrawer";
 import { MentorDrawer } from "@/components/privacy/MentorDrawer";
 import { SimpleView } from "@/components/simple/SimpleView";
 import { ReferenceABView } from "@/components/workspace/ReferenceABView";
@@ -24,6 +27,7 @@ import {
   checkBackendHealth,
   clearSession,
   compareRevisedMix,
+  compareSavedReports,
   fetchPublicDemoFile,
   loadDemoReferenceTrack,
   loadDemoStems,
@@ -33,6 +37,17 @@ import {
   uploadUserStems,
 } from "@/lib/api";
 import { STUDIO_EASE } from "@/lib/motion";
+import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  DEFAULT_PRIVACY_PREFERENCES,
+  deleteSavedAnalysis,
+  fetchOrCreateUserProfile,
+  fetchSavedAnalyses,
+  saveProfilePrivacyPreferences,
+  saveUserAnalysis,
+  type PrivacyPreferences,
+  type SavedAnalysisRecord,
+} from "@/lib/supabase/storage";
 import type {
   AnalysisReport,
   ArtistVisionTag,
@@ -49,6 +64,15 @@ export default function MixBenchPage() {
   const [mode, setMode] = useState<WorkspaceMode>("simple");
   const [subTab, setSubTab] = useState<WorkspaceSubTab>("diagnosis");
   const [mentorOpen, setMentorOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [privacyPrefs, setPrivacyPrefs] = useState<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
+  const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysisRecord[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isComparingSaved, setIsComparingSaved] = useState(false);
+  const supabaseConfigured = isSupabaseConfigured();
 
   const [genre, setGenre] = useState<GenreType>("electronic");
   const [stage, setStage] = useState<StageType>("unmastered_mix");
@@ -114,7 +138,7 @@ export default function MixBenchPage() {
       setWakeAttempt(1);
     }
 
-    const MAX_WAKE_ATTEMPTS = 15;
+    const MAX_WAKE_ATTEMPTS = 24; // 24 retries * 5s = 120s for slow Render Free cold starts
     const WAKE_RETRY_MS = 5000;
 
     const scheduleWakeAttempt = (attempt: number) => {
@@ -176,6 +200,93 @@ export default function MixBenchPage() {
     };
   }, [refreshHealth, clearWakeTimer, setHealthState]);
 
+  const loadUserCloudData = useCallback(async (user: User | null) => {
+    if (!user) {
+      setPrivacyPrefs(DEFAULT_PRIVACY_PREFERENCES);
+      setSavedAnalyses([]);
+      return;
+    }
+
+    setIsLoadingHistory(true);
+    try {
+      const [profile, analyses] = await Promise.all([
+        fetchOrCreateUserProfile(user),
+        fetchSavedAnalyses(user.id),
+      ]);
+      if (profile) {
+        setPrivacyPrefs({
+          allowMetricsAi: Boolean(profile.allow_metrics_ai),
+          allowAudioAi: Boolean(profile.allow_metrics_ai && profile.allow_audio_ai),
+          allowTrainingOptIn: Boolean(profile.allow_dataset_retention),
+        });
+      } else {
+        setPrivacyPrefs(DEFAULT_PRIVACY_PREFERENCES);
+      }
+      setSavedAnalyses(analyses);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      const nextUser = data.session?.user ?? null;
+      setSupabaseUser(nextUser);
+      void loadUserCloudData(nextUser);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextUser = session?.user ?? null;
+      setSupabaseUser(nextUser);
+      void loadUserCloudData(nextUser);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [loadUserCloudData]);
+
+  const persistReportToSupabase = useCallback(
+    async (nextReport: AnalysisReport, versionLabel: string, trackNameOverride?: string) => {
+      if (!supabaseUser) return;
+      const saved = await saveUserAnalysis({
+        userId: supabaseUser.id,
+        report: nextReport,
+        versionLabel,
+        trackNameOverride,
+      });
+      if (saved) {
+        setSavedAnalyses((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+      }
+    },
+    [supabaseUser]
+  );
+
+  const handlePrivacyPrefsChange = async (next: PrivacyPreferences) => {
+    setPrivacyPrefs(next);
+    if (supabaseUser) {
+      await saveProfilePrivacyPreferences(supabaseUser.id, next);
+    }
+  };
+
+  const handleSignOut = async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setSupabaseUser(null);
+    setPrivacyPrefs(DEFAULT_PRIVACY_PREFERENCES);
+    setSavedAnalyses([]);
+    setHistoryOpen(false);
+  };
+
   const startStepper = () => {
     setActiveStepIndex(0);
     if (stepTimerRef.current) window.clearInterval(stepTimerRef.current);
@@ -191,12 +302,19 @@ export default function MixBenchPage() {
     }
   };
 
-  const hydrateSessionReport = async (nextReport: AnalysisReport) => {
-    healthCycleRef.current += 1;
-    clearWakeTimer();
-    setWakeAttempt(0);
-    setHealthError(null);
-    setHealthState("online");
+  const hydrateSessionReport = async (
+    nextReport: AnalysisReport,
+    fromLiveBackend: boolean = true
+  ) => {
+    if (fromLiveBackend) {
+      healthCycleRef.current += 1;
+      clearWakeTimer();
+      setWakeAttempt(0);
+      setHealthError(null);
+      setHealthState("online");
+    } else {
+      studioAudioEngine.reset();
+    }
 
     setReport(nextReport);
     setSubTab("diagnosis");
@@ -213,7 +331,7 @@ export default function MixBenchPage() {
         nextReport.global_metrics.integrated_lufs
       );
     } catch {
-      // Allow metric inspection before Web Audio user gesture unlock
+      // Allow metric inspection before Web Audio user gesture unlock or when viewing archived reports
     }
   };
 
@@ -223,7 +341,8 @@ export default function MixBenchPage() {
     startStepper();
     try {
       const next = await analyzeMixFile({ file, genre, stage, artistVision });
-      await hydrateSessionReport(next);
+      await hydrateSessionReport(next, true);
+      void persistReportToSupabase(next, "v1");
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Failed to analyze uploaded mix.");
       void refreshHealth();
@@ -243,7 +362,8 @@ export default function MixBenchPage() {
         "demo-flawed-v1.wav"
       );
       const next = await analyzeMixFile({ file: demoFile, genre, stage, artistVision });
-      await hydrateSessionReport(next);
+      await hydrateSessionReport(next, true);
+      void persistReportToSupabase(next, "v1");
     } catch (err) {
       setUploadError(
         err instanceof Error
@@ -344,6 +464,11 @@ export default function MixBenchPage() {
       const updated = await compareRevisedMix(report.session_id, file);
       setReport(updated);
       if (updated.revision_comparison) {
+        void persistReportToSupabase(
+          updated,
+          "v2",
+          updated.revision_comparison.revised_filename
+        );
         await studioAudioEngine.loadSlot(
           "revised",
           resolveApiUrl(updated.revision_comparison.revised_playback_proxy_url),
@@ -370,6 +495,11 @@ export default function MixBenchPage() {
       const updated = await compareRevisedMix(report.session_id, demoV2);
       setReport(updated);
       if (updated.revision_comparison) {
+        void persistReportToSupabase(
+          updated,
+          "v2",
+          updated.revision_comparison.revised_filename
+        );
         await studioAudioEngine.loadSlot(
           "revised",
           resolveApiUrl(updated.revision_comparison.revised_playback_proxy_url),
@@ -381,6 +511,38 @@ export default function MixBenchPage() {
       setRevisionError(err instanceof Error ? err.message : "Sample revision comparison failed.");
     } finally {
       setIsUploadingRevision(false);
+    }
+  };
+
+  const handleCompareWithSavedBaseline = async (baselineReport: AnalysisReport) => {
+    if (!report) return;
+    setRevisionError(null);
+    setIsComparingSaved(true);
+    try {
+      const comparison = await compareSavedReports(baselineReport, report);
+      const updatedReport: AnalysisReport = {
+        ...report,
+        revision_comparison: comparison,
+      };
+      setReport(updatedReport);
+      setSubTab("revisions");
+      void persistReportToSupabase(
+        updatedReport,
+        "v2",
+        `${baselineReport.audio_metadata.filename} → ${report.audio_metadata.filename}`
+      );
+    } catch (err) {
+      setRevisionError(err instanceof Error ? err.message : "Cross-session comparison failed.");
+    } finally {
+      setIsComparingSaved(false);
+    }
+  };
+
+  const handleDeleteSavedAnalysis = async (analysisId: string) => {
+    if (!supabaseUser) return;
+    const deleted = await deleteSavedAnalysis(supabaseUser.id, analysisId);
+    if (deleted) {
+      setSavedAnalyses((prev) => prev.filter((item) => item.id !== analysisId));
     }
   };
 
@@ -449,8 +611,14 @@ export default function MixBenchPage() {
         healthData={healthData}
         healthError={healthError}
         wakeAttempt={wakeAttempt}
-        wakeMaxAttempts={15}
+        wakeMaxAttempts={24}
         onRetryHealth={() => void refreshHealth()}
+        supabaseConfigured={supabaseConfigured}
+        userEmail={supabaseUser?.email ?? null}
+        savedCount={savedAnalyses.length}
+        onOpenAuth={() => setAuthOpen(true)}
+        onSignOut={() => void handleSignOut()}
+        onOpenHistory={() => setHistoryOpen(true)}
       />
 
       {report && (
@@ -487,6 +655,9 @@ export default function MixBenchPage() {
                 onRetryHealth={() => void refreshHealth()}
                 onAnalyzeFile={handleAnalyzeFile}
                 onLoadDemo={handleLoadDemo}
+                savedAnalyses={savedAnalyses}
+                onLoadSavedReport={(savedRep) => void hydrateSessionReport(savedRep, false)}
+                onOpenHistory={() => setHistoryOpen(true)}
               />
             </motion.div>
           ) : subTab === "diagnosis" ? (
@@ -581,10 +752,14 @@ export default function MixBenchPage() {
               <RevisionInspector
                 report={report}
                 activeSource={audioState.activeSource}
-                isUploading={isUploadingRevision}
+                isUploading={isUploadingRevision || isComparingSaved}
                 errorMessage={revisionError}
                 onUploadRevision={(f) => void handleUploadRevision(f)}
                 onLoadDemoRevision={() => void handleLoadDemoRevision()}
+                savedAnalyses={savedAnalyses}
+                onCompareWithSavedBaseline={(baseline) =>
+                  void handleCompareWithSavedBaseline(baseline)
+                }
                 onAuditionBaseline={() => {
                   void studioAudioEngine.setActiveSource("primary").then(() =>
                     studioAudioEngine.play()
@@ -633,12 +808,31 @@ export default function MixBenchPage() {
             report={report}
             mentorAdvice={mentorAdvice}
             isAskingMentor={isAskingMentor}
+            privacyPrefs={privacyPrefs}
+            onPrivacyPrefsChange={(prefs) => void handlePrivacyPrefsChange(prefs)}
+            isSignedIn={Boolean(supabaseUser)}
             onAskMentor={(req) => void handleAskMentor(req)}
             onSaveDawContext={(ctx) => void handleSaveDawContext(ctx)}
             onJumpToEvidence={handleJumpEvidence}
           />
         </>
       )}
+
+      <AuthModal open={authOpen} onOpenChange={setAuthOpen} />
+      <SavedMixHistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        analyses={savedAnalyses}
+        isLoading={isLoadingHistory}
+        activeReport={report}
+        isComparingSaved={isComparingSaved}
+        onRefresh={() => {
+          if (supabaseUser) void loadUserCloudData(supabaseUser);
+        }}
+        onLoadReport={(savedRep) => void hydrateSessionReport(savedRep, false)}
+        onCompareAgainstActive={(baseline) => void handleCompareWithSavedBaseline(baseline)}
+        onDeleteAnalysis={(id) => void handleDeleteSavedAnalysis(id)}
+      />
     </div>
   );
 }

@@ -19,7 +19,7 @@ def compute_stereo_metrics(samples: np.ndarray, sample_rate: int) -> StereoResul
     duration_sec = n_samples / max(sample_rate, 1)
     n_seconds = max(1, int(np.ceil(duration_sec)))
 
-    if samples.size == 0 or float(np.max(np.abs(samples))) <= 1e-12:
+    if samples.size == 0:
         return StereoResult(
             phase_correlation_avg=1.0,
             stereo_width_ratio=0.0,
@@ -37,16 +37,12 @@ def compute_stereo_metrics(samples: np.ndarray, sample_rate: int) -> StereoResul
 
     left = samples[:, 0]
     right = samples[:, 1]
-    mid = 0.5 * (left + right)
-    side = 0.5 * (left - right)
 
-    mid_energy = float(np.sum(np.square(mid)))
-    side_energy = float(np.sum(np.square(side)))
-    total_ms = mid_energy + side_energy
-    width_ratio = float(side_energy / total_ms) if total_ms > 1e-12 else 0.0
-
+    # Compute Mid/Side energy and rolling Pearson correlation per 1s slice without full-track copies
     step = max(1, sample_rate)
     series: list[float] = []
+    mid_energy = 0.0
+    side_energy = 0.0
     weighted_corr_sum = 0.0
     weight_sum = 0.0
     worst_corr = 1.0
@@ -55,14 +51,19 @@ def compute_stereo_metrics(samples: np.ndarray, sample_rate: int) -> StereoResul
     for sec in range(n_seconds):
         start = sec * step
         end = min(n_samples, start + step)
+        l_blk = left[start:end]
+        r_blk = right[start:end]
+        mid_blk = 0.5 * (l_blk + r_blk)
+        side_blk = 0.5 * (l_blk - r_blk)
+        mid_energy += float(np.sum(mid_blk * mid_blk))
+        side_energy += float(np.sum(side_blk * side_blk))
+
         if end - start < 2:
             series.append(series[-1] if series else 1.0)
             continue
-        l_blk = left[start:end]
-        r_blk = right[start:end]
 
-        l_energy = float(np.sum(np.square(l_blk)))
-        r_energy = float(np.sum(np.square(r_blk)))
+        l_energy = float(np.sum(l_blk * l_blk))
+        r_energy = float(np.sum(r_blk * r_blk))
         block_energy = l_energy + r_energy
         if block_energy <= 1e-10:
             series.append(1.0)
@@ -70,7 +71,7 @@ def compute_stereo_metrics(samples: np.ndarray, sample_rate: int) -> StereoResul
 
         l_centered = l_blk - np.mean(l_blk)
         r_centered = r_blk - np.mean(r_blk)
-        denom = float(np.sqrt(np.sum(np.square(l_centered)) * np.sum(np.square(r_centered))))
+        denom = float(np.sqrt(np.sum(l_centered * l_centered) * np.sum(r_centered * r_centered)))
         if denom <= 1e-12:
             # Handle DC or identical steady-state channels cleanly
             corr = 1.0 if np.allclose(l_blk, r_blk, atol=1e-6) else 0.0
@@ -83,6 +84,16 @@ def compute_stereo_metrics(samples: np.ndarray, sample_rate: int) -> StereoResul
         if corr < worst_corr:
             worst_corr = corr
             worst_sec = sec
+
+    total_ms = mid_energy + side_energy
+    if total_ms <= 1e-12:
+        return StereoResult(
+            phase_correlation_avg=1.0,
+            stereo_width_ratio=0.0,
+            phase_correlation_series=[1.0] * n_seconds,
+            worst_phase_window=(0.0, round(duration_sec, 1)),
+        )
+    width_ratio = float(side_energy / total_ms)
 
     avg_corr = (weighted_corr_sum / weight_sum) if weight_sum > 1e-12 else 1.0
     w_start = max(0.0, float(worst_sec - 2))

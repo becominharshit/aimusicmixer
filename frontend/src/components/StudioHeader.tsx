@@ -5,10 +5,14 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   AlertCircle,
   CheckCircle2,
+  History,
+  LogIn,
+  LogOut,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   Trash2,
+  User,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 import { STUDIO_EASE, STUDIO_SPRING, TACTILE_TAP } from "@/lib/motion";
@@ -29,6 +33,12 @@ interface StudioHeaderProps {
   wakeAttempt?: number;
   wakeMaxAttempts?: number;
   onRetryHealth: () => void;
+  supabaseConfigured?: boolean;
+  userEmail?: string | null;
+  savedCount?: number;
+  onOpenAuth?: () => void;
+  onSignOut?: () => void;
+  onOpenHistory?: () => void;
 }
 
 export function StudioHeader({
@@ -40,8 +50,14 @@ export function StudioHeader({
   healthData,
   healthError,
   wakeAttempt = 0,
-  wakeMaxAttempts = 15,
+  wakeMaxAttempts = 24,
   onRetryHealth,
+  supabaseConfigured = false,
+  userEmail = null,
+  savedCount = 0,
+  onOpenAuth,
+  onSignOut,
+  onOpenHistory,
 }: StudioHeaderProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -74,7 +90,7 @@ export function StudioHeader({
     healthStatus === "online"
       ? "DSP Engine Online"
       : healthStatus === "waking"
-        ? "Waking DSP Engine (~45s)…"
+        ? "Waking DSP Engine…"
         : healthStatus === "offline"
           ? "Backend Unreachable — Check API URL"
           : "Checking DSP Engine";
@@ -280,7 +296,7 @@ export function StudioHeader({
                         Cold-starting DSP container ({wakeAttempt > 0 ? `retry ${wakeAttempt}/${wakeMaxAttempts}` : "connecting…"}).
                       </p>
                       <p>
-                        Retrying <code className="text-[#182220]">/health</code> automatically every 5 seconds for up to 75 seconds while the backend boots.
+                        Retrying <code className="text-[#182220]">/health</code> automatically every 5 seconds for up to {wakeMaxAttempts * 5} seconds while the backend boots.
                       </p>
                     </div>
                   ) : (
@@ -299,6 +315,55 @@ export function StudioHeader({
               )}
             </AnimatePresence>
           </div>
+
+          {supabaseConfigured && userEmail ? (
+            <div className="flex items-center gap-1.5">
+              {onOpenHistory && (
+                <motion.button
+                  type="button"
+                  whileTap={TACTILE_TAP}
+                  onClick={onOpenHistory}
+                  className="inline-flex min-h-[32px] items-center gap-1.5 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                >
+                  <History className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                  <span className="hidden sm:inline">Saved Mixes</span>
+                  <span className="rounded-full bg-[#EBF3F1] px-1.5 py-0.2 text-[10px] font-semibold text-[#3A7269] tabular-telemetry">
+                    {savedCount}
+                  </span>
+                </motion.button>
+              )}
+              <div
+                title={userEmail}
+                className="hidden items-center gap-1.5 bg-[#F5F5F7] px-2.5 py-1.5 text-xs text-[#52605D] hairline-border squircle-inner md:inline-flex"
+              >
+                <User className="h-3 w-3 text-[#3A7269]" aria-hidden="true" />
+                <span className="max-w-[120px] truncate">{userEmail}</span>
+              </div>
+              {onSignOut && (
+                <motion.button
+                  type="button"
+                  whileTap={TACTILE_TAP}
+                  onClick={onSignOut}
+                  aria-label="Sign out"
+                  title="Sign out"
+                  className="inline-flex min-h-[32px] items-center gap-1 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#182220] hairline-border squircle-inner cursor-pointer transition-colors"
+                >
+                  <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span className="hidden lg:inline">Sign Out</span>
+                </motion.button>
+              )}
+            </div>
+          ) : supabaseConfigured && onOpenAuth ? (
+            <motion.button
+              type="button"
+              whileTap={TACTILE_TAP}
+              onClick={onOpenAuth}
+              className="inline-flex min-h-[32px] items-center gap-1.5 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+            >
+              <LogIn className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+              <span>Sign In</span>
+            </motion.button>
+          ) : null}
 
           {report && (
             <motion.button

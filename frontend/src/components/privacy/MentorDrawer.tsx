@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Sparkles, X } from "lucide-react";
 import { MentorPrivacyPanel } from "@/components/privacy/MentorPrivacyPanel";
 import { STUDIO_EASE, STUDIO_SPRING } from "@/lib/motion";
+import type { PrivacyPreferences } from "@/lib/supabase/storage";
 import type { AnalysisReport, MentorRequest, MentorResponse } from "@/types/report";
 
 interface MentorDrawerProps {
@@ -16,6 +17,9 @@ interface MentorDrawerProps {
   onAskMentor: (req: MentorRequest) => void;
   onSaveDawContext: (ctx: { daw: string; bus_routing: string; plugin_notes: string }) => void;
   onJumpToEvidence: (evidenceId: string) => void;
+  privacyPrefs?: PrivacyPreferences;
+  onPrivacyPrefsChange?: (prefs: PrivacyPreferences) => void;
+  isSignedIn?: boolean;
 }
 
 export function MentorDrawer({
@@ -27,6 +31,9 @@ export function MentorDrawer({
   onAskMentor,
   onSaveDawContext,
   onJumpToEvidence,
+  privacyPrefs,
+  onPrivacyPrefsChange,
+  isSignedIn = false,
 }: MentorDrawerProps) {
   useEffect(() => {
     if (!open) return;
@@ -92,6 +99,9 @@ export function MentorDrawer({
                 isAskingMentor={isAskingMentor}
                 onAskMentor={onAskMentor}
                 onSaveDawContext={onSaveDawContext}
+                privacyPrefs={privacyPrefs}
+                onPrivacyPrefsChange={onPrivacyPrefsChange}
+                isSignedIn={isSignedIn}
                 onJumpToEvidence={(eid) => {
                   onJumpToEvidence(eid);
                   onClose();

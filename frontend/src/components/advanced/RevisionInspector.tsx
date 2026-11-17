@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { AudioSourceSlot } from "@/audio/StudioAudioEngine";
 import { Button } from "@/components/ui/button";
+import type { SavedAnalysisRecord } from "@/lib/supabase/storage";
 import type { AnalysisReport } from "@/types/report";
 
 interface RevisionInspectorProps {
@@ -23,6 +24,8 @@ interface RevisionInspectorProps {
   onLoadDemoRevision: () => void;
   onAuditionRevised: () => void;
   onAuditionBaseline?: () => void;
+  savedAnalyses?: SavedAnalysisRecord[];
+  onCompareWithSavedBaseline?: (baselineReport: AnalysisReport) => void;
 }
 
 export function RevisionInspector({
@@ -34,9 +37,14 @@ export function RevisionInspector({
   onLoadDemoRevision,
   onAuditionRevised,
   onAuditionBaseline,
+  savedAnalyses = [],
+  onCompareWithSavedBaseline,
 }: RevisionInspectorProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const comp = report.revision_comparison;
+  const comparableSaved = savedAnalyses.filter(
+    (item) => item.report_json.report_id !== report.report_id
+  );
 
   return (
     <div className="mx-auto max-w-[1140px] py-4 space-y-5">
@@ -120,13 +128,37 @@ export function RevisionInspector({
       )}
 
       {!comp ? (
-        <div className="bg-[#F5F5F7] p-8 text-center hairline-border squircle-outer space-y-2">
-          <h2 className="text-sm font-semibold text-[#182220]">
-            Ready for v1 → v2 verification
-          </h2>
-          <p className="mx-auto max-w-md text-xs text-[#52605D]">
-            Click &ldquo;Load Sample Revised Mix (v2)&rdquo; to compare against our calibrated -4.2 dBTP / 250 Hz-cleaned fixture, or upload your own revised bounce.
-          </p>
+        <div className="bg-[#F5F5F7] p-8 text-center hairline-border squircle-outer space-y-4">
+          <div className="space-y-2">
+            <h2 className="text-sm font-semibold text-[#182220]">
+              Ready for v1 → v2 verification
+            </h2>
+            <p className="mx-auto max-w-md text-xs text-[#52605D]">
+              Click &ldquo;Load Sample Revised Mix (v2)&rdquo; to compare against our calibrated -4.2 dBTP / 250 Hz-cleaned fixture, or upload your own revised bounce.
+            </p>
+          </div>
+          {comparableSaved.length > 0 && onCompareWithSavedBaseline && (
+            <div className="mx-auto max-w-xl bg-[#FFFFFF] p-4 text-left hairline-border squircle-inner space-y-2.5">
+              <div className="text-xs font-semibold text-[#182220]">
+                Compare Current Mix ({report.audio_metadata.filename}) Against Saved History (v1 Baseline)
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {comparableSaved.slice(0, 6).map((item) => (
+                  <Button
+                    key={item.id}
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={isUploading}
+                    onClick={() => onCompareWithSavedBaseline(item.report_json)}
+                  >
+                    <GitCompare className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                    {item.track_name} ({item.version_label})
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <>

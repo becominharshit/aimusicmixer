@@ -5,11 +5,13 @@ import { MotionConfig } from "motion/react";
 import { StudioAudioEngine } from "@/audio/StudioAudioEngine";
 import { BottomTransportDock } from "@/components/BottomTransportDock";
 import { StudioHeader } from "@/components/StudioHeader";
+import { MAX_SINGLE_FILE_BYTES, UploadStage } from "@/components/UploadStage";
 import { RevisionInspector } from "@/components/advanced/RevisionInspector";
 import { StemsInspector } from "@/components/advanced/StemsInspector";
 import { MentorPrivacyPanel } from "@/components/privacy/MentorPrivacyPanel";
 import { SimpleView } from "@/components/simple/SimpleView";
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
+import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import type { AnalysisReport } from "@/types/report";
 
 const mockReport: AnalysisReport = {
@@ -232,14 +234,14 @@ describe("MixBench UI & Privacy Contracts", () => {
         healthData={null}
         healthError="Timed out"
         wakeAttempt={3}
-        wakeMaxAttempts={15}
+        wakeMaxAttempts={24}
         onRetryHealth={vi.fn()}
       />
     );
-    const wakingBtn = screen.getByRole("button", { name: /Waking DSP Engine \(~45s\)/i });
+    const wakingBtn = screen.getByRole("button", { name: /Waking DSP Engine…/i });
     expect(wakingBtn).toBeInTheDocument();
     fireEvent.click(wakingBtn);
-    expect(screen.getByText(/retry 3\/15/i)).toBeInTheDocument();
+    expect(screen.getByText(/retry 3\/24/i)).toBeInTheDocument();
     fireEvent.click(wakingBtn);
 
     rerender(
@@ -299,5 +301,37 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(screen.getByRole("tab", { name: /Revision Check/i })).toBeInTheDocument();
     expect(screen.getByText(/300Hz–4\.5kHz · Mono/i)).toBeInTheDocument();
     expect(screen.getByText(/180Hz–12kHz/i)).toBeInTheDocument();
+  });
+
+  it("blocks files over 50 MB client-side and gracefully disables Supabase when env vars are unset", () => {
+    const onAnalyzeFile = vi.fn();
+    render(
+      <UploadStage
+        genre="electronic"
+        onGenreChange={vi.fn()}
+        stage="unmastered_mix"
+        onStageChange={vi.fn()}
+        artistVision={["punchy"]}
+        onToggleVision={vi.fn()}
+        isAnalyzing={false}
+        activeStepIndex={0}
+        errorMessage={null}
+        healthStatus="online"
+        onRetryHealth={vi.fn()}
+        onAnalyzeFile={onAnalyzeFile}
+        onLoadDemo={vi.fn()}
+      />
+    );
+
+    const fileInput = screen.getByLabelText(/Upload stereo mix audio file/i);
+    const hugeFile = new File(["tiny"], "giant_master.wav", { type: "audio/wav" });
+    Object.defineProperty(hugeFile, "size", { value: MAX_SINGLE_FILE_BYTES + 1024 });
+
+    fireEvent.change(fileInput, { target: { files: [hugeFile] } });
+    expect(onAnalyzeFile).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/50 MB single-file upload limit/i);
+
+    expect(isSupabaseConfigured()).toBe(false);
+    expect(getSupabaseBrowserClient()).toBeNull();
   });
 });

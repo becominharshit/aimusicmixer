@@ -16,10 +16,10 @@ COPY backend/scripts ./scripts
 COPY assets/test-audio /app/assets/test-audio
 
 ENV BACKEND_HOST=0.0.0.0
-ENV BACKEND_PORT=7860
+ENV BACKEND_PORT=10000
 
 RUN mkdir -p /tmp/mixbench_sessions /tmp/mixbench_uploads && chmod -R 1777 /tmp/mixbench_sessions /tmp/mixbench_uploads
 
-EXPOSE 7860
+EXPOSE 10000
 
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1

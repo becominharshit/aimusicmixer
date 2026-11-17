@@ -6,6 +6,7 @@ import type {
   MentorRequest,
   MentorResponse,
   ReferenceTrackMeta,
+  RevisionComparison,
   StageType,
   UserReportedContext,
 } from "@/types/report";
@@ -156,6 +157,18 @@ export async function compareDemoRevision(sessionId: string): Promise<AnalysisRe
     method: "POST",
   });
   return handleResponse<AnalysisReport>(res);
+}
+
+export async function compareSavedReports(
+  baseline: AnalysisReport,
+  revised: AnalysisReport
+): Promise<RevisionComparison> {
+  const res = await fetch(resolveApiUrl("/api/compare"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ baseline, revised }),
+  });
+  return handleResponse<RevisionComparison>(res);
 }
 
 export async function updateDawContext(

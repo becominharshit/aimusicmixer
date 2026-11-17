@@ -416,3 +416,22 @@ def test_gemini_api_error_triggers_deterministic_fallback(monkeypatch) -> None:
     )
     assert resp.mode == "deterministic_fallback"
     assert "Offline Mentor fallback" in resp.summary
+
+
+def test_cors_and_memory_cap_configuration(monkeypatch) -> None:
+    from fastapi.middleware.cors import CORSMiddleware
+
+    from app.core.config import Settings
+    from app.main import app
+
+    s_star = Settings(allowed_origins="https://mixbench.vercel.app, *")
+    assert "*" in s_star.cors_origin_list
+
+    s_explicit = Settings(allowed_origins="https://mixbench.vercel.app/, http://localhost:3000/")
+    assert s_explicit.cors_origin_list == ["https://mixbench.vercel.app", "http://localhost:3000"]
+
+    cors_layers = [m for m in app.user_middleware if m.cls is CORSMiddleware]
+    assert len(cors_layers) == 1
+    opts = cors_layers[0].kwargs
+    if "*" in opts.get("allow_origins", []):
+        assert opts.get("allow_credentials") is False

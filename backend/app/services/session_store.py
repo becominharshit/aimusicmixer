@@ -56,6 +56,13 @@ class SessionStore:
 
     def create_session(self) -> SessionRecord:
         self.purge_expired()
+        # Keep only the most recent 2 raw PCM buffers in RAM to protect 512 MB free-tier containers
+        cached = [r for r in self._sessions.values() if r.primary_loaded is not None]
+        if len(cached) >= 2:
+            cached.sort(key=lambda r: r.created_epoch)
+            for old in cached[:-1]:
+                old.primary_loaded = None
+
         sid = f"sess_{uuid.uuid4().hex[:10]}"
         session_dir = self.root_dir / sid
         session_dir.mkdir(parents=True, exist_ok=True)

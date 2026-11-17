@@ -2,12 +2,24 @@
 
 import React, { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { UploadCloud, PlayCircle, AlertCircle, CheckCircle2, SlidersHorizontal } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  FolderOpen,
+  History,
+  PlayCircle,
+  SlidersHorizontal,
+  UploadCloud,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { STUDIO_EASE, STUDIO_SPRING, TACTILE_TAP } from "@/lib/motion";
+import type { SavedAnalysisRecord } from "@/lib/supabase/storage";
 import type { HealthStatus } from "@/components/StudioHeader";
-import type { ArtistVisionTag, GenreType, StageType } from "@/types/report";
+import type { AnalysisReport, ArtistVisionTag, GenreType, StageType } from "@/types/report";
+
+export const MAX_SINGLE_FILE_MB = 50;
+export const MAX_SINGLE_FILE_BYTES = MAX_SINGLE_FILE_MB * 1024 * 1024;
 
 const GENRE_OPTIONS: { value: GenreType; label: string }[] = [
   { value: "electronic", label: "Electronic / Dance" },
@@ -48,6 +60,9 @@ interface UploadStageProps {
   onRetryHealth: () => void;
   onAnalyzeFile: (file: File) => void;
   onLoadDemo: () => void;
+  savedAnalyses?: SavedAnalysisRecord[];
+  onLoadSavedReport?: (report: AnalysisReport) => void;
+  onOpenHistory?: () => void;
 }
 
 export function UploadStage({
@@ -64,14 +79,31 @@ export function UploadStage({
   onRetryHealth,
   onAnalyzeFile,
   onLoadDemo,
+  savedAnalyses = [],
+  onLoadSavedReport,
+  onOpenHistory,
 }: UploadStageProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [clientSizeError, setClientSizeError] = useState<string | null>(null);
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    onAnalyzeFile(files[0]);
+    const file = files[0];
+    if (file.size > MAX_SINGLE_FILE_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      setClientSizeError(
+        `"${file.name}" is ${sizeMb} MB, exceeding the ${MAX_SINGLE_FILE_MB} MB single-file upload limit. Export a shorter section or lossless FLAC/AAC under ${MAX_SINGLE_FILE_MB} MB.`
+      );
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+    setClientSizeError(null);
+    if (inputRef.current) inputRef.current.value = "";
+    onAnalyzeFile(file);
   };
+
+  const displayedError = clientSizeError || errorMessage;
 
   return (
     <section className="mx-auto max-w-4xl py-6 sm:py-10">
@@ -80,7 +112,7 @@ export function UploadStage({
           Diagnose your mix before it leaves your DAW
         </h1>
         <p className="max-w-[68ch] text-sm text-[#52605D] sm:text-base">
-          Upload a stereo mixdown (WAV, FLAC, MP3, AIFF, OGG up to 100 MB). Deterministic ITU-R BS.1770 loudness,
+          Upload a stereo mixdown (WAV, FLAC, MP3, AIFF, OGG up to 50 MB). Deterministic ITU-R BS.1770 loudness,
           4x True Peak, and 6-band balance run locally on ephemeral session storage—never sent to AI training.
         </p>
       </div>
@@ -285,7 +317,10 @@ export function UploadStage({
                 <Button
                   type="button"
                   variant="soft"
-                  onClick={onLoadDemo}
+                  onClick={() => {
+                    setClientSizeError(null);
+                    onLoadDemo();
+                  }}
                 >
                   <PlayCircle className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
                   Try Sample Flawed Mix
@@ -299,19 +334,19 @@ export function UploadStage({
           )}
         </AnimatePresence>
 
-        {healthStatus === "waking" && !errorMessage && (
+        {healthStatus === "waking" && !displayedError && (
           <div
             role="status"
             className="mt-5 flex max-w-lg items-start gap-2 bg-[#FEF7EC] px-4 py-3 text-left text-xs text-[#B45309] border border-[rgba(180,83,9,0.22)] squircle-inner"
           >
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
-              Waking DSP Engine (~45s)… The backend container is spinning up and will connect automatically.
+              Waking DSP Engine… The backend container is spinning up and will connect automatically.
             </span>
           </div>
         )}
 
-        {healthStatus === "offline" && !errorMessage && (
+        {healthStatus === "offline" && !displayedError && (
           <div
             role="status"
             className="mt-5 flex max-w-lg flex-wrap items-center justify-between gap-2 bg-[#FEF7EC] px-4 py-3 text-left text-xs text-[#B45309] border border-[rgba(180,83,9,0.22)] squircle-inner"
@@ -332,16 +367,72 @@ export function UploadStage({
           </div>
         )}
 
-        {errorMessage && (
+        {displayedError && (
           <div
             role="alert"
             className="mt-5 flex max-w-lg items-start gap-2 bg-[#FFF1F3] px-4 py-3 text-left text-xs text-[#BE123C] border border-[rgba(190,18,60,0.22)] squircle-inner"
           >
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>{errorMessage}</span>
+            <span>{displayedError}</span>
           </div>
         )}
       </motion.div>
+
+      {savedAnalyses.length > 0 && onLoadSavedReport && (
+        <div className="mt-6 bg-[#FFFFFF] p-5 hairline-border squircle-outer space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#182220]">
+              <History className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
+              <span>Recent Saved Mix History</span>
+            </div>
+            {onOpenHistory && (
+              <button
+                type="button"
+                onClick={onOpenHistory}
+                className="text-xs font-medium text-[#3A7269] hover:underline cursor-pointer"
+              >
+                View all ({savedAnalyses.length})
+              </button>
+            )}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {savedAnalyses.slice(0, 3).map((item) => {
+              const m = item.report_json.global_metrics;
+              return (
+                <div
+                  key={item.id}
+                  className="flex flex-col justify-between gap-2.5 bg-[#F5F5F7] p-3.5 hairline-border squircle-inner"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-semibold text-[#182220]">
+                        {item.track_name}
+                      </span>
+                      <span className="rounded-full bg-[#EBF3F1] px-2 py-0.5 text-[10px] font-semibold text-[#3A7269] tabular-telemetry">
+                        {item.version_label}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[#52605D] tabular-telemetry">
+                      {m.integrated_lufs.toFixed(1)} LUFS ·{" "}
+                      {m.true_peak_dbtp >= 0 ? "+" : ""}
+                      {m.true_peak_dbtp.toFixed(2)} dBTP
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onLoadSavedReport(item.report_json)}
+                  >
+                    <FolderOpen className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                    Reload Report
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

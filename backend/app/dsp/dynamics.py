@@ -20,10 +20,25 @@ def compute_dynamics_metrics(
     short_term_max_lufs: float,
     integrated_lufs: float | None = None,
 ) -> DynamicsResult:
-    if samples.size == 0 or float(np.max(np.abs(samples))) <= 1e-12:
+    if samples.size == 0:
         return DynamicsResult(crest_factor_db=0.0, plr_db=0.0, psr_db=0.0, rms_dbfs=-120.0)
 
-    rms = float(np.sqrt(np.mean(np.square(samples))))
+    # Chunked RMS calculation avoids allocating a full-track float64 square copy in RAM
+    chunk_len = 262144
+    n_samples = samples.shape[0]
+    peak_lin = 0.0
+    sum_sq = 0.0
+    for start in range(0, n_samples, chunk_len):
+        chunk = samples[start : start + chunk_len]
+        c_max = max(abs(float(chunk.min())), abs(float(chunk.max())))
+        if c_max > peak_lin:
+            peak_lin = c_max
+        sum_sq += float(np.sum(chunk * chunk))
+
+    if peak_lin <= 1e-12:
+        return DynamicsResult(crest_factor_db=0.0, plr_db=0.0, psr_db=0.0, rms_dbfs=-120.0)
+
+    rms = float(np.sqrt(sum_sq / max(1, samples.size)))
     rms_dbfs = float(20.0 * np.log10(max(rms, 1e-12)))
     crest_factor = max(0.0, sample_peak_dbfs - rms_dbfs)
     psr = max(0.0, true_peak_dbtp - short_term_max_lufs) if short_term_max_lufs > -69.5 else 0.0
