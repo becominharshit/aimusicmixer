@@ -61,6 +61,7 @@ export interface GlobalMetrics {
   sample_peak_dbfs: number;
   true_peak_dbtp: number;
   crest_factor_db: number;
+  plr_db?: number;
   psr_db: number;
   phase_correlation_avg: number;
   stereo_width_ratio: number;
@@ -115,6 +116,7 @@ export interface StemMetric {
   sample_peak_dbfs: number;
   true_peak_dbtp: number;
   headroom_db: number;
+  phase_correlation_avg?: number;
   spectral_centroid_hz: number;
   band_energies_db: Record<string, number>;
 }
@@ -127,6 +129,8 @@ export interface StemOverlapPair {
   range_hz: string;
   overlap_score: number;
   combined_excess_db: number;
+  phase_interaction_corr?: number | null;
+  phase_cancellation_risk?: boolean;
   severity: SeverityType;
   note: string;
 }
@@ -152,6 +156,7 @@ export interface RevisionMetricDeltas {
   true_peak_dbtp_delta: number;
   loudness_range_lu_delta: number;
   crest_factor_db_delta: number;
+  plr_db_delta?: number;
   psr_db_delta: number;
   phase_correlation_delta: number;
   band_deltas_db: Record<string, number>;
@@ -208,6 +213,16 @@ export interface ReferenceTrackMeta {
   duration_sec: number;
   playback_proxy_url: string;
   waveform_peaks: number[][];
+  global_metrics?: GlobalMetrics;
+  spectral_bands?: SpectralBand[];
+}
+
+export interface BackendHealth {
+  status: string;
+  version?: string;
+  ffmpeg_available: boolean;
+  gemini_configured: boolean;
+  gemini_model?: string;
 }
 
 export interface MentorAction {

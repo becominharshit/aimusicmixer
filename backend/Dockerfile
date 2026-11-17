@@ -16,8 +16,10 @@ COPY backend/scripts ./scripts
 COPY assets/test-audio /app/assets/test-audio
 
 ENV BACKEND_HOST=0.0.0.0
-ENV BACKEND_PORT=8000
+ENV BACKEND_PORT=7860
 
-EXPOSE 8000
+RUN mkdir -p /tmp/mixbench_sessions /tmp/mixbench_uploads && chmod -R 1777 /tmp/mixbench_sessions /tmp/mixbench_uploads
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+EXPOSE 7860
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]

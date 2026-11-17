@@ -255,21 +255,23 @@ export class StudioAudioEngine {
     setG(this.rrGain, rr);
 
     if (this.deviceProfile === "smartphone") {
+      // Generic Smartphone: band-limited 300 Hz - 4.5 kHz + equal-power mono fold
       this.hpFilter.type = "highpass";
-      this.hpFilter.frequency.setTargetAtTime(280, now, tau);
+      this.hpFilter.frequency.setTargetAtTime(300, now, tau);
       this.hpFilter.Q.setTargetAtTime(0.75, now, tau);
 
       this.midPresenceFilter.type = "peaking";
-      this.midPresenceFilter.frequency.setTargetAtTime(2200, now, tau);
-      this.midPresenceFilter.Q.setTargetAtTime(1.1, now, tau);
-      this.midPresenceFilter.gain.setTargetAtTime(2.5, now, tau);
+      this.midPresenceFilter.frequency.setTargetAtTime(2000, now, tau);
+      this.midPresenceFilter.Q.setTargetAtTime(1.0, now, tau);
+      this.midPresenceFilter.gain.setTargetAtTime(2.0, now, tau);
 
       this.lpFilter.type = "lowpass";
-      this.lpFilter.frequency.setTargetAtTime(11000, now, tau);
+      this.lpFilter.frequency.setTargetAtTime(4500, now, tau);
       this.lpFilter.Q.setTargetAtTime(0.75, now, tau);
     } else if (this.deviceProfile === "laptop") {
+      // Generic Laptop Speakers: 180 Hz - 12 kHz narrowed stereo profile
       this.hpFilter.type = "highpass";
-      this.hpFilter.frequency.setTargetAtTime(160, now, tau);
+      this.hpFilter.frequency.setTargetAtTime(180, now, tau);
       this.hpFilter.Q.setTargetAtTime(0.75, now, tau);
 
       this.midPresenceFilter.type = "peaking";
@@ -278,7 +280,7 @@ export class StudioAudioEngine {
       this.midPresenceFilter.gain.setTargetAtTime(0.8, now, tau);
 
       this.lpFilter.type = "lowpass";
-      this.lpFilter.frequency.setTargetAtTime(14000, now, tau);
+      this.lpFilter.frequency.setTargetAtTime(12000, now, tau);
       this.lpFilter.Q.setTargetAtTime(0.75, now, tau);
     } else {
       // Full Range flat bypass

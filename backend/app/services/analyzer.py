@@ -46,6 +46,7 @@ def analyze_audio_to_report(
         sample_peak_dbfs=peaks.sample_peak_dbfs,
         true_peak_dbtp=peaks.true_peak_dbtp,
         short_term_max_lufs=loudness.short_term_max_lufs,
+        integrated_lufs=loudness.integrated_lufs,
     )
     spectral = compute_spectral_profile(loaded.samples, loaded.sample_rate, genre=context.genre)
     stereo = compute_stereo_metrics(loaded.samples, loaded.sample_rate)
@@ -58,6 +59,7 @@ def analyze_audio_to_report(
         sample_peak_dbfs=peaks.sample_peak_dbfs,
         true_peak_dbtp=peaks.true_peak_dbtp,
         crest_factor_db=dynamics.crest_factor_db,
+        plr_db=dynamics.plr_db,
         psr_db=dynamics.psr_db,
         phase_correlation_avg=stereo.phase_correlation_avg,
         stereo_width_ratio=stereo.stereo_width_ratio,

@@ -4,10 +4,10 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
-    healthCheckPath: /api/v1/health
+    healthCheckPath: /health
     envVars:
-      - key: CORS_ORIGINS
-        value: https://mixbench.vercel.app
+      - key: ALLOWED_ORIGINS
+        value: https://frontend-tau-kohl-prgmf10seo.vercel.app
       - key: GEMINI_MODEL
         value: gemini-3.8-flash
       - key: GEMINI_API_KEY

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,8 +15,11 @@ from app.core.config import settings
 from app.dsp import (
     AudioIngestionError,
     analyze_user_stems,
+    compute_dynamics_metrics,
     compute_loudness_metrics,
     compute_peak_metrics,
+    compute_spectral_profile,
+    compute_stereo_metrics,
     create_playback_proxy,
     load_audio_file,
 )
@@ -24,14 +28,18 @@ from app.schemas.report import (
     AnalysisContext,
     AnalysisReport,
     ArtistVisionTag,
+    CompareReportsRequest,
     Finding,
     GenreType,
     GlobalMetrics,
     MentorRequest,
     MentorResponse,
+    MentorStandaloneRequest,
     PrivacyAudit,
+    RevisionComparison,
     SpectralBand,
     StageType,
+    StemAnalysis,
     StreamingEstimate,
     TimeSeries,
     UserReportedContext,
@@ -39,6 +47,7 @@ from app.schemas.report import (
 from app.services import analyze_audio_to_report, session_store
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
+compat_router = APIRouter(tags=["compat"])
 
 VALID_VISION_TAGS: set[str] = {"punchy", "warm", "aggressive", "wide", "dynamic"}
 
@@ -85,6 +94,8 @@ def _proxy_filename(proxy_dir: Path, stem: str) -> str:
     return f"{stem}.wav"
 
 
+@compat_router.get("/health")
+@compat_router.get("/api/health")
 @router.get("/health")
 def health_check() -> dict:
     return {
@@ -92,6 +103,7 @@ def health_check() -> dict:
         "version": "1.0.0",
         "ffmpeg_available": shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None,
         "gemini_configured": bool(settings.gemini_api_key.strip()),
+        "gemini_model": settings.gemini_model,
     }
 
 
@@ -177,6 +189,63 @@ def get_mock_report() -> AnalysisReport:
     )
 
 
+def _tmp_upload_path(prefix: str, safe_name: str) -> Path:
+    tmp_dir = Path(tempfile.gettempdir()) / "mixbench_uploads"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    return tmp_dir / f"{prefix}_{uuid.uuid4().hex[:8]}_{safe_name}"
+
+
+def _build_reference_payload(
+    session_id: str,
+    rec,
+    ref_path: Path,
+    ref_filename: str,
+) -> dict:
+    loaded = load_audio_file(ref_path, max_bytes=settings.max_single_file_bytes)
+    loudness = compute_loudness_metrics(loaded.samples, loaded.sample_rate)
+    peaks = compute_peak_metrics(loaded.samples, loaded.sample_rate, source_path=ref_path)
+    dynamics = compute_dynamics_metrics(
+        loaded.samples,
+        sample_peak_dbfs=peaks.sample_peak_dbfs,
+        true_peak_dbtp=peaks.true_peak_dbtp,
+        short_term_max_lufs=loudness.short_term_max_lufs,
+        integrated_lufs=loudness.integrated_lufs,
+    )
+    genre: GenreType = rec.primary_report.context.genre if rec.primary_report else "electronic"
+    spectral = compute_spectral_profile(loaded.samples, loaded.sample_rate, genre=genre)
+    stereo = compute_stereo_metrics(loaded.samples, loaded.sample_rate)
+
+    proxy_dir = rec.directory / "proxies"
+    create_playback_proxy(ref_path, proxy_dir, stem_name="reference")
+    actual_proxy = _proxy_filename(proxy_dir, "reference")
+    rec.proxy_files[actual_proxy] = proxy_dir / actual_proxy
+
+    ref_metrics = GlobalMetrics(
+        integrated_lufs=loudness.integrated_lufs,
+        short_term_max_lufs=loudness.short_term_max_lufs,
+        momentary_max_lufs=loudness.momentary_max_lufs,
+        loudness_range_lu=loudness.loudness_range_lu,
+        sample_peak_dbfs=peaks.sample_peak_dbfs,
+        true_peak_dbtp=peaks.true_peak_dbtp,
+        crest_factor_db=dynamics.crest_factor_db,
+        plr_db=dynamics.plr_db,
+        psr_db=dynamics.psr_db,
+        phase_correlation_avg=stereo.phase_correlation_avg,
+        stereo_width_ratio=stereo.stereo_width_ratio,
+    )
+    return {
+        "reference_filename": ref_filename,
+        "integrated_lufs": loudness.integrated_lufs,
+        "true_peak_dbtp": peaks.true_peak_dbtp,
+        "duration_sec": loaded.duration_sec,
+        "playback_proxy_url": f"/api/v1/sessions/{session_id}/proxy/{actual_proxy}",
+        "waveform_peaks": loaded.waveform_peaks,
+        "global_metrics": ref_metrics.model_dump(mode="json"),
+        "spectral_bands": [b.model_dump(mode="json") for b in spectral.bands],
+    }
+
+
+@compat_router.post("/api/analyze", response_model=AnalysisReport)
 @router.post("/analyze", response_model=AnalysisReport)
 async def analyze_mix(
     file: UploadFile = File(...),
@@ -189,10 +258,10 @@ async def analyze_mix(
 ) -> AnalysisReport:
     rec = session_store.create_session()
     safe_name = Path(file.filename or "mix.wav").name
-    target_path = rec.directory / f"primary_{uuid.uuid4().hex[:6]}_{safe_name}"
+    tmp_upload_path = _tmp_upload_path("primary", safe_name)
 
     try:
-        await _save_upload_bounded(file, target_path, settings.max_single_file_bytes)
+        await _save_upload_bounded(file, tmp_upload_path, settings.max_single_file_bytes)
         user_ctx = (
             UserReportedContext(daw=daw.strip(), bus_routing=bus_routing.strip(), plugin_notes=plugin_notes.strip())
             if (daw.strip() or bus_routing.strip() or plugin_notes.strip())
@@ -209,7 +278,7 @@ async def analyze_mix(
         proxy_dir = rec.directory / "proxies"
         report, loaded = analyze_audio_to_report(
             session_id=rec.session_id,
-            source_path=target_path,
+            source_path=tmp_upload_path,
             original_filename=safe_name,
             proxy_dir=proxy_dir,
             proxy_name="proxy",
@@ -220,7 +289,6 @@ async def analyze_mix(
         actual_proxy = _proxy_filename(proxy_dir, "proxy")
         report.audio_metadata.playback_proxy_url = f"/api/v1/sessions/{rec.session_id}/proxy/{actual_proxy}"
         rec.proxy_files[actual_proxy] = proxy_dir / actual_proxy
-        rec.primary_audio_path = target_path
         rec.primary_loaded = loaded
         rec.primary_report = report
         return report
@@ -233,6 +301,8 @@ async def analyze_mix(
     except Exception as exc:
         session_store.delete_session(rec.session_id)
         raise HTTPException(status_code=500, detail=f"Audio analysis failed: {exc}") from exc
+    finally:
+        tmp_upload_path.unlink(missing_ok=True)
 
 
 @router.post("/sessions/demo", response_model=AnalysisReport)
@@ -285,30 +355,15 @@ async def upload_reference_track(
         raise HTTPException(status_code=404, detail="Session expired or not found.")
 
     safe_name = Path(file.filename or "reference.wav").name
-    ref_path = rec.directory / f"reference_{uuid.uuid4().hex[:6]}_{safe_name}"
-    await _save_upload_bounded(file, ref_path, settings.max_single_file_bytes)
+    tmp_ref_path = _tmp_upload_path("reference", safe_name)
 
     try:
-        loaded = load_audio_file(ref_path, max_bytes=settings.max_single_file_bytes)
-        loudness = compute_loudness_metrics(loaded.samples, loaded.sample_rate)
-        peaks = compute_peak_metrics(loaded.samples, loaded.sample_rate, source_path=ref_path)
-        proxy_dir = rec.directory / "proxies"
-        create_playback_proxy(ref_path, proxy_dir, stem_name="reference")
-        actual_proxy = _proxy_filename(proxy_dir, "reference")
-        rec.proxy_files[actual_proxy] = proxy_dir / actual_proxy
-        rec.reference_audio_path = ref_path
-
-        return {
-            "reference_filename": safe_name,
-            "integrated_lufs": loudness.integrated_lufs,
-            "true_peak_dbtp": peaks.true_peak_dbtp,
-            "duration_sec": loaded.duration_sec,
-            "playback_proxy_url": f"/api/v1/sessions/{session_id}/proxy/{actual_proxy}",
-            "waveform_peaks": loaded.waveform_peaks,
-        }
+        await _save_upload_bounded(file, tmp_ref_path, settings.max_single_file_bytes)
+        return _build_reference_payload(session_id, rec, tmp_ref_path, safe_name)
     except AudioIngestionError as exc:
-        ref_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        tmp_ref_path.unlink(missing_ok=True)
 
 
 @router.post("/sessions/{session_id}/reference/demo")
@@ -320,25 +375,50 @@ def load_demo_reference_track(session_id: str) -> dict:
     if not demo_ref.exists():
         raise HTTPException(status_code=404, detail="Demo reference track missing.")
 
-    ref_path = rec.directory / "reference_track.wav"
-    shutil.copy2(demo_ref, ref_path)
-    loaded = load_audio_file(ref_path)
-    loudness = compute_loudness_metrics(loaded.samples, loaded.sample_rate)
-    peaks = compute_peak_metrics(loaded.samples, loaded.sample_rate, source_path=ref_path)
-    proxy_dir = rec.directory / "proxies"
-    create_playback_proxy(ref_path, proxy_dir, stem_name="reference")
-    actual_proxy = _proxy_filename(proxy_dir, "reference")
-    rec.proxy_files[actual_proxy] = proxy_dir / actual_proxy
-    rec.reference_audio_path = ref_path
+    tmp_ref_path = _tmp_upload_path("demo_ref", "reference_track.wav")
+    try:
+        shutil.copy2(demo_ref, tmp_ref_path)
+        return _build_reference_payload(session_id, rec, tmp_ref_path, "reference_track.wav")
+    finally:
+        tmp_ref_path.unlink(missing_ok=True)
 
-    return {
-        "reference_filename": "reference_track.wav",
-        "integrated_lufs": loudness.integrated_lufs,
-        "true_peak_dbtp": peaks.true_peak_dbtp,
-        "duration_sec": loaded.duration_sec,
-        "playback_proxy_url": f"/api/v1/sessions/{session_id}/proxy/{actual_proxy}",
-        "waveform_peaks": loaded.waveform_peaks,
-    }
+
+async def _analyze_uploaded_stems_to_temp(
+    files: list[UploadFile],
+    mix_audio=None,
+) -> tuple[StemAnalysis, int]:
+    if len(files) < 2 or len(files) > 8:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Upload between 2 and 8 original stems (received {len(files)}).",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="mixbench_stems_") as tmp_dir:
+        stems_dir = Path(tmp_dir)
+        saved_stems: list[tuple[str, Path]] = []
+        running_total = 0
+
+        for idx, f in enumerate(files):
+            safe_name = Path(f.filename or f"stem_{idx + 1}.wav").name
+            stem_path = stems_dir / f"{idx:02d}_{safe_name}"
+            size = await _save_upload_bounded(f, stem_path, settings.max_single_file_bytes)
+            running_total += size
+            if running_total > settings.max_stem_total_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Combined stems exceed the {settings.max_stem_total_mb} MB session limit.",
+                )
+            saved_stems.append((safe_name, stem_path))
+
+        try:
+            stem_analysis = analyze_user_stems(
+                saved_stems,
+                mix_audio=mix_audio,
+                max_total_bytes=settings.max_stem_total_bytes,
+            )
+            return stem_analysis, len(saved_stems)
+        except AudioIngestionError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/sessions/{session_id}/stems", response_model=AnalysisReport)
@@ -350,42 +430,22 @@ async def upload_user_stems(
     if rec is None or rec.primary_report is None:
         raise HTTPException(status_code=404, detail="Session expired or not found.")
 
-    if len(files) < 2 or len(files) > 8:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Upload between 2 and 8 original stems (received {len(files)}).",
-        )
-
-    stems_dir = rec.directory / "stems"
-    stems_dir.mkdir(parents=True, exist_ok=True)
-    saved_stems: list[tuple[str, Path]] = []
-    running_total = 0
-
-    for idx, f in enumerate(files):
-        safe_name = Path(f.filename or f"stem_{idx + 1}.wav").name
-        stem_path = stems_dir / f"{idx:02d}_{safe_name}"
-        size = await _save_upload_bounded(f, stem_path, settings.max_single_file_bytes)
-        running_total += size
-        if running_total > settings.max_stem_total_bytes:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Combined stems exceed the {settings.max_stem_total_mb} MB session limit.",
-            )
-        saved_stems.append((safe_name, stem_path))
-
-    try:
-        stem_analysis = analyze_user_stems(
-            saved_stems,
-            mix_audio=rec.primary_loaded,
-            max_total_bytes=settings.max_stem_total_bytes,
-        )
-    except AudioIngestionError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
+    stem_analysis, count = await _analyze_uploaded_stems_to_temp(files, mix_audio=rec.primary_loaded)
     rec.primary_report.context.has_user_stems = True
-    rec.primary_report.context.stem_count = len(saved_stems)
+    rec.primary_report.context.stem_count = count
     rec.primary_report.stem_analysis = stem_analysis
     return rec.primary_report
+
+
+@compat_router.post("/api/analyze/stems")
+async def analyze_stems_endpoint(
+    files: list[UploadFile] = File(...),
+    session_id: str | None = Form(None),
+) -> AnalysisReport | StemAnalysis:
+    if session_id:
+        return await upload_user_stems(session_id=session_id, files=files)
+    stem_analysis, _ = await _analyze_uploaded_stems_to_temp(files, mix_audio=None)
+    return stem_analysis
 
 
 @router.post("/sessions/{session_id}/stems/demo", response_model=AnalysisReport)
@@ -417,14 +477,14 @@ async def compare_revised_mix(
         raise HTTPException(status_code=404, detail="Session expired or not found.")
 
     safe_name = Path(file.filename or "mix_v2.wav").name
-    v2_path = rec.directory / f"v2_{uuid.uuid4().hex[:6]}_{safe_name}"
-    await _save_upload_bounded(file, v2_path, settings.max_single_file_bytes)
+    tmp_v2_path = _tmp_upload_path("v2", safe_name)
 
     try:
+        await _save_upload_bounded(file, tmp_v2_path, settings.max_single_file_bytes)
         proxy_dir = rec.directory / "proxies"
         revised_report, _ = analyze_audio_to_report(
             session_id=session_id,
-            source_path=v2_path,
+            source_path=tmp_v2_path,
             original_filename=safe_name,
             proxy_dir=proxy_dir,
             proxy_name="v2",
@@ -435,15 +495,21 @@ async def compare_revised_mix(
         actual_proxy = _proxy_filename(proxy_dir, "v2")
         revised_report.audio_metadata.playback_proxy_url = f"/api/v1/sessions/{session_id}/proxy/{actual_proxy}"
         rec.proxy_files[actual_proxy] = proxy_dir / actual_proxy
-        rec.revised_audio_path = v2_path
         rec.revised_report = revised_report
 
         comparison = compare_revisions(rec.primary_report, revised_report)
         rec.primary_report.revision_comparison = comparison
         return rec.primary_report
     except AudioIngestionError as exc:
-        v2_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        tmp_v2_path.unlink(missing_ok=True)
+
+
+@compat_router.post("/api/compare", response_model=RevisionComparison)
+def compare_reports_endpoint(payload: CompareReportsRequest) -> RevisionComparison:
+    """Stateless deterministic comparison between a baseline v1 report and revised v2 report."""
+    return compare_revisions(payload.baseline, payload.revised)
 
 
 @router.post("/sessions/{session_id}/compare/demo", response_model=AnalysisReport)
@@ -505,13 +571,51 @@ def run_ai_mentor(
     if rec is None or rec.primary_report is None:
         raise HTTPException(status_code=404, detail="Session expired or not found.")
 
+    fallback_proxy = rec.proxy_files.get("proxy.m4a") or rec.proxy_files.get("proxy.wav")
     advice = generate_mentor_advice(
         report=rec.primary_report,
         request=payload,
         primary_audio_path=rec.primary_audio_path,
+        fallback_proxy_path=fallback_proxy,
     )
     rec.primary_report.privacy_audit = advice.privacy_audit
     return advice
+
+
+@compat_router.post("/api/mentor", response_model=MentorResponse)
+def standalone_ai_mentor(payload: MentorStandaloneRequest) -> MentorResponse:
+    req = MentorRequest(
+        allow_metrics_ai=payload.allow_metrics_ai,
+        allow_audio_ai=payload.allow_audio_ai,
+        allow_training_opt_in=payload.allow_training_opt_in,
+        question=payload.question,
+    )
+    if payload.session_id:
+        rec = session_store.get_session(payload.session_id)
+        if rec is None or rec.primary_report is None:
+            raise HTTPException(status_code=404, detail="Session expired or not found.")
+        fallback_proxy = rec.proxy_files.get("proxy.m4a") or rec.proxy_files.get("proxy.wav")
+        advice = generate_mentor_advice(
+            report=payload.report or rec.primary_report,
+            request=req,
+            primary_audio_path=rec.primary_audio_path,
+            fallback_proxy_path=fallback_proxy,
+        )
+        rec.primary_report.privacy_audit = advice.privacy_audit
+        return advice
+
+    if payload.report is None:
+        raise HTTPException(status_code=422, detail="Provide either 'session_id' or a full DSP 'report'.")
+
+    # Standalone JSON-only call cannot transmit audio bytes without a session proxy
+    if req.allow_audio_ai:
+        req = MentorRequest(
+            allow_metrics_ai=req.allow_metrics_ai,
+            allow_audio_ai=False,
+            allow_training_opt_in=req.allow_training_opt_in,
+            question=req.question,
+        )
+    return generate_mentor_advice(report=payload.report, request=req)
 
 
 @router.get("/sessions/{session_id}/proxy/{proxy_filename}")

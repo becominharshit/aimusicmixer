@@ -10,6 +10,7 @@ from app.dsp.ingest import AudioIngestionError, LoadedAudio, load_audio_file
 from app.dsp.loudness import compute_loudness_metrics
 from app.dsp.peaks import compute_peak_metrics
 from app.dsp.spectrum import BAND_DEFINITIONS
+from app.dsp.stereo import compute_stereo_metrics
 from app.schemas.report import BandName, StemAnalysis, StemMetric, StemOverlapPair, StemSumResidual
 
 
@@ -62,12 +63,42 @@ def _resample_audio(samples: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray
     return resample_poly(samples, up=up, down=down, axis=0)
 
 
+def _band_cross_correlation(
+    sig_a: np.ndarray,
+    sig_b: np.ndarray,
+    sample_rate: int,
+    f_low: float,
+    f_high: float,
+) -> float | None:
+    """Measure normalized Pearson cross-correlation between two stems inside a target frequency band."""
+    n = min(sig_a.shape[0], sig_b.shape[0])
+    if n < 64 or sample_rate <= 0:
+        return None
+    mono_a = np.mean(sig_a[:n], axis=1) if sig_a.ndim == 2 else sig_a[:n]
+    mono_b = np.mean(sig_b[:n], axis=1) if sig_b.ndim == 2 else sig_b[:n]
+
+    freqs = np.fft.rfftfreq(n, d=1.0 / sample_rate)
+    fa = np.fft.rfft(mono_a)
+    fb = np.fft.rfft(mono_b)
+    mask = (freqs >= f_low) & (freqs < min(f_high, sample_rate / 2.0))
+    if not np.any(mask):
+        return None
+
+    fa_band = fa[mask]
+    fb_band = fb[mask]
+    denom = float(np.sqrt(np.sum(np.abs(fa_band) ** 2) * np.sum(np.abs(fb_band) ** 2)))
+    if denom <= 1e-12:
+        return 0.0
+    corr = float(np.real(np.sum(fa_band * np.conj(fb_band))) / denom)
+    return round(float(np.clip(corr, -1.0, 1.0)), 3)
+
+
 def analyze_user_stems(
     stem_files: list[tuple[str, Path]],
     mix_audio: LoadedAudio | None = None,
     max_total_bytes: int | None = None,
 ) -> StemAnalysis:
-    """Analyze 2-8 user-provided stems with alignment verification and pairwise overlap checks."""
+    """Analyze 2-8 user-provided stems with alignment verification, overlap checks, and phase interaction."""
     if len(stem_files) < 2 or len(stem_files) > 8:
         raise AudioIngestionError(
             f"Stem analysis requires between 2 and 8 user-supplied stems (received {len(stem_files)})."
@@ -86,12 +117,18 @@ def analyze_user_stems(
 
     durations = [item[2].duration_sec for item in loaded]
     sample_rates = {item[2].sample_rate for item in loaded}
+    channel_counts = {item[2].channels for item in loaded}
     max_delta_ms = round((max(durations) - min(durations)) * 1000.0, 2)
     warnings: list[str] = []
 
     if len(sample_rates) > 1:
         warnings.append(
-            f"Mixed stem sample rates detected ({sorted(sample_rates)}); normalized to {loaded[0][2].sample_rate} Hz for sum verification."
+            f"Mixed stem sample rates detected ({sorted(sample_rates)} Hz); resampled to {loaded[0][2].sample_rate} Hz for sum & phase interaction."
+        )
+
+    if len(channel_counts) > 1:
+        warnings.append(
+            f"Mixed stem channel counts detected ({sorted(channel_counts)} channels: mono + stereo). Verify intended panning/routing on mono stems."
         )
 
     alignment_passed = max_delta_ms <= 50.0
@@ -111,6 +148,7 @@ def analyze_user_stems(
     for idx, (filename, path, audio) in enumerate(loaded):
         loudness = compute_loudness_metrics(audio.samples, audio.sample_rate)
         peaks = compute_peak_metrics(audio.samples, audio.sample_rate, source_path=None)
+        stereo = compute_stereo_metrics(audio.samples, audio.sample_rate)
         centroid, bands = _spectral_centroid_and_bands(audio.samples, audio.sample_rate)
         stem_metrics.append(
             StemMetric(
@@ -124,12 +162,21 @@ def analyze_user_stems(
                 sample_peak_dbfs=peaks.sample_peak_dbfs,
                 true_peak_dbtp=peaks.true_peak_dbtp,
                 headroom_db=round(0.0 - peaks.true_peak_dbtp, 2),
+                phase_correlation_avg=stereo.phase_correlation_avg,
                 spectral_centroid_hz=centroid,
                 band_energies_db=bands,
             )
         )
 
-    # Pairwise frequency-band overlap detection (flags *potential* spectral overlap, never definitive masking)
+    # Pre-align stems to common sample rate for phase interaction analysis
+    ref_sr = loaded[0][2].sample_rate
+    resampled_arrays = [
+        _resample_audio(audio.samples, audio.sample_rate, ref_sr)
+        for _, _, audio in loaded
+    ]
+
+    # Pairwise frequency-band overlap & phase interaction detection
+    # Strictly flags *potential* spectral overlap/masking, never claims definitive psychoacoustic proof.
     overlap_pairs: list[StemOverlapPair] = []
     band_range_map: dict[BandName, str] = {b: r for b, r, _, _ in BAND_DEFINITIONS}
     pair_idx = 0
@@ -137,12 +184,11 @@ def analyze_user_stems(
         for j in range(i + 1, len(stem_metrics)):
             sa = stem_metrics[i]
             sb = stem_metrics[j]
-            for band_name, range_hz, _, _ in BAND_DEFINITIONS:
+            for band_name, range_hz, f_low, f_high in BAND_DEFINITIONS:
                 if band_name not in {"sub", "low", "low_mid", "high_mid"}:
                     continue
                 ea = sa.band_energies_db.get(band_name, -70.0)
                 eb = sb.band_energies_db.get(band_name, -70.0)
-                # Both stems carrying strong energy within 6 dB of each other in the same critical band
                 if ea > -32.0 and eb > -32.0 and abs(ea - eb) <= 7.0:
                     min_e = min(ea, eb)
                     score = round(float(np.clip((min_e + 36.0) / 24.0, 0.0, 1.0)), 2)
@@ -151,7 +197,32 @@ def analyze_user_stems(
                         combined_linear = 10 ** (ea / 10.0) + 10 ** (eb / 10.0)
                         combined_db = 10.0 * np.log10(max(combined_linear, 1e-12))
                         excess = round(float(combined_db - max(ea, eb)), 2)
-                        severity = "alert" if score >= 0.78 and band_name in {"sub", "low", "low_mid"} else "caution"
+                        phase_corr = (
+                            _band_cross_correlation(
+                                resampled_arrays[i],
+                                resampled_arrays[j],
+                                ref_sr,
+                                f_low,
+                                f_high,
+                            )
+                            if alignment_passed
+                            else None
+                        )
+                        phase_risk = phase_corr is not None and phase_corr < -0.15
+                        severity = (
+                            "alert"
+                            if (phase_risk or (score >= 0.78 and band_name in {"sub", "low", "low_mid"}))
+                            else "caution"
+                        )
+                        phase_clause = (
+                            f" Band phase interaction measures {phase_corr:+.2f} (possible cancellation when summed)."
+                            if phase_risk
+                            else (
+                                f" Band phase interaction measures {phase_corr:+.2f}."
+                                if phase_corr is not None
+                                else ""
+                            )
+                        )
                         overlap_pairs.append(
                             StemOverlapPair(
                                 evidence_id=f"ev_stem_overlap_{pair_idx:02d}",
@@ -161,10 +232,12 @@ def analyze_user_stems(
                                 range_hz=band_range_map[band_name],
                                 overlap_score=score,
                                 combined_excess_db=excess,
+                                phase_interaction_corr=phase_corr,
+                                phase_cancellation_risk=phase_risk,
                                 severity=severity,
                                 note=(
-                                    f"Potential spectral overlap in {range_hz} Hz between '{sa.name}' ({ea:.1f} dB) and '{sb.name}' ({eb:.1f} dB). "
-                                    f"Audition both soloed together before deciding if carving 1.5-3 dB improves separation."
+                                    f"Possible frequency masking in {range_hz} Hz between '{sa.name}' ({ea:.1f} dB) and '{sb.name}' ({eb:.1f} dB).{phase_clause} "
+                                    f"Audition both soloed together before deciding if carving 1.5–3 dB or checking polarity improves clarity."
                                 ),
                             )
                         )

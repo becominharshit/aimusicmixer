@@ -1,256 +1,182 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { FindingCard } from "@/components/FindingCard";
 import { DiagnosticCharts } from "@/components/advanced/DiagnosticCharts";
-import { RevisionInspector } from "@/components/advanced/RevisionInspector";
-import { StemsInspector } from "@/components/advanced/StemsInspector";
-import { TranslationDeck } from "@/components/advanced/TranslationDeck";
 import { WaveformStage } from "@/components/advanced/WaveformStage";
-import { MentorPrivacyPanel } from "@/components/privacy/MentorPrivacyPanel";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { AudioSourceSlot, DeviceProfile, StereoMode } from "@/audio/StudioAudioEngine";
-import type {
-  AnalysisReport,
-  Finding,
-  MentorRequest,
-  MentorResponse,
-  ReferenceTrackMeta,
-} from "@/types/report";
+import type { AnalysisReport, Finding } from "@/types/report";
 
 interface AdvancedWorkbenchProps {
   report: AnalysisReport;
   activeFindingId: string | null;
-  audioState: {
-    activeSource: AudioSourceSlot;
-    stereoMode: StereoMode;
-    deviceProfile: DeviceProfile;
-    matchLoudness: boolean;
-    loudnessOffsetDb: number;
-    isPlaying: boolean;
-    loopEnabled: boolean;
-    loopStartSec: number;
-    loopEndSec: number;
-    hasReference: boolean;
-    hasRevised: boolean;
-  };
-  referenceMeta: ReferenceTrackMeta | null;
-  mentorAdvice: MentorResponse | null;
-  isUploadingRef: boolean;
-  isUploadingStems: boolean;
-  isUploadingRevision: boolean;
-  isAskingMentor: boolean;
-  stemError: string | null;
-  revisionError: string | null;
+  loopEnabled: boolean;
+  loopStartSec: number;
+  loopEndSec: number;
   onSeek: (timeSec: number) => void;
-  onTogglePlay: () => void;
-  onToggleLoop: () => void;
-  onChangeSource: (slot: AudioSourceSlot) => void;
-  onChangeStereo: (mode: StereoMode) => void;
-  onChangeDevice: (profile: DeviceProfile) => void;
-  onToggleMatchLoudness: (val: boolean) => void;
-  onUploadReference: (file: File) => void;
-  onLoadDemoReference: () => void;
-  onUploadStems: (files: File[]) => void;
-  onLoadDemoStems: () => void;
-  onUploadRevision: (file: File) => void;
-  onLoadDemoRevision: () => void;
-  onAuditionRevised: () => void;
   onSelectFinding: (finding: Finding) => void;
   onAuditionFinding: (finding: Finding) => void;
-  onAskMentor: (req: MentorRequest) => void;
-  onSaveDawContext: (ctx: { daw: string; bus_routing: string; plugin_notes: string }) => void;
 }
 
 export function AdvancedWorkbench({
   report,
   activeFindingId,
-  audioState,
-  referenceMeta,
-  mentorAdvice,
-  isUploadingRef,
-  isUploadingStems,
-  isUploadingRevision,
-  isAskingMentor,
-  stemError,
-  revisionError,
+  loopEnabled,
+  loopStartSec,
+  loopEndSec,
   onSeek,
-  onTogglePlay,
-  onToggleLoop,
-  onChangeSource,
-  onChangeStereo,
-  onChangeDevice,
-  onToggleMatchLoudness,
-  onUploadReference,
-  onLoadDemoReference,
-  onUploadStems,
-  onLoadDemoStems,
-  onUploadRevision,
-  onLoadDemoRevision,
-  onAuditionRevised,
   onSelectFinding,
   onAuditionFinding,
-  onAskMentor,
-  onSaveDawContext,
 }: AdvancedWorkbenchProps) {
-  const [sidebarTab, setSidebarTab] = useState("findings");
   const m = report.global_metrics;
-
-  const handleJumpEvidence = (evidenceId: string) => {
-    const match = report.findings.find((f) => f.evidence_id === evidenceId);
-    if (match) {
-      setSidebarTab("findings");
-      onAuditionFinding(match);
-    } else if (report.stem_analysis?.overlap_matrix.some((o) => o.evidence_id === evidenceId)) {
-      setSidebarTab("stems");
-    }
-  };
+  const plr = m.plr_db ?? Math.max(0, m.true_peak_dbtp - m.integrated_lufs);
+  const spotifyEst = report.streaming_estimates.find((s) =>
+    s.platform.toLowerCase().includes("spotify")
+  );
+  const spotifyGain =
+    spotifyEst?.estimated_gain_db ?? Number((-14.0 - m.integrated_lufs).toFixed(2));
+  const spotifyWarning = Boolean(spotifyEst?.limiter_engaged_warning);
 
   return (
-    <div className="mx-auto max-w-[1380px] py-4">
+    <div className="mx-auto max-w-[1380px] py-4 space-y-4">
+      {/* Five Core Deterministic Telemetry Cards */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner">
+          <div className="text-[11px] font-medium text-[#52605D]">Integrated LUFS</div>
+          <div className="mt-1 text-xl font-semibold text-[#182220] tabular-telemetry">
+            {m.integrated_lufs.toFixed(1)}{" "}
+            <span className="text-xs font-normal text-[#52605D]">LUFS</span>
+          </div>
+          <div className="mt-1 text-[11px] text-[#52605D] tabular-telemetry">
+            ST Max {m.short_term_max_lufs.toFixed(1)} · Mom {m.momentary_max_lufs.toFixed(1)}
+          </div>
+        </div>
+
+        <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner">
+          <div className="text-[11px] font-medium text-[#52605D]">4x True Peak</div>
+          <div
+            className={`mt-1 text-xl font-semibold tabular-telemetry ${
+              m.true_peak_dbtp > -0.1
+                ? "text-[#BE123C]"
+                : report.context.stage === "unmastered_mix" && m.true_peak_dbtp > -2.5
+                  ? "text-[#B45309]"
+                  : "text-[#15803D]"
+            }`}
+          >
+            {m.true_peak_dbtp >= 0 ? "+" : ""}
+            {m.true_peak_dbtp.toFixed(2)}{" "}
+            <span className="text-xs font-normal text-[#52605D]">dBTP</span>
+          </div>
+          <div className="mt-1 text-[11px] text-[#52605D] tabular-telemetry">
+            Sample peak {m.sample_peak_dbfs >= 0 ? "+" : ""}
+            {m.sample_peak_dbfs.toFixed(2)} dBFS
+          </div>
+        </div>
+
+        <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner">
+          <div className="text-[11px] font-medium text-[#52605D]">PLR / LRA</div>
+          <div className="mt-1 text-xl font-semibold text-[#182220] tabular-telemetry">
+            {plr.toFixed(1)} <span className="text-xs font-normal text-[#52605D]">dB</span>
+            <span className="mx-1 text-[#52605D]/40">/</span>
+            {m.loudness_range_lu.toFixed(1)}{" "}
+            <span className="text-xs font-normal text-[#52605D]">LU</span>
+          </div>
+          <div className="mt-1 text-[11px] text-[#52605D] tabular-telemetry">
+            PSR {m.psr_db.toFixed(1)} dB · Crest {m.crest_factor_db.toFixed(1)} dB
+          </div>
+        </div>
+
+        <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner">
+          <div className="text-[11px] font-medium text-[#52605D]">Stereo Correlation</div>
+          <div
+            className={`mt-1 text-xl font-semibold tabular-telemetry ${
+              m.phase_correlation_avg < 0
+                ? "text-[#BE123C]"
+                : m.phase_correlation_avg < 0.35
+                  ? "text-[#B45309]"
+                  : "text-[#15803D]"
+            }`}
+          >
+            {m.phase_correlation_avg >= 0 ? "+" : ""}
+            {m.phase_correlation_avg.toFixed(2)}
+          </div>
+          <div className="mt-1 text-[11px] text-[#52605D] tabular-telemetry">
+            M/S width ratio {m.stereo_width_ratio.toFixed(2)}
+          </div>
+        </div>
+
+        <div
+          className="bg-[#FFFFFF] p-4 hairline-border squircle-inner"
+          title={
+            spotifyEst?.assumption_note ||
+            "Estimated under Spotify Normal (-14 LUFS) target with -1.0 dBTP limiter check."
+          }
+        >
+          <div className="flex items-center justify-between gap-1 text-[11px] font-medium text-[#52605D]">
+            <span>Spotify -14 LUFS Est.</span>
+            {spotifyWarning ? (
+              <AlertTriangle className="h-3.5 w-3.5 text-[#B45309]" aria-hidden="true" />
+            ) : (
+              <CheckCircle2 className="h-3.5 w-3.5 text-[#15803D]" aria-hidden="true" />
+            )}
+          </div>
+          <div
+            className={`mt-1 text-xl font-semibold tabular-telemetry ${
+              spotifyWarning ? "text-[#B45309]" : "text-[#182220]"
+            }`}
+          >
+            {spotifyGain >= 0 ? "+" : ""}
+            {spotifyGain.toFixed(1)}{" "}
+            <span className="text-xs font-normal text-[#52605D]">dB</span>
+          </div>
+          <div className="mt-1 line-clamp-1 text-[11px] text-[#52605D]">
+            {spotifyWarning
+              ? "Normal mode (-14): limiter risk"
+              : "Assumes Normal -14 LUFS target"}
+          </div>
+        </div>
+      </div>
+
       {/* Studio Asymmetric Two-Column Workbench */}
       <div className="grid gap-5 lg:grid-cols-12">
-        {/* Primary Acoustic Stage (8 cols on lg+) */}
         <div className="space-y-4 lg:col-span-8">
-          {/* Compact Telemetry Ribbon */}
-          <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
-            {[
-              { label: "Integrated", val: `${m.integrated_lufs.toFixed(1)} LUFS` },
-              {
-                label: "4x True Peak",
-                val: `${m.true_peak_dbtp >= 0 ? "+" : ""}${m.true_peak_dbtp.toFixed(2)} dBTP`,
-                alert: m.true_peak_dbtp > -0.1,
-              },
-              { label: "Sample Peak", val: `${m.sample_peak_dbfs.toFixed(2)} dBFS` },
-              { label: "LRA", val: `${m.loudness_range_lu.toFixed(1)} LU` },
-              { label: "PSR", val: `${m.psr_db.toFixed(1)} dB` },
-              {
-                label: "Correlation",
-                val: `${m.phase_correlation_avg >= 0 ? "+" : ""}${m.phase_correlation_avg.toFixed(2)}`,
-                alert: m.phase_correlation_avg < 0,
-              },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="bg-[#FFFFFF] px-3 py-2.5 hairline-border squircle-inner"
-              >
-                <div className="text-[11px] text-[#52605D]">{item.label}</div>
-                <div
-                  className={`mt-0.5 text-sm font-semibold tabular-telemetry ${
-                    item.alert ? "text-[#BE123C]" : "text-[#182220]"
-                  }`}
-                >
-                  {item.val}
-                </div>
-              </div>
-            ))}
-          </div>
-
           <WaveformStage
             peaks={report.audio_metadata.waveform_peaks}
             durationSec={report.audio_metadata.duration_sec}
             findings={report.findings}
             activeFindingId={activeFindingId}
-            loopEnabled={audioState.loopEnabled}
-            loopStartSec={audioState.loopStartSec}
-            loopEndSec={audioState.loopEndSec}
+            loopEnabled={loopEnabled}
+            loopStartSec={loopStartSec}
+            loopEndSec={loopEndSec}
             onSeek={onSeek}
-            onSelectFinding={(finding) => {
-              setSidebarTab("findings");
-              onAuditionFinding(finding);
-            }}
-          />
-
-          <TranslationDeck
-            isPlaying={audioState.isPlaying}
-            activeSource={audioState.activeSource}
-            stereoMode={audioState.stereoMode}
-            deviceProfile={audioState.deviceProfile}
-            matchLoudness={audioState.matchLoudness}
-            loudnessOffsetDb={audioState.loudnessOffsetDb}
-            loopEnabled={audioState.loopEnabled}
-            hasReference={audioState.hasReference}
-            hasRevised={audioState.hasRevised}
-            referenceMeta={referenceMeta}
-            isUploadingRef={isUploadingRef}
-            onTogglePlay={onTogglePlay}
-            onToggleLoop={onToggleLoop}
-            onChangeSource={onChangeSource}
-            onChangeStereo={onChangeStereo}
-            onChangeDevice={onChangeDevice}
-            onToggleMatchLoudness={onToggleMatchLoudness}
-            onUploadReference={onUploadReference}
-            onLoadDemoReference={onLoadDemoReference}
+            onSelectFinding={(finding) => onAuditionFinding(finding)}
           />
 
           <DiagnosticCharts report={report} onSeek={onSeek} />
         </div>
 
-        {/* Right Inspector Sidebar (4 cols on lg+) */}
         <aside className="lg:col-span-4">
-          <div className="sticky top-[74px] bg-[#F5F5F7] p-4 hairline-border squircle-outer">
-            <Tabs value={sidebarTab} onValueChange={setSidebarTab}>
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="findings">
-                  Findings ({report.findings.length})
-                </TabsTrigger>
-                <TabsTrigger value="stems">
-                  Stems {report.context.has_user_stems ? `(${report.context.stem_count})` : ""}
-                </TabsTrigger>
-                <TabsTrigger value="revisions">
-                  v1/v2
-                </TabsTrigger>
-                <TabsTrigger value="mentor">
-                  Mentor
-                </TabsTrigger>
-              </TabsList>
+          <div className="sticky top-[74px] bg-[#F5F5F7] p-4 hairline-border squircle-outer space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#182220]">
+                Prioritized Evidence ({report.findings.length})
+              </h2>
+              <span className="text-[11px] text-[#52605D]">Click any card to audition</span>
+            </div>
 
-              <TabsContent value="findings" className="max-h-[75vh] space-y-3 overflow-y-auto pr-1">
-                {report.findings.map((finding, idx) => (
-                  <FindingCard
-                    key={finding.evidence_id}
-                    finding={finding}
-                    index={idx}
-                    compact
-                    isActive={activeFindingId === finding.evidence_id}
-                    onSelect={onSelectFinding}
-                    onAudition={onAuditionFinding}
-                  />
-                ))}
-              </TabsContent>
-
-              <TabsContent value="stems" className="max-h-[75vh] overflow-y-auto pr-1">
-                <StemsInspector
-                  report={report}
-                  isUploading={isUploadingStems}
-                  errorMessage={stemError}
-                  onUploadStems={onUploadStems}
-                  onLoadDemoStems={onLoadDemoStems}
+            <div className="max-h-[75vh] space-y-3 overflow-y-auto pr-1">
+              {report.findings.map((finding, idx) => (
+                <FindingCard
+                  key={finding.evidence_id}
+                  finding={finding}
+                  index={idx}
+                  compact
+                  isActive={activeFindingId === finding.evidence_id}
+                  onSelect={onSelectFinding}
+                  onAudition={onAuditionFinding}
                 />
-              </TabsContent>
-
-              <TabsContent value="revisions" className="max-h-[75vh] overflow-y-auto pr-1">
-                <RevisionInspector
-                  report={report}
-                  isUploading={isUploadingRevision}
-                  errorMessage={revisionError}
-                  onUploadRevision={onUploadRevision}
-                  onLoadDemoRevision={onLoadDemoRevision}
-                  onAuditionRevised={onAuditionRevised}
-                />
-              </TabsContent>
-
-              <TabsContent value="mentor" className="max-h-[75vh] overflow-y-auto pr-1">
-                <MentorPrivacyPanel
-                  report={report}
-                  mentorAdvice={mentorAdvice}
-                  isAskingMentor={isAskingMentor}
-                  onAskMentor={onAskMentor}
-                  onSaveDawContext={onSaveDawContext}
-                  onJumpToEvidence={handleJumpEvidence}
-                />
-              </TabsContent>
-            </Tabs>
+              ))}
+            </div>
           </div>
         </aside>
       </div>

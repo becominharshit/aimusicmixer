@@ -1,20 +1,31 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { studioAudioEngine, type AudioSourceSlot, type DeviceProfile, type StereoMode } from "@/audio/StudioAudioEngine";
-import { StudioHeader, type WorkspaceMode } from "@/components/StudioHeader";
+import {
+  studioAudioEngine,
+  type AudioSourceSlot,
+  type DeviceProfile,
+  type StereoMode,
+} from "@/audio/StudioAudioEngine";
+import { BottomTransportDock } from "@/components/BottomTransportDock";
+import { StudioHeader, type HealthStatus, type WorkspaceMode } from "@/components/StudioHeader";
 import { UploadStage } from "@/components/UploadStage";
 import { AdvancedWorkbench } from "@/components/advanced/AdvancedWorkbench";
+import { RevisionInspector } from "@/components/advanced/RevisionInspector";
+import { StemsInspector } from "@/components/advanced/StemsInspector";
+import { MentorDrawer } from "@/components/privacy/MentorDrawer";
 import { SimpleView } from "@/components/simple/SimpleView";
+import { ReferenceABView } from "@/components/workspace/ReferenceABView";
+import { WorkspaceSubNav, type WorkspaceSubTab } from "@/components/workspace/WorkspaceSubNav";
 import {
   analyzeMixFile,
   askMentor,
+  checkBackendHealth,
   clearSession,
-  compareDemoRevision,
   compareRevisedMix,
+  fetchPublicDemoFile,
   loadDemoReferenceTrack,
-  loadDemoSession,
   loadDemoStems,
   resolveApiUrl,
   updateDawContext,
@@ -25,6 +36,7 @@ import { STUDIO_EASE } from "@/lib/motion";
 import type {
   AnalysisReport,
   ArtistVisionTag,
+  BackendHealth,
   Finding,
   GenreType,
   MentorRequest,
@@ -35,9 +47,16 @@ import type {
 
 export default function MixBenchPage() {
   const [mode, setMode] = useState<WorkspaceMode>("simple");
+  const [subTab, setSubTab] = useState<WorkspaceSubTab>("diagnosis");
+  const [mentorOpen, setMentorOpen] = useState(false);
+
   const [genre, setGenre] = useState<GenreType>("electronic");
   const [stage, setStage] = useState<StageType>("unmastered_mix");
   const [artistVision, setArtistVision] = useState<ArtistVisionTag[]>(["punchy", "wide"]);
+
+  const [healthStatus, setHealthStatus] = useState<HealthStatus>("checking");
+  const [healthData, setHealthData] = useState<BackendHealth | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
 
   const [report, setReport] = useState<AnalysisReport | null>(null);
   const [referenceMeta, setReferenceMeta] = useState<ReferenceTrackMeta | null>(null);
@@ -58,11 +77,26 @@ export default function MixBenchPage() {
   const [audioState, setAudioState] = useState(() => studioAudioEngine.getState());
   const stepTimerRef = useRef<number | null>(null);
 
+  const refreshHealth = useCallback(async () => {
+    setHealthStatus("checking");
+    setHealthError(null);
+    try {
+      const data = await checkBackendHealth();
+      setHealthData(data);
+      setHealthStatus("online");
+    } catch (err) {
+      setHealthData(null);
+      setHealthStatus("offline");
+      setHealthError(err instanceof Error ? err.message : "Backend /health unreachable.");
+    }
+  }, []);
+
   useEffect(() => {
+    void refreshHealth();
     return studioAudioEngine.subscribe(() => {
       setAudioState(studioAudioEngine.getState());
     });
-  }, []);
+  }, [refreshHealth]);
 
   const startStepper = () => {
     setActiveStepIndex(0);
@@ -81,11 +115,13 @@ export default function MixBenchPage() {
 
   const hydrateSessionReport = async (nextReport: AnalysisReport) => {
     setReport(nextReport);
+    setSubTab("diagnosis");
     setReferenceMeta(null);
     setMentorAdvice(null);
     setStemError(null);
     setRevisionError(null);
     setActiveFindingId(nextReport.findings[0]?.evidence_id ?? null);
+    setHealthStatus("online");
 
     try {
       await studioAudioEngine.loadSlot(
@@ -94,7 +130,7 @@ export default function MixBenchPage() {
         nextReport.global_metrics.integrated_lufs
       );
     } catch {
-      // Allow inspection of report metrics even if browser audio context awaits user gesture
+      // Allow metric inspection before Web Audio user gesture unlock
     }
   };
 
@@ -107,6 +143,7 @@ export default function MixBenchPage() {
       await hydrateSessionReport(next);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Failed to analyze uploaded mix.");
+      void refreshHealth();
     } finally {
       stopStepper();
       setIsAnalyzing(false);
@@ -118,14 +155,19 @@ export default function MixBenchPage() {
     setIsAnalyzing(true);
     startStepper();
     try {
-      const next = await loadDemoSession({ genre, stage, artistVision });
+      const demoFile = await fetchPublicDemoFile(
+        "/demo/demo-flawed-v1.wav",
+        "demo-flawed-v1.wav"
+      );
+      const next = await analyzeMixFile({ file: demoFile, genre, stage, artistVision });
       await hydrateSessionReport(next);
     } catch (err) {
       setUploadError(
         err instanceof Error
           ? err.message
-          : "Could not reach backend API. Ensure FastAPI is running on port 8000."
+          : "Could not reach backend API. Check your DSP Engine status in the header."
       );
+      void refreshHealth();
     } finally {
       stopStepper();
       setIsAnalyzing(false);
@@ -144,6 +186,10 @@ export default function MixBenchPage() {
       finding.timestamp_start_sec,
       Math.max(finding.timestamp_start_sec + 4, finding.timestamp_end_sec)
     );
+  };
+
+  const handleAuditionWindow = async (startSec: number, endSec: number) => {
+    await studioAudioEngine.auditionRange(startSec, endSec);
   };
 
   const handleUploadReference = async (file: File) => {
@@ -234,7 +280,11 @@ export default function MixBenchPage() {
     setRevisionError(null);
     setIsUploadingRevision(true);
     try {
-      const updated = await compareDemoRevision(report.session_id);
+      const demoV2 = await fetchPublicDemoFile(
+        "/demo/demo-revised-v2.wav",
+        "demo-revised-v2.wav"
+      );
+      const updated = await compareRevisedMix(report.session_id, demoV2);
       setReport(updated);
       if (updated.revision_comparison) {
         await studioAudioEngine.loadSlot(
@@ -245,7 +295,7 @@ export default function MixBenchPage() {
         );
       }
     } catch (err) {
-      setRevisionError(err instanceof Error ? err.message : "Demo revision comparison failed.");
+      setRevisionError(err instanceof Error ? err.message : "Sample revision comparison failed.");
     } finally {
       setIsUploadingRevision(false);
     }
@@ -273,10 +323,23 @@ export default function MixBenchPage() {
     setReport(updated);
   };
 
+  const handleJumpEvidence = (evidenceId: string) => {
+    if (!report) return;
+    const match = report.findings.find((f) => f.evidence_id === evidenceId);
+    if (match) {
+      setSubTab("diagnosis");
+      void handleAuditionFinding(match);
+    } else if (report.stem_analysis?.overlap_matrix.some((o) => o.evidence_id === evidenceId)) {
+      setSubTab("stems");
+    }
+  };
+
   const handleClearSession = async () => {
     const sid = report?.session_id;
     studioAudioEngine.reset();
     setReport(null);
+    setSubTab("diagnosis");
+    setMentorOpen(false);
     setReferenceMeta(null);
     setMentorAdvice(null);
     setActiveFindingId(null);
@@ -290,20 +353,37 @@ export default function MixBenchPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
+    <div className="flex min-h-screen flex-col bg-[#FAFAFA]">
       <StudioHeader
         mode={mode}
-        onModeChange={setMode}
+        onModeChange={(nextMode) => {
+          setMode(nextMode);
+          if (report) setSubTab("diagnosis");
+        }}
         report={report}
         onClearSession={handleClearSession}
+        healthStatus={healthStatus}
+        healthData={healthData}
+        healthError={healthError}
+        onRetryHealth={() => void refreshHealth()}
       />
 
-      <main className="px-4 pb-16 sm:px-6">
+      {report && (
+        <WorkspaceSubNav
+          activeTab={subTab}
+          onChangeTab={setSubTab}
+          report={report}
+          hasReference={audioState.hasReference}
+          onOpenMentor={() => setMentorOpen(true)}
+        />
+      )}
+
+      <main className="flex-1 px-4 pb-10 sm:px-6">
         <AnimatePresence mode="wait" initial={false}>
           {!report ? (
             <motion.div
               key="upload-stage"
-              initial={{ opacity: 0, y: 10 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.22, ease: STUDIO_EASE }}
@@ -318,86 +398,162 @@ export default function MixBenchPage() {
                 isAnalyzing={isAnalyzing}
                 activeStepIndex={activeStepIndex}
                 errorMessage={uploadError}
+                healthStatus={healthStatus}
+                onRetryHealth={() => void refreshHealth()}
                 onAnalyzeFile={handleAnalyzeFile}
                 onLoadDemo={handleLoadDemo}
               />
             </motion.div>
-          ) : mode === "simple" ? (
+          ) : subTab === "diagnosis" ? (
+            mode === "simple" ? (
+              <motion.div
+                key="simple-view"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2, ease: STUDIO_EASE }}
+              >
+                <SimpleView
+                  report={report}
+                  isPlaying={audioState.isPlaying}
+                  activeFindingId={activeFindingId}
+                  onTogglePlay={() => void studioAudioEngine.togglePlay()}
+                  onAuditionFinding={(f) => void handleAuditionFinding(f)}
+                  onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
+                  onOpenAdvanced={() => setMode("advanced")}
+                  onNewUpload={handleClearSession}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="advanced-workbench"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2, ease: STUDIO_EASE }}
+              >
+                <AdvancedWorkbench
+                  report={report}
+                  activeFindingId={activeFindingId}
+                  loopEnabled={audioState.loopEnabled}
+                  loopStartSec={audioState.loopStartSec}
+                  loopEndSec={audioState.loopEndSec}
+                  onSeek={(sec) => void studioAudioEngine.seek(sec)}
+                  onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
+                  onAuditionFinding={(f) => void handleAuditionFinding(f)}
+                />
+              </motion.div>
+            )
+          ) : subTab === "reference" ? (
             <motion.div
-              key="simple-view"
+              key="reference-ab"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.2, ease: STUDIO_EASE }}
             >
-              <SimpleView
+              <ReferenceABView
                 report={report}
-                isPlaying={audioState.isPlaying}
-                activeFindingId={activeFindingId}
-                onTogglePlay={() => void studioAudioEngine.togglePlay()}
-                onAuditionFinding={(f) => void handleAuditionFinding(f)}
-                onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
-                onOpenAdvanced={() => setMode("advanced")}
-                onNewUpload={handleClearSession}
+                referenceMeta={referenceMeta}
+                activeSource={audioState.activeSource}
+                matchLoudness={audioState.matchLoudness}
+                loudnessOffsetDb={audioState.loudnessOffsetDb}
+                isUploadingRef={isUploadingRef}
+                onUploadReference={(f) => void handleUploadReference(f)}
+                onLoadDemoReference={() => void handleLoadDemoReference()}
+                onChangeSource={(slot: AudioSourceSlot) =>
+                  void studioAudioEngine.setActiveSource(slot)
+                }
+                onToggleMatchLoudness={(val) => studioAudioEngine.setMatchLoudness(val)}
+                onAuditionWindow={(start, end) => void handleAuditionWindow(start, end)}
+              />
+            </motion.div>
+          ) : subTab === "stems" ? (
+            <motion.div
+              key="stems-view"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.2, ease: STUDIO_EASE }}
+            >
+              <StemsInspector
+                report={report}
+                isUploading={isUploadingStems}
+                errorMessage={stemError}
+                onUploadStems={(files) => void handleUploadStems(files)}
+                onLoadDemoStems={() => void handleLoadDemoStems()}
+                onSaveDawContext={(ctx) => void handleSaveDawContext(ctx)}
               />
             </motion.div>
           ) : (
             <motion.div
-              key="advanced-workbench"
+              key="revision-view"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.2, ease: STUDIO_EASE }}
             >
-              <AdvancedWorkbench
+              <RevisionInspector
                 report={report}
-                activeFindingId={activeFindingId}
-                audioState={audioState}
-                referenceMeta={referenceMeta}
-                mentorAdvice={mentorAdvice}
-                isUploadingRef={isUploadingRef}
-                isUploadingStems={isUploadingStems}
-                isUploadingRevision={isUploadingRevision}
-                isAskingMentor={isAskingMentor}
-                stemError={stemError}
-                revisionError={revisionError}
-                onSeek={(sec) => void studioAudioEngine.seek(sec)}
-                onTogglePlay={() => void studioAudioEngine.togglePlay()}
-                onToggleLoop={() =>
-                  studioAudioEngine.setLoop(!audioState.loopEnabled)
-                }
-                onChangeSource={(slot: AudioSourceSlot) =>
-                  void studioAudioEngine.setActiveSource(slot)
-                }
-                onChangeStereo={(sMode: StereoMode) =>
-                  studioAudioEngine.setStereoMode(sMode)
-                }
-                onChangeDevice={(profile: DeviceProfile) =>
-                  studioAudioEngine.setDeviceProfile(profile)
-                }
-                onToggleMatchLoudness={(val: boolean) =>
-                  studioAudioEngine.setMatchLoudness(val)
-                }
-                onUploadReference={(f) => void handleUploadReference(f)}
-                onLoadDemoReference={() => void handleLoadDemoReference()}
-                onUploadStems={(files) => void handleUploadStems(files)}
-                onLoadDemoStems={() => void handleLoadDemoStems()}
+                activeSource={audioState.activeSource}
+                isUploading={isUploadingRevision}
+                errorMessage={revisionError}
                 onUploadRevision={(f) => void handleUploadRevision(f)}
                 onLoadDemoRevision={() => void handleLoadDemoRevision()}
+                onAuditionBaseline={() => {
+                  void studioAudioEngine.setActiveSource("primary").then(() =>
+                    studioAudioEngine.play()
+                  );
+                }}
                 onAuditionRevised={() => {
                   void studioAudioEngine.setActiveSource("revised").then(() =>
                     studioAudioEngine.play()
                   );
                 }}
-                onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
-                onAuditionFinding={(f) => void handleAuditionFinding(f)}
-                onAskMentor={(req) => void handleAskMentor(req)}
-                onSaveDawContext={(ctx) => void handleSaveDawContext(ctx)}
               />
             </motion.div>
           )}
         </AnimatePresence>
       </main>
+
+      {report && (
+        <>
+          <BottomTransportDock
+            durationSec={report.audio_metadata.duration_sec}
+            isPlaying={audioState.isPlaying}
+            activeSource={audioState.activeSource}
+            stereoMode={audioState.stereoMode}
+            deviceProfile={audioState.deviceProfile}
+            matchLoudness={audioState.matchLoudness}
+            loudnessOffsetDb={audioState.loudnessOffsetDb}
+            loopEnabled={audioState.loopEnabled}
+            hasReference={audioState.hasReference}
+            hasRevised={audioState.hasRevised}
+            onTogglePlay={() => void studioAudioEngine.togglePlay()}
+            onToggleLoop={() => studioAudioEngine.setLoop(!audioState.loopEnabled)}
+            onSeek={(sec) => void studioAudioEngine.seek(sec)}
+            onChangeSource={(slot: AudioSourceSlot) =>
+              void studioAudioEngine.setActiveSource(slot)
+            }
+            onChangeStereo={(sMode: StereoMode) => studioAudioEngine.setStereoMode(sMode)}
+            onChangeDevice={(profile: DeviceProfile) =>
+              studioAudioEngine.setDeviceProfile(profile)
+            }
+            onToggleMatchLoudness={(val: boolean) => studioAudioEngine.setMatchLoudness(val)}
+          />
+
+          <MentorDrawer
+            open={mentorOpen}
+            onClose={() => setMentorOpen(false)}
+            report={report}
+            mentorAdvice={mentorAdvice}
+            isAskingMentor={isAskingMentor}
+            onAskMentor={(req) => void handleAskMentor(req)}
+            onSaveDawContext={(ctx) => void handleSaveDawContext(ctx)}
+            onJumpToEvidence={handleJumpEvidence}
+          />
+        </>
+      )}
     </div>
   );
 }

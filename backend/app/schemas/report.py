@@ -64,6 +64,7 @@ class GlobalMetrics(BaseModel):
     sample_peak_dbfs: float
     true_peak_dbtp: float
     crest_factor_db: float
+    plr_db: float = 0.0
     psr_db: float
     phase_correlation_avg: float
     stereo_width_ratio: float
@@ -118,6 +119,7 @@ class StemMetric(BaseModel):
     sample_peak_dbfs: float
     true_peak_dbtp: float
     headroom_db: float
+    phase_correlation_avg: float = 1.0
     spectral_centroid_hz: float
     band_energies_db: dict[str, float] = Field(default_factory=dict)
 
@@ -130,6 +132,8 @@ class StemOverlapPair(BaseModel):
     range_hz: str
     overlap_score: float
     combined_excess_db: float
+    phase_interaction_corr: float | None = None
+    phase_cancellation_risk: bool = False
     severity: SeverityType
     note: str
 
@@ -155,6 +159,7 @@ class RevisionMetricDeltas(BaseModel):
     true_peak_dbtp_delta: float
     loudness_range_lu_delta: float
     crest_factor_db_delta: float
+    plr_db_delta: float = 0.0
     psr_db_delta: float
     phase_correlation_delta: float
     band_deltas_db: dict[str, float] = Field(default_factory=dict)
@@ -230,3 +235,13 @@ class MentorResponse(BaseModel):
     prioritized_actions: list[MentorAction] = Field(default_factory=list)
     cited_evidence_ids: list[str] = Field(default_factory=list)
     privacy_audit: PrivacyAudit
+
+
+class CompareReportsRequest(BaseModel):
+    baseline: AnalysisReport
+    revised: AnalysisReport
+
+
+class MentorStandaloneRequest(MentorRequest):
+    session_id: str | None = None
+    report: AnalysisReport | None = None

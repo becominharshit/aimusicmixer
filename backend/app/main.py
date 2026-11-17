@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1 import compat_router
 from app.api.v1 import router as v1_router
 from app.core.config import settings
 from app.services import session_store
@@ -32,3 +33,4 @@ app.add_middleware(
 )
 
 app.include_router(v1_router)
+app.include_router(compat_router)

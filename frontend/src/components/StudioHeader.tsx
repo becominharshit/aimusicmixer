@@ -1,19 +1,32 @@
 "use client";
 
-import React from "react";
-import { motion } from "motion/react";
-import { ShieldCheck, Trash2, Sparkles } from "lucide-react";
-import { STUDIO_SPRING, TACTILE_TAP } from "@/lib/motion";
+import React, { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+import { API_BASE_URL } from "@/lib/api";
+import { STUDIO_EASE, STUDIO_SPRING, TACTILE_TAP } from "@/lib/motion";
 import { formatTimecode } from "@/lib/utils";
-import type { AnalysisReport } from "@/types/report";
+import type { AnalysisReport, BackendHealth } from "@/types/report";
 
 export type WorkspaceMode = "simple" | "advanced";
+export type HealthStatus = "checking" | "online" | "offline";
 
 interface StudioHeaderProps {
   mode: WorkspaceMode;
   onModeChange: (mode: WorkspaceMode) => void;
   report: AnalysisReport | null;
   onClearSession: () => void;
+  healthStatus: HealthStatus;
+  healthData: BackendHealth | null;
+  healthError: string | null;
+  onRetryHealth: () => void;
 }
 
 export function StudioHeader({
@@ -21,18 +34,50 @@ export function StudioHeader({
   onModeChange,
   report,
   onClearSession,
+  healthStatus,
+  healthData,
+  healthError,
+  onRetryHealth,
 }: StudioHeaderProps) {
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!popoverOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setPopoverOpen(false);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPopoverOpen(false);
+    };
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("keydown", handleEsc);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [popoverOpen]);
+
   const privacyLabel = report?.privacy_audit.raw_audio_sent_to_ai
     ? "Audio AI Opt-In"
     : report?.privacy_audit.external_ai_enabled
       ? "Metrics-Only AI"
-      : "Local DSP Only";
+      : "Zero Audio Sent";
+
+  const statusText =
+    healthStatus === "online"
+      ? "DSP Engine Online"
+      : healthStatus === "offline"
+        ? "Backend Unreachable — Check API URL"
+        : "Checking DSP Engine";
 
   return (
-    <header className="border-b border-[rgba(24,34,32,0.08)] bg-[#FAFAFA]/92 backdrop-blur-md sm:sticky sm:top-0 sm:z-40">
+    <header className="border-b border-[rgba(24,34,32,0.08)] bg-[#FAFAFA]/94 backdrop-blur-md sm:sticky sm:top-0 sm:z-40">
       <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center bg-[#3A7269] text-white squircle-inner">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-[#3A7269] text-white squircle-inner">
             <svg
               width="20"
               height="20"
@@ -65,10 +110,10 @@ export function StudioHeader({
           </div>
         </div>
 
-        {/* Simple <-> Advanced Mode Switcher */}
+        {/* Simple <-> Advanced Mode Switcher (SSR immediate, zero CLS) */}
         <nav
           aria-label="Workspace mode"
-          className="relative inline-flex items-center bg-[#F5F5F7] p-1 hairline-border squircle-inner"
+          className="relative inline-flex min-h-[38px] items-center bg-[#F5F5F7] p-1 hairline-border squircle-inner"
         >
           {(
             [
@@ -101,10 +146,10 @@ export function StudioHeader({
           })}
         </nav>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           {report && (
-            <div className="hidden items-center gap-2 bg-[#FFFFFF] px-3 py-1.5 text-xs hairline-border squircle-inner lg:flex">
-              <span className="max-w-[180px] truncate font-medium text-[#182220]">
+            <div className="hidden items-center gap-2 bg-[#FFFFFF] px-3 py-1.5 text-xs hairline-border squircle-inner xl:flex">
+              <span className="max-w-[160px] truncate font-medium text-[#182220]">
                 {report.audio_metadata.filename}
               </span>
               <span className="text-[#52605D] tabular-telemetry">
@@ -115,21 +160,123 @@ export function StudioHeader({
             </div>
           )}
 
-          <div
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium squircle-inner ${
-              report?.privacy_audit.raw_audio_sent_to_ai
-                ? "bg-[#FEF7EC] text-[#B45309] border border-[rgba(180,83,9,0.25)]"
-                : report?.privacy_audit.external_ai_enabled
-                  ? "bg-[#EBF3F1] text-[#3A7269] border border-[rgba(58,114,105,0.22)]"
-                  : "bg-[#FFFFFF] text-[#15803D] hairline-border"
-            }`}
-          >
-            {report?.privacy_audit.external_ai_enabled ? (
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-            ) : (
-              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-            )}
-            <span>{privacyLabel}</span>
+          {/* Privacy Mode Indicator */}
+          {report && (
+            <div
+              className={`hidden items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium squircle-inner sm:inline-flex ${
+                report.privacy_audit.raw_audio_sent_to_ai
+                  ? "bg-[#FEF7EC] text-[#B45309] border border-[rgba(180,83,9,0.25)]"
+                  : report.privacy_audit.external_ai_enabled
+                    ? "bg-[#EBF3F1] text-[#3A7269] border border-[rgba(58,114,105,0.22)]"
+                    : "bg-[#FFFFFF] text-[#182220] hairline-border"
+              }`}
+            >
+              {report.privacy_audit.external_ai_enabled ? (
+                <Sparkles className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+              ) : (
+                <ShieldCheck className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+              )}
+              <span>{privacyLabel}</span>
+            </div>
+          )}
+
+          {/* Live Backend Health Status Pill + Actionable Diagnostic Popover */}
+          <div ref={popoverRef} className="relative">
+            <motion.button
+              type="button"
+              whileTap={TACTILE_TAP}
+              onClick={() => setPopoverOpen((prev) => !prev)}
+              aria-expanded={popoverOpen}
+              className={`inline-flex min-h-[32px] items-center gap-2 px-3 py-1.5 text-xs font-medium squircle-inner cursor-pointer transition-colors ${
+                healthStatus === "online"
+                  ? "bg-[#FFFFFF] text-[#182220] hairline-border hover:border-[rgba(58,114,105,0.35)]"
+                  : healthStatus === "offline"
+                    ? "bg-[#FFF1F3] text-[#BE123C] border border-[rgba(190,18,60,0.28)] hover:bg-[#FFE4E8]"
+                    : "bg-[#F5F5F7] text-[#52605D] hairline-border"
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`h-2 w-2 rounded-full ${
+                  healthStatus === "online"
+                    ? "bg-[#3A7269]"
+                    : healthStatus === "offline"
+                      ? "bg-[#BE123C]"
+                      : "bg-[#52605D]/50 animate-pulse"
+                }`}
+              />
+              <span>{statusText}</span>
+            </motion.button>
+
+            <AnimatePresence>
+              {popoverOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                  transition={{ duration: 0.16, ease: STUDIO_EASE }}
+                  role="dialog"
+                  aria-label="DSP backend connection diagnostics"
+                  className="absolute right-0 mt-2 w-80 bg-[#FFFFFF] p-4 hairline-border squircle-outer shadow-sm z-50 space-y-3 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-[#182220]">
+                      {healthStatus === "online" ? (
+                        <CheckCircle2 className="h-4 w-4 text-[#15803D]" aria-hidden="true" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 text-[#BE123C]" aria-hidden="true" />
+                      )}
+                      DSP Engine Diagnostics
+                    </span>
+                    <button
+                      type="button"
+                      onClick={onRetryHealth}
+                      className="inline-flex items-center gap-1 bg-[#EBF3F1] px-2 py-1 text-[11px] font-medium text-[#3A7269] hover:bg-[#DFECE9] squircle-inner cursor-pointer"
+                    >
+                      <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                      Retry
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5 bg-[#F5F5F7] p-2.5 squircle-inner">
+                    <div className="text-[11px] text-[#52605D]">Configured API Endpoint</div>
+                    <div className="break-all font-mono text-[11px] text-[#182220]">
+                      {API_BASE_URL}/health
+                    </div>
+                  </div>
+
+                  {healthStatus === "online" && healthData ? (
+                    <div className="space-y-1 text-[11px] text-[#52605D]">
+                      <div className="flex justify-between">
+                        <span>FFmpeg / ffprobe</span>
+                        <span className="font-medium text-[#15803D]">
+                          {healthData.ffmpeg_available ? "Available" : "Missing"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Gemini Mentor Key</span>
+                        <span className="font-medium text-[#182220]">
+                          {healthData.gemini_configured
+                            ? `Configured (${healthData.gemini_model || "gemini-3.8-flash"})`
+                            : "Offline Fallback Mode"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 text-[11px] text-[#52605D]">
+                      <p className="text-[#BE123C] font-medium">
+                        {healthError || "Could not establish HTTP connection to FastAPI DSP backend."}
+                      </p>
+                      <p>
+                        Start the Python backend (<code className="text-[#182220]">uvicorn app.main:app --port 8000</code>) or set{" "}
+                        <code className="text-[#182220]">NEXT_PUBLIC_API_URL</code> and{" "}
+                        <code className="text-[#182220]">ALLOWED_ORIGINS</code> in your deployment environment. MixBench never substitutes fake metrics when offline.
+                      </p>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {report && (
@@ -137,7 +284,7 @@ export function StudioHeader({
               type="button"
               whileTap={TACTILE_TAP}
               onClick={onClearSession}
-              className="inline-flex items-center gap-1.5 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#BE123C] hairline-border hover:border-[rgba(190,18,60,0.3)] squircle-inner cursor-pointer transition-colors"
+              className="inline-flex min-h-[32px] items-center gap-1.5 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#BE123C] hairline-border hover:border-[rgba(190,18,60,0.3)] squircle-inner cursor-pointer transition-colors"
               title="Delete ephemeral audio session immediately"
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

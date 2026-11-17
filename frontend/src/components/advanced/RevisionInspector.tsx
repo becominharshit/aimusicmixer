@@ -1,41 +1,55 @@
 "use client";
 
 import React, { useRef } from "react";
-import { ArrowDownRight, ArrowUpRight, GitCompare, Headphones, Minus, Sparkles, Upload } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  GitCompare,
+  Headphones,
+  Minus,
+  Sparkles,
+  Upload,
+} from "lucide-react";
+import type { AudioSourceSlot } from "@/audio/StudioAudioEngine";
 import { Button } from "@/components/ui/button";
 import type { AnalysisReport } from "@/types/report";
 
 interface RevisionInspectorProps {
   report: AnalysisReport;
+  activeSource?: AudioSourceSlot;
   isUploading: boolean;
   errorMessage: string | null;
   onUploadRevision: (file: File) => void;
   onLoadDemoRevision: () => void;
   onAuditionRevised: () => void;
+  onAuditionBaseline?: () => void;
 }
 
 export function RevisionInspector({
   report,
+  activeSource = "primary",
   isUploading,
   errorMessage,
   onUploadRevision,
   onLoadDemoRevision,
   onAuditionRevised,
+  onAuditionBaseline,
 }: RevisionInspectorProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const comp = report.revision_comparison;
 
   return (
-    <div className="space-y-4">
-      <div className="bg-[#F5F5F7] p-4 hairline-border squircle-inner space-y-2.5">
-        <div className="flex items-center gap-2 text-xs font-semibold text-[#182220]">
-          <GitCompare className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
-          <span>Before / After Revision Delta (v1 vs v2)</span>
+    <div className="mx-auto max-w-[1140px] py-4 space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-4 bg-[#FFFFFF] p-5 hairline-border squircle-outer">
+        <div className="max-w-2xl space-y-1.5">
+          <div className="flex items-center gap-2 text-base font-bold text-[#182220]">
+            <GitCompare className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
+            <h1>Revision Check (v1 → v2)</h1>
+          </div>
+          <p className="text-xs leading-relaxed text-[#52605D]">
+            After adjusting EQ, bus headroom, or stereo width in your DAW, upload Mix v2 (or load our corrected demo bounce at -4.2 dBTP) to verify deterministic deltas and A/B audition the fix.
+          </p>
         </div>
-        <p className="text-xs leading-relaxed text-[#52605D]">
-          After tweaking EQ, bus headroom, or stereo width in your DAW, upload Mix v2 to measure
-          exact metric shifts and audition v1 vs v2 seamlessly.
-        </p>
 
         <input
           ref={inputRef}
@@ -46,7 +60,7 @@ export function RevisionInspector({
             if (e.target.files?.[0]) onUploadRevision(e.target.files[0]);
           }}
         />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="primary"
@@ -55,7 +69,7 @@ export function RevisionInspector({
             onClick={() => inputRef.current?.click()}
           >
             <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-            {isUploading ? "Comparing v2..." : comp ? "Upload Mix v3" : "Upload Revised Mix"}
+            {isUploading ? "Comparing v2..." : comp ? "Upload Newer Revision" : "Upload Revised Mix"}
           </Button>
           {!comp && (
             <Button
@@ -66,27 +80,57 @@ export function RevisionInspector({
               onClick={onLoadDemoRevision}
             >
               <Sparkles className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-              Compare Demo v2
+              Load Sample Revised Mix (v2)
             </Button>
           )}
           {comp && (
-            <Button type="button" variant="secondary" size="sm" onClick={onAuditionRevised}>
-              <Headphones className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-              Audition v2
-            </Button>
+            <>
+              {onAuditionBaseline && (
+                <Button
+                  type="button"
+                  variant={activeSource === "primary" ? "soft" : "secondary"}
+                  size="sm"
+                  onClick={onAuditionBaseline}
+                >
+                  <Headphones className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                  Audition v1
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant={activeSource === "revised" ? "soft" : "secondary"}
+                size="sm"
+                onClick={onAuditionRevised}
+              >
+                <Headphones className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                Audition v2
+              </Button>
+            </>
           )}
         </div>
       </div>
 
       {errorMessage && (
-        <div className="bg-[#FFF1F3] p-3 text-xs text-[#BE123C] border border-[rgba(190,18,60,0.22)] squircle-inner">
+        <div
+          role="alert"
+          className="bg-[#FFF1F3] p-4 text-xs text-[#BE123C] border border-[rgba(190,18,60,0.22)] squircle-inner"
+        >
           {errorMessage}
         </div>
       )}
 
-      {comp && (
+      {!comp ? (
+        <div className="bg-[#F5F5F7] p-8 text-center hairline-border squircle-outer space-y-2">
+          <h2 className="text-sm font-semibold text-[#182220]">
+            Ready for v1 → v2 verification
+          </h2>
+          <p className="mx-auto max-w-md text-xs text-[#52605D]">
+            Click &ldquo;Load Sample Revised Mix (v2)&rdquo; to compare against our calibrated -4.2 dBTP / 250 Hz-cleaned fixture, or upload your own revised bounce.
+          </p>
+        </div>
+      ) : (
         <>
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[
               {
                 label: "Δ Integrated LUFS",
@@ -97,6 +141,11 @@ export function RevisionInspector({
                 label: "Δ True Peak",
                 val: comp.metric_deltas.true_peak_dbtp_delta,
                 unit: "dBTP",
+              },
+              {
+                label: "Δ PLR / PSR",
+                val: comp.metric_deltas.psr_db_delta,
+                unit: "dB",
               },
               {
                 label: "Δ Loudness Range",
@@ -111,10 +160,10 @@ export function RevisionInspector({
             ].map((item) => (
               <div
                 key={item.label}
-                className="bg-[#FFFFFF] p-3 hairline-border squircle-inner"
+                className="bg-[#FFFFFF] p-4 hairline-border squircle-inner"
               >
                 <div className="text-[11px] text-[#52605D]">{item.label}</div>
-                <div className="mt-0.5 text-sm font-semibold text-[#182220] tabular-telemetry">
+                <div className="mt-1 text-base font-semibold text-[#182220] tabular-telemetry">
                   {item.val >= 0 ? "+" : ""}
                   {item.val.toFixed(2)} {item.unit}
                 </div>
@@ -122,45 +171,47 @@ export function RevisionInspector({
             ))}
           </div>
 
-          <div className="space-y-2">
-            <div className="text-xs font-semibold text-[#182220]">
+          <div className="space-y-3">
+            <div className="text-sm font-semibold text-[#182220]">
               Finding Status Shifts ({comp.baseline_filename} → {comp.revised_filename})
             </div>
-            {comp.finding_statuses.map((fs) => {
-              const badgeStyle =
-                fs.status === "improved"
-                  ? "bg-[#ECFDF3] text-[#15803D]"
-                  : fs.status === "regressed"
-                    ? "bg-[#FFF1F3] text-[#BE123C]"
-                    : "bg-[#F5F5F7] text-[#52605D]";
-              const Icon =
-                fs.status === "improved"
-                  ? ArrowUpRight
-                  : fs.status === "regressed"
-                    ? ArrowDownRight
-                    : Minus;
+            <div className="grid gap-3 md:grid-cols-2">
+              {comp.finding_statuses.map((fs) => {
+                const badgeStyle =
+                  fs.status === "improved"
+                    ? "bg-[#ECFDF3] text-[#15803D]"
+                    : fs.status === "regressed"
+                      ? "bg-[#FFF1F3] text-[#BE123C]"
+                      : "bg-[#F5F5F7] text-[#52605D]";
+                const Icon =
+                  fs.status === "improved"
+                    ? ArrowUpRight
+                    : fs.status === "regressed"
+                      ? ArrowDownRight
+                      : Minus;
 
-              return (
-                <div
-                  key={fs.evidence_id}
-                  className="bg-[#FFFFFF] p-3 hairline-border squircle-inner space-y-1"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-[#182220]">{fs.title}</span>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold capitalize squircle-inner ${badgeStyle}`}
-                    >
-                      <Icon className="h-3 w-3" aria-hidden="true" />
-                      {fs.status}
-                    </span>
+                return (
+                  <div
+                    key={fs.evidence_id}
+                    className="bg-[#FFFFFF] p-4 hairline-border squircle-inner space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-[#182220]">{fs.title}</span>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold capitalize squircle-inner ${badgeStyle}`}
+                      >
+                        <Icon className="h-3 w-3" aria-hidden="true" />
+                        {fs.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#52605D]">{fs.summary}</p>
+                    <div className="text-[11px] text-[#52605D] tabular-telemetry">
+                      v1: {fs.baseline_value} · v2: {fs.revised_value}
+                    </div>
                   </div>
-                  <p className="text-[11px] text-[#52605D]">{fs.summary}</p>
-                  <div className="text-[10px] text-[#52605D] tabular-telemetry">
-                    v1: {fs.baseline_value} · v2: {fs.revised_value}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </>
       )}

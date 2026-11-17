@@ -166,3 +166,57 @@ def test_misaligned_stems_flagged(tmp_path: Path) -> None:
     assert analysis.alignment_passed is False
     assert analysis.max_duration_delta_ms >= 200.0
     assert len(analysis.alignment_warnings) >= 1
+
+
+def test_mixed_channel_and_phase_interaction_stems(tmp_path: Path) -> None:
+    sr = 44100
+    t = np.arange(sr * 3) / sr
+    tone_120 = 0.35 * np.sin(2 * np.pi * 120.0 * t)
+
+    mono_kick = tone_120[:, np.newaxis]
+    stereo_inverted_bass = np.column_stack([-tone_120, -tone_120])
+
+    p1 = tmp_path / "Kick_Mono.wav"
+    p2 = tmp_path / "Bass_Stereo.wav"
+    sf.write(str(p1), mono_kick, sr)
+    sf.write(str(p2), stereo_inverted_bass, sr)
+
+    analysis = analyze_user_stems([("Kick_Mono.wav", p1), ("Bass_Stereo.wav", p2)])
+    assert analysis.alignment_passed is True
+    assert any("channel" in w.lower() for w in analysis.alignment_warnings)
+    assert len(analysis.stems) == 2
+    assert len(analysis.overlap_matrix) >= 1
+    top_pair = analysis.overlap_matrix[0]
+    assert top_pair.phase_interaction_corr is not None
+    assert top_pair.phase_interaction_corr < -0.5
+    assert top_pair.phase_cancellation_risk is True
+
+
+def test_public_demo_fixtures_dsp_and_revision_improvement(tmp_path: Path) -> None:
+    from app.rules import compare_revisions
+    from app.services import analyze_audio_to_report
+
+    repo_root = Path(__file__).resolve().parents[2]
+    v1_path = repo_root / "frontend" / "public" / "demo" / "demo-flawed-v1.wav"
+    v2_path = repo_root / "frontend" / "public" / "demo" / "demo-revised-v2.wav"
+    assert v1_path.exists()
+    assert v2_path.exists()
+
+    ctx = AnalysisContext(genre="electronic", stage="unmastered_mix", artist_vision=["punchy", "wide"])
+    r1, _ = analyze_audio_to_report("demo_s", v1_path, v1_path.name, tmp_path / "p1", "v1", "/v1", ctx)
+    r2, _ = analyze_audio_to_report("demo_s", v2_path, v2_path.name, tmp_path / "p2", "v2", "/v2", ctx)
+
+    assert r1.global_metrics.true_peak_dbtp > -0.1
+    assert r1.global_metrics.phase_correlation_avg < 0.0
+    assert r1.global_metrics.plr_db > 0.0
+    assert any(f.evidence_id == "ev_true_peak_01" and f.severity == "alert" for f in r1.findings)
+    assert any(f.evidence_id == "ev_phase_01" and f.severity == "alert" for f in r1.findings)
+
+    assert -4.3 <= r2.global_metrics.true_peak_dbtp <= -4.1
+    assert r2.global_metrics.phase_correlation_avg >= 0.75
+
+    comp = compare_revisions(r1, r2)
+    by_id = {fs.evidence_id: fs for fs in comp.finding_statuses}
+    assert by_id["ev_true_peak_01"].status == "improved"
+    assert by_id["ev_phase_01"].status == "improved"
+    assert by_id["ev_tonal_low_mid_01"].status == "improved"

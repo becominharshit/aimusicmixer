@@ -1,6 +1,7 @@
 import type {
   AnalysisReport,
   ArtistVisionTag,
+  BackendHealth,
   GenreType,
   MentorRequest,
   MentorResponse,
@@ -10,7 +11,9 @@ import type {
 } from "@/types/report";
 
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
+  "http://localhost:8000";
 
 export function resolveApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
@@ -33,13 +36,28 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function checkBackendHealth(): Promise<{
-  status: string;
-  ffmpeg_available: boolean;
-  gemini_configured: boolean;
-}> {
-  const res = await fetch(resolveApiUrl("/api/v1/health"));
-  return handleResponse(res);
+export async function checkBackendHealth(): Promise<BackendHealth> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(resolveApiUrl("/health"), {
+      method: "GET",
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    return await handleResponse<BackendHealth>(res);
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+export async function fetchPublicDemoFile(demoUrlPath: string, filename: string): Promise<File> {
+  const res = await fetch(demoUrlPath);
+  if (!res.ok) {
+    throw new Error(`Could not load demo audio fixture (${res.status}).`);
+  }
+  const blob = await res.blob();
+  return new File([blob], filename, { type: "audio/wav" });
 }
 
 export async function analyzeMixFile(params: {
@@ -54,7 +72,7 @@ export async function analyzeMixFile(params: {
   form.append("stage", params.stage);
   form.append("artist_vision", JSON.stringify(params.artistVision));
 
-  const res = await fetch(resolveApiUrl("/api/v1/analyze"), {
+  const res = await fetch(resolveApiUrl("/api/analyze"), {
     method: "POST",
     body: form,
   });

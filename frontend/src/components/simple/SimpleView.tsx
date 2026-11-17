@@ -18,6 +18,25 @@ interface SimpleViewProps {
   onNewUpload: () => void;
 }
 
+function buildHeroTakeaway(report: AnalysisReport): string {
+  const stageLabel = report.context.stage.replace("_", " ");
+  const genreLabel = report.context.genre.replace("_", " ");
+  const alerts = report.findings.filter((f) => f.severity === "alert");
+  const cautions = report.findings.filter((f) => f.severity === "caution");
+
+  if (alerts.length > 0) {
+    const names = alerts
+      .slice(0, 2)
+      .map((f) => f.title.replace(/\s*\([^)]*\)\s*/g, "").trim())
+      .join(" and ");
+    return `For this ${genreLabel} ${stageLabel}, resolve ${alerts.length} urgent issue${alerts.length > 1 ? "s" : ""} first (${names}) before final export or limiting.`;
+  }
+  if (cautions.length > 0) {
+    return `This ${genreLabel} ${stageLabel} has clean peak safety and phase cohesion, with ${cautions.length} targeted adjustment${cautions.length > 1 ? "s" : ""} to test in your DAW before v2.`;
+  }
+  return `This ${genreLabel} ${stageLabel} sits cleanly inside headroom, stereo phase, and tonal envelopes — verify against a reference track in Reference A/B.`;
+}
+
 export function SimpleView({
   report,
   isPlaying,
@@ -30,6 +49,7 @@ export function SimpleView({
 }: SimpleViewProps) {
   const m = report.global_metrics;
   const topFindings = report.findings.slice(0, 3);
+  const plr = m.plr_db ?? Math.max(0, m.true_peak_dbtp - m.integrated_lufs);
 
   const truePeakTone =
     m.true_peak_dbtp > -0.1
@@ -40,9 +60,9 @@ export function SimpleView({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 py-4">
-      {/* Header & Quick Playback Strip */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-[#FFFFFF] p-5 hairline-border squircle-outer">
-        <div>
+      {/* Plain-Language Stage & Genre Takeaway Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4 bg-[#FFFFFF] p-5 hairline-border squircle-outer">
+        <div className="space-y-2 max-w-2xl">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-bold tracking-[-0.02em] text-[#182220]">
               {report.audio_metadata.filename}
@@ -52,12 +72,15 @@ export function SimpleView({
               {report.context.stage.replace("_", " ")}
             </span>
           </div>
-          <p className="mt-1 text-xs text-[#52605D]">
-            Showing your top {topFindings.length} prioritized coaching steps. Every finding traces directly to measured telemetry.
+          <p className="text-sm text-[#182220] leading-relaxed">
+            {buildHeroTakeaway(report)}
+          </p>
+          <p className="text-xs text-[#52605D]">
+            Showing your top {topFindings.length} prioritized coaching steps. Every card links directly to measured DSP telemetry.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="primary" onClick={onTogglePlay}>
             {isPlaying ? (
               <>
@@ -72,7 +95,7 @@ export function SimpleView({
             )}
           </Button>
           <Button type="button" variant="secondary" onClick={onOpenAdvanced}>
-            Open Advanced Workbench
+            Advanced Workbench
             <ArrowRight className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
           </Button>
           <Button type="button" variant="ghost" onClick={onNewUpload}>
@@ -82,12 +105,13 @@ export function SimpleView({
         </div>
       </div>
 
-      {/* Measured Telemetry Strip (No Fake Aggregate Quality Scores) */}
+      {/* Measured Telemetry Strip (No Reductive Quality Scores) */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner">
           <div className="text-xs text-[#52605D]">Integrated Loudness</div>
           <div className="mt-1 text-xl font-semibold text-[#182220] tabular-telemetry">
-            {m.integrated_lufs.toFixed(1)} <span className="text-xs font-normal text-[#52605D]">LUFS</span>
+            {m.integrated_lufs.toFixed(1)}{" "}
+            <span className="text-xs font-normal text-[#52605D]">LUFS</span>
           </div>
         </div>
         <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner">
@@ -98,9 +122,12 @@ export function SimpleView({
           </div>
         </div>
         <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner">
-          <div className="text-xs text-[#52605D]">Loudness Range</div>
+          <div className="text-xs text-[#52605D]">PLR / LRA</div>
           <div className="mt-1 text-xl font-semibold text-[#182220] tabular-telemetry">
-            {m.loudness_range_lu.toFixed(1)} <span className="text-xs font-normal text-[#52605D]">LU</span>
+            {plr.toFixed(1)}{" "}
+            <span className="text-xs font-normal text-[#52605D]">
+              dB / {m.loudness_range_lu.toFixed(1)} LU
+            </span>
           </div>
         </div>
         <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner">
@@ -111,7 +138,7 @@ export function SimpleView({
                 ? "text-[#BE123C]"
                 : m.phase_correlation_avg < 0.35
                   ? "text-[#B45309]"
-                  : "text-[#182220]"
+                  : "text-[#15803D]"
             }`}
           >
             {m.phase_correlation_avg >= 0 ? "+" : ""}
@@ -120,7 +147,7 @@ export function SimpleView({
         </div>
       </div>
 
-      {/* Top 3 Prioritized Finding Cards */}
+      {/* Top 3 Prioritized 5-Step Finding Cards */}
       <div className="space-y-4">
         {topFindings.map((finding, idx) => (
           <FindingCard
@@ -136,12 +163,11 @@ export function SimpleView({
 
       <div className="flex flex-wrap items-center justify-between gap-3 bg-[#F5F5F7] px-5 py-4 hairline-border squircle-outer">
         <div className="text-xs text-[#52605D]">
-          Want to A/B against a loudness-matched reference track, test Smartphone/Laptop speaker translation,
-          inspect stems, or compare v1 vs v2?
+          Inspect full 6-band spectral plots, interactive waveform pins, and stereo correlation graphs in Advanced Mix Check.
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-[#52605D] tabular-telemetry">
-            Duration {formatTimecode(report.audio_metadata.duration_sec)} · {report.findings.length} total findings
+            Duration {formatTimecode(report.audio_metadata.duration_sec)} · {report.findings.length} findings
           </span>
           <Button type="button" variant="soft" size="sm" onClick={onOpenAdvanced}>
             Switch to Advanced Mix Check

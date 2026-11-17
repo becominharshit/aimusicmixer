@@ -3,10 +3,13 @@ import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MotionConfig } from "motion/react";
 import { StudioAudioEngine } from "@/audio/StudioAudioEngine";
+import { BottomTransportDock } from "@/components/BottomTransportDock";
+import { StudioHeader } from "@/components/StudioHeader";
 import { RevisionInspector } from "@/components/advanced/RevisionInspector";
 import { StemsInspector } from "@/components/advanced/StemsInspector";
 import { MentorPrivacyPanel } from "@/components/privacy/MentorPrivacyPanel";
 import { SimpleView } from "@/components/simple/SimpleView";
+import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
 import type { AnalysisReport } from "@/types/report";
 
 const mockReport: AnalysisReport = {
@@ -93,6 +96,11 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(screen.getByText("track_v1.wav")).toBeInTheDocument();
     expect(screen.getByText("ev_low_buildup_01")).toBeInTheDocument();
     expect(screen.getByText("Low-End Buildup Around 60–250 Hz")).toBeInTheDocument();
+    expect(screen.getByText(/What happened:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Why it matters:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Listen:/i)).toBeInTheDocument();
+    expect(screen.getByText(/What to try:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recheck:/i)).toBeInTheDocument();
     expect(screen.queryByText(/\/100/)).not.toBeInTheDocument();
   });
 
@@ -197,5 +205,79 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(state.deviceProfile).toBe("full");
     expect(state.matchLoudness).toBe(true);
     expect(state.loudnessOffsetDb).toBe(0);
+  });
+
+  it("renders live backend health states in StudioHeader and actionable offline popover", () => {
+    const { rerender } = render(
+      <StudioHeader
+        mode="simple"
+        onModeChange={vi.fn()}
+        report={null}
+        onClearSession={vi.fn()}
+        healthStatus="online"
+        healthData={{ status: "ok", ffmpeg_available: true, gemini_configured: false }}
+        healthError={null}
+        onRetryHealth={vi.fn()}
+      />
+    );
+    expect(screen.getByText("DSP Engine Online")).toBeInTheDocument();
+
+    rerender(
+      <StudioHeader
+        mode="simple"
+        onModeChange={vi.fn()}
+        report={null}
+        onClearSession={vi.fn()}
+        healthStatus="offline"
+        healthData={null}
+        healthError="Failed to fetch"
+        onRetryHealth={vi.fn()}
+      />
+    );
+    const offlineBtn = screen.getByRole("button", { name: /Backend Unreachable — Check API URL/i });
+    expect(offlineBtn).toBeInTheDocument();
+    fireEvent.click(offlineBtn);
+    expect(screen.getByRole("dialog", { name: /DSP backend connection diagnostics/i })).toBeInTheDocument();
+    expect(screen.getByText(/Failed to fetch/i)).toBeInTheDocument();
+  });
+
+  it("renders WorkspaceSubNav tabs and BottomTransportDock translation profiles cleanly", () => {
+    render(
+      <>
+        <WorkspaceSubNav
+          activeTab="diagnosis"
+          onChangeTab={vi.fn()}
+          report={mockReport}
+          hasReference={false}
+          onOpenMentor={vi.fn()}
+        />
+        <BottomTransportDock
+          durationSec={16}
+          isPlaying={false}
+          activeSource="primary"
+          stereoMode="stereo"
+          deviceProfile="full"
+          matchLoudness={true}
+          loudnessOffsetDb={0}
+          loopEnabled={false}
+          hasReference={false}
+          hasRevised={false}
+          onTogglePlay={vi.fn()}
+          onToggleLoop={vi.fn()}
+          onSeek={vi.fn()}
+          onChangeSource={vi.fn()}
+          onChangeStereo={vi.fn()}
+          onChangeDevice={vi.fn()}
+          onToggleMatchLoudness={vi.fn()}
+        />
+      </>
+    );
+
+    expect(screen.getByRole("tab", { name: /Mix Diagnosis/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Reference A\/B/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Original Stems/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Revision Check/i })).toBeInTheDocument();
+    expect(screen.getByText(/300Hz–4\.5kHz · Mono/i)).toBeInTheDocument();
+    expect(screen.getByText(/180Hz–12kHz/i)).toBeInTheDocument();
   });
 });

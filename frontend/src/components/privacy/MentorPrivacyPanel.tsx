@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ShieldCheck, Sparkles, Sliders } from "lucide-react";
+import { ShieldCheck, Sliders, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { AnalysisReport, MentorRequest, MentorResponse } from "@/types/report";
@@ -46,21 +46,26 @@ export function MentorPrivacyPanel({
 
   return (
     <div className="space-y-4">
-      {/* Three-Tier Granular Privacy Controls */}
+      {/* Three-Tier Independent Granular Privacy Controls */}
       <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner space-y-3">
-        <div className="flex items-center gap-2 text-xs font-semibold text-[#182220]">
-          <ShieldCheck className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
-          <span>Granular AI Consent &amp; Privacy Controls</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2 text-xs font-semibold text-[#182220]">
+            <ShieldCheck className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
+            Privacy &amp; AI Data Consent Controls
+          </span>
+          <span className="bg-[#ECFDF3] px-2 py-0.5 text-[10px] font-semibold text-[#15803D] squircle-inner">
+            Default Off
+          </span>
         </div>
 
         <div className="space-y-2.5 text-xs">
-          <div className="flex items-start justify-between gap-3 bg-[#F5F5F7] p-2.5 squircle-inner">
-            <div>
-              <div className="font-medium text-[#182220]">
-                Toggle A — Metrics-Only AI Mentor
+          <div className="flex items-start justify-between gap-3 bg-[#F5F5F7] p-3 squircle-inner">
+            <div className="space-y-0.5">
+              <div className="font-semibold text-[#182220]">
+                1. Numerical DSP Metrics &amp; Evidence IDs
               </div>
-              <p className="text-[11px] text-[#52605D]">
-                Sends sanitized numerical DSP JSON only. Zero audio bytes leave the server.
+              <p className="text-[11px] leading-relaxed text-[#52605D]">
+                Sends structured DSP numbers and <code className="text-[#182220]">evidence_id</code> tags only. Zero audio leaves your session.
               </p>
             </div>
             <Switch
@@ -70,13 +75,13 @@ export function MentorPrivacyPanel({
             />
           </div>
 
-          <div className="flex items-start justify-between gap-3 bg-[#F5F5F7] p-2.5 squircle-inner">
-            <div>
-              <div className="font-medium text-[#182220]">
-                Toggle B — Direct Audio Listening Opt-In
+          <div className="flex items-start justify-between gap-3 bg-[#F5F5F7] p-3 squircle-inner">
+            <div className="space-y-0.5">
+              <div className="font-semibold text-[#182220]">
+                2. Direct Audio Snippet Analysis
               </div>
-              <p className="text-[11px] text-[#52605D]">
-                Separate opt-in required before sending a 25s compressed snippet to Gemini.
+              <p className="text-[11px] leading-relaxed text-[#52605D]">
+                Separate opt-in required before sending a compressed 25s clip around the top issue to external Gemini APIs.
               </p>
             </div>
             <Switch
@@ -87,13 +92,13 @@ export function MentorPrivacyPanel({
             />
           </div>
 
-          <div className="flex items-start justify-between gap-3 bg-[#F5F5F7] p-2.5 squircle-inner">
-            <div>
-              <div className="font-medium text-[#182220]">
-                Toggle C — Future Model Training Opt-In
+          <div className="flex items-start justify-between gap-3 bg-[#F5F5F7] p-3 squircle-inner">
+            <div className="space-y-0.5">
+              <div className="font-semibold text-[#182220]">
+                3. Model Training Permission
               </div>
-              <p className="text-[11px] text-[#52605D]">
-                Default Off. No-training is independent from ephemeral API processing (store=false).
+              <p className="text-[11px] leading-relaxed text-[#52605D]">
+                Strictly OFF by default. API calls use <code className="text-[#182220]">store=false</code> (ephemeral processing is not identical to zero retention); model training never occurs unless explicitly enabled.
               </p>
             </div>
             <Switch
@@ -106,14 +111,14 @@ export function MentorPrivacyPanel({
 
         <div className="space-y-2 pt-1">
           <label htmlFor="mentor-question" className="block text-[11px] font-medium text-[#52605D]">
-            Ask a mixing question (optional)
+            Ask your Mix Mentor (optional)
           </label>
           <textarea
             id="mentor-question"
             rows={2}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="e.g., How should I address the 60–250 Hz buildup without losing punch?"
+            placeholder="e.g., How should I address the 250 Hz low-mid buildup without losing punch?"
             className="w-full resize-none bg-[#FAFAFA] px-3 py-2 text-xs text-[#182220] hairline-border squircle-inner focus:border-[#3A7269] focus:outline-none"
           />
           <Button
@@ -151,7 +156,7 @@ export function MentorPrivacyPanel({
               Coaching Brief
             </span>
             <span className="bg-[#EBF3F1] px-2 py-0.5 text-[10px] font-medium text-[#3A7269] squircle-inner">
-              {mentorAdvice.mode.replaceAll("_", " ")}
+              {mentorAdvice.mode.replaceAll("_", " ")} · {mentorAdvice.model_used}
             </span>
           </div>
           <p className="text-xs leading-relaxed text-[#182220]">{mentorAdvice.summary}</p>
@@ -182,14 +187,20 @@ export function MentorPrivacyPanel({
                 <p className="text-[11px] text-[#182220]">
                   <strong>Experiment:</strong> {action.daw_experiment}
                 </p>
+                <p className="text-[11px] text-[#52605D]">
+                  <strong>Recheck:</strong> {action.verification_step}
+                </p>
               </div>
             ))}
           </div>
 
-          <div className="border-t border-[rgba(24,34,32,0.06)] pt-2 text-[10px] text-[#52605D]">
-            Audit: raw_audio_sent_to_ai={String(mentorAdvice.privacy_audit.raw_audio_sent_to_ai)} ·{" "}
-            external_ai_enabled={String(mentorAdvice.privacy_audit.external_ai_enabled)} ·{" "}
-            training_opt_in={String(mentorAdvice.privacy_audit.training_opt_in)}
+          <div className="border-t border-[rgba(24,34,32,0.06)] pt-2 text-[10px] leading-relaxed text-[#52605D]">
+            <div>
+              Audit: raw_audio_sent_to_ai={String(mentorAdvice.privacy_audit.raw_audio_sent_to_ai)} ·{" "}
+              external_ai_enabled={String(mentorAdvice.privacy_audit.external_ai_enabled)} ·{" "}
+              training_opt_in={String(mentorAdvice.privacy_audit.training_opt_in)}
+            </div>
+            <div>{mentorAdvice.privacy_audit.retention_policy}</div>
           </div>
         </div>
       )}
@@ -234,7 +245,7 @@ export function MentorPrivacyPanel({
             setPluginNotes(e.target.value);
             setContextSaved(false);
           }}
-          placeholder="Plugin notes (never treated as measured DSP)"
+          placeholder="Plugin notes (unverified user context)"
           aria-label="Plugin Notes"
           className="w-full bg-[#FFFFFF] px-3 py-1.5 text-xs text-[#182220] hairline-border squircle-inner"
         />
@@ -250,7 +261,11 @@ export function MentorPrivacyPanel({
           >
             Save DAW Context
           </Button>
-          {contextSaved && <span className="text-[11px] text-[#15803D]">Saved to session</span>}
+          {contextSaved && (
+            <span className="text-[11px] font-medium text-[#15803D]">
+              Saved as user_reported_context
+            </span>
+          )}
         </div>
       </div>
     </div>

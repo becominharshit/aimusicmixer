@@ -105,8 +105,75 @@ def _peaking_eq(x: np.ndarray, sr: int, freq_hz: float, gain_db: float, q: float
     return np.column_stack([sosfilt(sos, x[:, 0]), sosfilt(sos, x[:, 1])])
 
 
+def _crossover_split(x: np.ndarray, sr: int, cutoff_hz: float) -> tuple[np.ndarray, np.ndarray]:
+    """4th-order zero-phase-matched crossover split into low and high bands."""
+    lp_sos = butter(4, cutoff_hz, btype="lowpass", fs=sr, output="sos")
+    hp_sos = butter(4, cutoff_hz, btype="highpass", fs=sr, output="sos")
+    low = np.column_stack([sosfilt(lp_sos, x[:, 0]), sosfilt(lp_sos, x[:, 1])])
+    high = np.column_stack([sosfilt(hp_sos, x[:, 0]), sosfilt(hp_sos, x[:, 1])])
+    return low, high
+
+
+def _calibrate_true_peak(samples: np.ndarray, sr: int, target_dbtp: float) -> np.ndarray:
+    """Scale stereo signal deterministically using 4x polyphase True Peak measurement."""
+    from scipy.signal import resample_poly
+
+    oversampled = resample_poly(samples, up=4, down=1, axis=0)
+    peak_4x = float(np.max(np.abs(oversampled)))
+    peak_sample = float(np.max(np.abs(samples)))
+    current_peak = max(peak_4x, peak_sample, 1e-12)
+    target_linear = 10.0 ** (target_dbtp / 20.0)
+    return samples * (target_linear / current_peak)
+
+
+def _generate_public_demo_fixtures(repo_root: Path) -> None:
+    """Create 1-click ~12s 44.1 kHz stereo WAV demo fixtures in frontend/public/demo/."""
+    demo_dir = repo_root / "frontend" / "public" / "demo"
+    demo_dir.mkdir(parents=True, exist_ok=True)
+
+    sr = 44100
+    duration_sec = 12.0
+    stems = _make_musical_stems(sr=sr, duration_sec=duration_sec)
+
+    # Balance stems so clean v2 falls comfortably inside electronic tonal & dynamic envelopes
+    high_pass_sub = butter(2, 34.0, btype="highpass", fs=sr, output="sos")
+    bass_clean = np.column_stack([sosfilt(high_pass_sub, stems["Bass"][:, 0]), sosfilt(high_pass_sub, stems["Bass"][:, 1])]) * 0.42
+    kick_clean = np.column_stack([sosfilt(high_pass_sub, stems["Kick"][:, 0]), sosfilt(high_pass_sub, stems["Kick"][:, 1])]) * 0.62
+    synth_balanced = stems["Synth"] * 1.45
+    drums_balanced = stems["Drums"] * 1.35
+
+    # Add upper-mid harmonic presence synth lead so 800-4000 Hz sits cleanly in genre profile
+    n = bass_clean.shape[0]
+    t = np.arange(n) / sr
+    bar_env = 0.72 + 0.28 * np.sin(2 * np.pi * 1.0 * t)
+    lead_l = bar_env * (0.045 * np.sin(2 * np.pi * 880.0 * t) + 0.032 * np.sin(2 * np.pi * 1320.0 * t) + 0.022 * np.sin(2 * np.pi * 2200.0 * t))
+    lead_r = bar_env * (0.045 * np.sin(2 * np.pi * 882.5 * t + 0.35) + 0.032 * np.sin(2 * np.pi * 1323.0 * t + 0.6) + 0.022 * np.sin(2 * np.pi * 2204.0 * t + 0.8))
+    base_mix = kick_clean + bass_clean + synth_balanced + drums_balanced + np.column_stack([lead_l, lead_r])
+
+    # 1. demo-flawed-v1.wav: ~ -0.05..0.0 dBTP hot clipping peaks, 250 Hz mud buildup, sub/low-mid phase inversion
+    v1_mud = _peaking_eq(base_mix, sr, freq_hz=250.0, gain_db=7.5, q=0.9)
+    low_band, high_band = _crossover_split(v1_mud, sr, cutoff_hz=320.0)
+    # Invert polarity partially in sub/low-mid R channel for mono cancellation
+    low_phase_flawed = np.column_stack([low_band[:, 0], -0.78 * low_band[:, 1]])
+    v1_combined = low_phase_flawed + high_band
+    v1_driven = np.tanh(v1_combined * 2.25)
+    v1_cal = np.clip(_calibrate_true_peak(v1_driven, sr, target_dbtp=-0.04), -1.0, 1.0)
+    sf.write(str(demo_dir / "demo-flawed-v1.wav"), v1_cal, sr, subtype="PCM_16")
+
+    # 2. demo-revised-v2.wav: exact same musical loop with -4.2 dBTP headroom, 250 Hz notched, clean mono phase
+    v2_notched = _peaking_eq(base_mix, sr, freq_hz=250.0, gain_db=-3.6, q=1.05)
+    v2_bright = _peaking_eq(v2_notched, sr, freq_hz=3200.0, gain_db=1.8, q=0.7)
+    v2_air = _peaking_eq(v2_bright, sr, freq_hz=9000.0, gain_db=1.2, q=0.7)
+    v2_low, v2_high = _crossover_split(v2_air, sr, cutoff_hz=220.0)
+    v2_low_mono = 0.5 * (v2_low[:, 0] + v2_low[:, 1])
+    v2_clean = np.column_stack([v2_low_mono, v2_low_mono]) + v2_high
+    v2_cal = _calibrate_true_peak(v2_clean, sr, target_dbtp=-4.20)
+    sf.write(str(demo_dir / "demo-revised-v2.wav"), v2_cal, sr, subtype="PCM_16")
+
+
 def main() -> None:
-    out_dir = Path(__file__).resolve().parents[2] / "assets" / "test-audio"
+    repo_root = Path(__file__).resolve().parents[2]
+    out_dir = repo_root / "assets" / "test-audio"
     stems_dir = out_dir / "stems"
     stems_dir.mkdir(parents=True, exist_ok=True)
 
@@ -136,7 +203,8 @@ def main() -> None:
     ref_soft = np.tanh(ref_air * 1.15) * 0.85
     sf.write(str(out_dir / "reference_track.wav"), ref_soft, sr, subtype="PCM_24")
 
-    print(f"Generated synthetic studio assets in {out_dir}")
+    _generate_public_demo_fixtures(repo_root)
+    print(f"Generated synthetic studio assets in {out_dir} and frontend/public/demo")
 
 
 if __name__ == "__main__":

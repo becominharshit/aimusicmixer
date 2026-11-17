@@ -128,10 +128,26 @@ def _sanitized_metrics_payload(report: AnalysisReport) -> dict:
     return payload
 
 
+def _extract_interaction_text(interaction: object) -> str:
+    text = getattr(interaction, "output_text", None)
+    if isinstance(text, str) and text.strip():
+        return text
+    steps = getattr(interaction, "steps", None) or []
+    parts: list[str] = []
+    for step in steps:
+        if getattr(step, "type", None) == "model_output":
+            for block in getattr(step, "content", None) or []:
+                block_text = getattr(block, "text", None)
+                if isinstance(block_text, str):
+                    parts.append(block_text)
+    return "".join(parts).strip() or "{}"
+
+
 def generate_mentor_advice(
     report: AnalysisReport,
     request: MentorRequest,
     primary_audio_path: Path | None = None,
+    fallback_proxy_path: Path | None = None,
 ) -> MentorResponse:
     """Enforce three-tier consent and evidence-id grounding before calling Gemini Interactions API."""
     # Toggle A must be explicitly enabled before any external Gemini call occurs
@@ -149,21 +165,26 @@ def generate_mentor_advice(
     sanitized_json = json.dumps(_sanitized_metrics_payload(report), indent=2)
 
     system_rules = (
-        "You are MixBench Mentor, a privacy-first mix and mastering teacher. "
+        "You are MixBench Mentor, a privacy-first mix and mastering teacher.\n"
         "CRITICAL RULES:\n"
         "1. Only cite evidence_id values that exist verbatim in the provided DSP report.\n"
         "2. Never invent instrument names (kick, vocals, bass, snare) unless `context.has_user_stems` is true and those stems appear in `stem_analysis.stems`.\n"
-        "3. Never invent timestamps outside the track duration or unsupported plugins.\n"
-        "4. Respect `context.artist_vision` creatively while NEVER ignoring Alert-level clipping (> -0.1 dBTP) or negative phase correlation.\n"
-        "5. Follow the learn-by-doing loop: Listen -> Experiment in DAW -> Re-export and Verify.\n"
+        "3. Treat `context.user_reported_context` (DAW/routing/plugin notes) strictly as unverified user context — never measured audio proof — and never fabricate plugin knob values.\n"
+        "4. Never invent timestamps outside the track duration or fabricate unmeasured DSP figures.\n"
+        "5. Respect `context.artist_vision` creatively while NEVER suppressing Alert-level clipping (> -0.1 dBTP) or negative phase correlation.\n"
+        "6. Follow the learn-by-doing loop: What happened -> Why it matters -> Listen -> Experiment in DAW -> Recheck.\n"
     )
     user_prompt = (
-        f"{system_rules}\n"
         f"Artist Question: {request.question.strip() or 'Give me the highest-leverage next steps to improve this mix.'}\n\n"
         f"Structured DSP Report JSON:\n{sanitized_json}"
     )
 
-    use_audio = bool(request.allow_audio_ai and primary_audio_path and primary_audio_path.exists())
+    clip_source = (
+        primary_audio_path
+        if primary_audio_path is not None and primary_audio_path.exists()
+        else (fallback_proxy_path if fallback_proxy_path is not None and fallback_proxy_path.exists() else None)
+    )
+    use_audio = bool(request.allow_audio_ai and clip_source is not None)
     input_content: list[dict] | str = user_prompt
     tmp_clip: Path | None = None
 
@@ -172,16 +193,19 @@ def generate_mentor_advice(
 
         client = genai.Client(api_key=settings.gemini_api_key.strip())
 
-        if use_audio and primary_audio_path is not None:
+        if use_audio and clip_source is not None:
             top_ts = report.findings[0].timestamp_start_sec if report.findings else 0.0
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
                 tmp_clip = Path(tf.name)
-            actual_clip = extract_audio_clip(primary_audio_path, tmp_clip, start_sec=top_ts, duration_sec=25.0)
+            actual_clip = extract_audio_clip(clip_source, tmp_clip, start_sec=top_ts, duration_sec=25.0)
             tmp_clip = actual_clip
             audio_bytes = actual_clip.read_bytes()
             mime = "audio/mp3" if actual_clip.suffix.lower() == ".mp3" else "audio/aac"
             input_content = [
-                {"type": "text", "text": user_prompt + "\n\nAttached is an explicitly consented 25-second snippet around the top finding."},
+                {
+                    "type": "text",
+                    "text": user_prompt + "\n\nAttached is an explicitly consented 25-second snippet around the top finding.",
+                },
                 {
                     "type": "audio",
                     "data": base64.b64encode(audio_bytes).decode("utf-8"),
@@ -191,15 +215,19 @@ def generate_mentor_advice(
 
         interaction = client.interactions.create(
             model=settings.gemini_model,
+            system_instruction=system_rules,
             input=input_content,
-            response_format={
-                "type": "text",
-                "mime_type": "application/json",
-                "schema": MentorLLMOutput.model_json_schema(),
-            },
+            response_format=[
+                {
+                    "type": "text",
+                    "mime_type": "application/json",
+                    "schema": MentorLLMOutput.model_json_schema(),
+                }
+            ],
             store=False,
         )
-        parsed = MentorLLMOutput.model_validate_json(interaction.output_text or "{}")
+        raw_output = _extract_interaction_text(interaction)
+        parsed = MentorLLMOutput.model_validate_json(raw_output)
 
         # Verify every evidence_id exists in the deterministic DSP report
         verified_actions: list[MentorAction] = []
@@ -219,7 +247,7 @@ def generate_mentor_advice(
         retention_note = (
             "Sent metrics JSON + 25s audio snippet with store=False. No-training is independent from ephemeral API processing."
             if use_audio
-            else "Sent structured numerical DSP JSON only (zero audio bytes transmitted) with store=False."
+            else "Sent structured numerical DSP JSON only (zero audio bytes transmitted) with store=False. No-training is independent from ephemeral API processing."
         )
         return MentorResponse(
             mode=mode,

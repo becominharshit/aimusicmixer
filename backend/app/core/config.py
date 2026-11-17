@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import tempfile
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,11 +18,12 @@ class Settings(BaseSettings):
 
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    allowed_origins: str = ""
+    cors_origins: str = "*"
     max_single_file_mb: int = 100
     max_stem_total_mb: int = 350
     session_ttl_minutes: int = 60
-    tmp_sessions_dir: Path = Path(__file__).resolve().parents[2] / "tmp_sessions"
+    tmp_sessions_dir: Path = Path(tempfile.gettempdir()) / "mixbench_sessions"
     sample_assets_dir: Path = _default_sample_assets_dir()
 
     gemini_api_key: str = ""
@@ -27,7 +31,11 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        raw = self.allowed_origins.strip() or self.cors_origins.strip() or "*"
+        if raw == "*":
+            return ["*"]
+        origins = [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+        return origins or ["*"]
 
     @property
     def max_single_file_bytes(self) -> int:

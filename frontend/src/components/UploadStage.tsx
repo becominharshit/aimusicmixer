@@ -6,6 +6,7 @@ import { UploadCloud, PlayCircle, AlertCircle, CheckCircle2, SlidersHorizontal }
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { STUDIO_EASE, STUDIO_SPRING, TACTILE_TAP } from "@/lib/motion";
+import type { HealthStatus } from "@/components/StudioHeader";
 import type { ArtistVisionTag, GenreType, StageType } from "@/types/report";
 
 const GENRE_OPTIONS: { value: GenreType; label: string }[] = [
@@ -43,6 +44,8 @@ interface UploadStageProps {
   isAnalyzing: boolean;
   activeStepIndex: number;
   errorMessage: string | null;
+  healthStatus: HealthStatus;
+  onRetryHealth: () => void;
   onAnalyzeFile: (file: File) => void;
   onLoadDemo: () => void;
 }
@@ -57,6 +60,8 @@ export function UploadStage({
   isAnalyzing,
   activeStepIndex,
   errorMessage,
+  healthStatus,
+  onRetryHealth,
   onAnalyzeFile,
   onLoadDemo,
 }: UploadStageProps) {
@@ -279,16 +284,41 @@ export function UploadStage({
                 </Button>
                 <Button
                   type="button"
-                  variant="secondary"
+                  variant="soft"
                   onClick={onLoadDemo}
                 >
                   <PlayCircle className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
-                  Load Sample Studio Session
+                  Try Sample Flawed Mix
                 </Button>
               </div>
+              <p className="mt-3 max-w-md text-[11px] text-[#52605D]">
+                &ldquo;Try Sample Flawed Mix&rdquo; loads a 12s 44.1 kHz stereo track with hot clipping peaks (~0.0 dBTP),
+                250 Hz low-mid buildup, and partial sub phase inversion so you can test A/B &amp; v1 &rarr; v2 right away.
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
+
+        {healthStatus === "offline" && !errorMessage && (
+          <div
+            role="status"
+            className="mt-5 flex max-w-lg flex-wrap items-center justify-between gap-2 bg-[#FEF7EC] px-4 py-3 text-left text-xs text-[#B45309] border border-[rgba(180,83,9,0.22)] squircle-inner"
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                Python DSP backend is currently unreachable. Start the FastAPI server or click the header status pill to inspect your API URL.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={onRetryHealth}
+              className="bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-semibold text-[#182220] hairline-border squircle-inner cursor-pointer hover:bg-[#F5F5F7]"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {errorMessage && (
           <div
