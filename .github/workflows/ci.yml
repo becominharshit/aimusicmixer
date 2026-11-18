@@ -46,5 +46,13 @@ jobs:
         run: npm run lint
       - name: Vitest unit tests
         run: npm run test
-      - name: Next.js production build
+      - name: Next.js production build (no Supabase env)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ""
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ""
+        run: npm run build
+      - name: Next.js production build (mock Supabase env)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock.sig"
         run: npm run build

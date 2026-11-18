@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ShieldCheck, Sliders, Sparkles } from "lucide-react";
+import { AlertCircle, CheckCircle2, ShieldCheck, Sliders, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -19,6 +19,7 @@ interface MentorPrivacyPanelProps {
   onJumpToEvidence: (evidenceId: string) => void;
   privacyPrefs?: PrivacyPreferences;
   onPrivacyPrefsChange?: (prefs: PrivacyPreferences) => void;
+  privacySaveState?: "idle" | "saving" | "saved" | "error";
   isSignedIn?: boolean;
 }
 
@@ -31,6 +32,7 @@ export function MentorPrivacyPanel({
   onJumpToEvidence,
   privacyPrefs,
   onPrivacyPrefsChange,
+  privacySaveState = "idle",
   isSignedIn = false,
 }: MentorPrivacyPanelProps) {
   const [localPrefs, setLocalPrefs] = useState<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
@@ -70,23 +72,44 @@ export function MentorPrivacyPanel({
     });
   };
 
+  const modeAttribution =
+    mentorAdvice?.mode === "gemini_multimodal_audio"
+      ? "Live Gemini Audio + Metrics"
+      : mentorAdvice?.mode === "gemini_metrics_only"
+        ? "Live Gemini Metrics Only"
+        : "Offline Deterministic";
+
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* Three-Tier Independent Granular Privacy Controls */}
       <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-2 text-xs font-semibold text-[#182220]">
-            <ShieldCheck className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
+            <ShieldCheck className="h-4 w-4 shrink-0 text-[#3A7269]" aria-hidden="true" />
             Privacy &amp; AI Data Consent Controls
           </span>
-          <span className="bg-[#ECFDF3] px-2 py-0.5 text-[10px] font-semibold text-[#15803D] squircle-inner">
-            {isSignedIn ? "Synced to Profile (Default Off)" : "Default Off"}
-          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {privacySaveState === "saved" && (
+              <span className="inline-flex items-center gap-1 bg-[#ECFDF3] px-2 py-0.5 text-[10px] font-semibold text-[#15803D] squircle-inner">
+                <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                Saved to profile
+              </span>
+            )}
+            {privacySaveState === "error" && (
+              <span className="inline-flex items-center gap-1 bg-[#FFF1F3] px-2 py-0.5 text-[10px] font-semibold text-[#BE123C] squircle-inner">
+                <AlertCircle className="h-3 w-3" aria-hidden="true" />
+                Sync failed
+              </span>
+            )}
+            <span className="bg-[#ECFDF3] px-2 py-0.5 text-[10px] font-semibold text-[#15803D] squircle-inner">
+              {isSignedIn ? "Synced to Profile (Default Off)" : "Default Off"}
+            </span>
+          </div>
         </div>
 
         <div className="space-y-2.5 text-xs">
           <div className="flex items-start justify-between gap-3 bg-[#F5F5F7] p-3 squircle-inner">
-            <div className="space-y-0.5">
+            <div className="min-w-0 space-y-0.5">
               <div className="font-semibold text-[#182220]">
                 1. Numerical DSP Metrics &amp; Evidence IDs
               </div>
@@ -102,12 +125,12 @@ export function MentorPrivacyPanel({
           </div>
 
           <div className="flex items-start justify-between gap-3 bg-[#F5F5F7] p-3 squircle-inner">
-            <div className="space-y-0.5">
+            <div className="min-w-0 space-y-0.5">
               <div className="font-semibold text-[#182220]">
                 2. Direct Audio Snippet Analysis
               </div>
               <p className="text-[11px] leading-relaxed text-[#52605D]">
-                Separate opt-in required before sending a compressed 25s clip around the top issue to external Gemini APIs.
+                Separate opt-in required before sending a compressed 25s clip around the highest-severity section to external Gemini APIs.
               </p>
             </div>
             <Switch
@@ -125,12 +148,12 @@ export function MentorPrivacyPanel({
           </div>
 
           <div className="flex items-start justify-between gap-3 bg-[#F5F5F7] p-3 squircle-inner">
-            <div className="space-y-0.5">
+            <div className="min-w-0 space-y-0.5">
               <div className="font-semibold text-[#182220]">
                 3. Model Training Permission
               </div>
               <p className="text-[11px] leading-relaxed text-[#52605D]">
-                Strictly OFF by default. API calls use <code className="text-[#182220]">store=false</code> (ephemeral processing is not identical to zero retention); model training never occurs unless explicitly enabled.
+                Strictly OFF by default. API calls use <code className="text-[#182220]">store=false</code>; model training never occurs unless explicitly enabled.
               </p>
             </div>
             <Switch
@@ -188,17 +211,31 @@ export function MentorPrivacyPanel({
 
       {/* Mentor Advice Output */}
       {mentorAdvice && (
-        <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner space-y-3">
+        <div className="min-w-0 bg-[#FFFFFF] p-4 hairline-border squircle-inner space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-semibold text-[#182220]">
               Coaching Brief
             </span>
-            <span className="bg-[#EBF3F1] px-2 py-0.5 text-[10px] font-medium text-[#3A7269] squircle-inner">
-              {mentorAdvice.mode.replaceAll("_", " ")} · {mentorAdvice.model_used}
+            <span
+              className={`max-w-full break-words px-2 py-0.5 text-[10px] font-medium squircle-inner ${
+                mentorAdvice.mode === "deterministic_fallback"
+                  ? "bg-[#F5F5F7] text-[#52605D]"
+                  : "bg-[#EBF3F1] text-[#3A7269]"
+              }`}
+            >
+              {modeAttribution} · {mentorAdvice.model_used}
             </span>
           </div>
-          <p className="text-xs leading-relaxed text-[#182220]">{mentorAdvice.summary}</p>
-          <p className="bg-[#F5F5F7] p-2.5 text-[11px] text-[#52605D] squircle-inner">
+
+          {mentorAdvice.fallback_reason && (
+            <div className="flex items-start gap-2 bg-[#FEF7EC] p-2.5 text-[11px] text-[#B45309] border border-[rgba(180,83,9,0.22)] squircle-inner">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="break-words">{mentorAdvice.fallback_reason}</span>
+            </div>
+          )}
+
+          <p className="text-xs leading-relaxed text-[#182220] break-words">{mentorAdvice.summary}</p>
+          <p className="bg-[#F5F5F7] p-2.5 text-[11px] text-[#52605D] squircle-inner break-words">
             <strong className="text-[#182220]">Artist Vision Framing: </strong>
             {mentorAdvice.vision_alignment_note}
           </p>
@@ -209,30 +246,30 @@ export function MentorPrivacyPanel({
                 key={action.evidence_id}
                 className="bg-[#FAFAFA] p-3 hairline-border squircle-inner space-y-1.5"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-[#182220]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-[#182220] break-words">
                     {action.headline}
                   </span>
                   <button
                     type="button"
                     onClick={() => onJumpToEvidence(action.evidence_id)}
-                    className="bg-[#EBF3F1] px-2 py-0.5 text-[10px] font-medium text-[#3A7269] hover:bg-[#DFECE9] tabular-telemetry squircle-inner cursor-pointer"
+                    className="shrink-0 bg-[#EBF3F1] px-2 py-0.5 text-[10px] font-medium text-[#3A7269] hover:bg-[#DFECE9] tabular-telemetry squircle-inner cursor-pointer"
                   >
                     {action.evidence_id}
                   </button>
                 </div>
-                <p className="text-[11px] text-[#52605D]">{action.coaching_note}</p>
-                <p className="text-[11px] text-[#182220]">
+                <p className="text-[11px] text-[#52605D] break-words">{action.coaching_note}</p>
+                <p className="text-[11px] text-[#182220] break-words">
                   <strong>Experiment:</strong> {action.daw_experiment}
                 </p>
-                <p className="text-[11px] text-[#52605D]">
+                <p className="text-[11px] text-[#52605D] break-words">
                   <strong>Recheck:</strong> {action.verification_step}
                 </p>
               </div>
             ))}
           </div>
 
-          <div className="border-t border-[rgba(24,34,32,0.06)] pt-2 text-[10px] leading-relaxed text-[#52605D]">
+          <div className="border-t border-[rgba(24,34,32,0.06)] pt-2 text-[10px] leading-relaxed text-[#52605D] break-words">
             <div>
               Audit: raw_audio_sent_to_ai={String(mentorAdvice.privacy_audit.raw_audio_sent_to_ai)} ·{" "}
               external_ai_enabled={String(mentorAdvice.privacy_audit.external_ai_enabled)} ·{" "}
@@ -245,7 +282,7 @@ export function MentorPrivacyPanel({
 
       {/* DAW / Plugin Chain Context Drawer (user_reported_context) */}
       <div className="bg-[#F5F5F7] p-4 hairline-border squircle-inner space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#182220]">
             <Sliders className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
             DAW &amp; Chain Context

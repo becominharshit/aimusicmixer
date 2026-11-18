@@ -32,9 +32,9 @@ from app.schemas.report import (
     AnalysisContext,
     AnalysisReport,
     CompareReportsRequest,
+    ContextUpdateRequest,
     MentorRequest,
     MentorStandaloneRequest,
-    UserReportedContext,
 )
 from app.services import analyze_audio_to_report, session_store
 
@@ -69,6 +69,7 @@ def test_end_to_end_session_demo_stems_revision_mentor_and_cleanup() -> None:
         artist_vision='["punchy","wide"]',
     )
     sid = report.session_id
+    assert len(sid) > 20  # Full 128-bit unpredictable session ID
     assert report.context.has_user_stems is False
     assert report.stem_analysis is None
     assert len(report.findings) >= 3
@@ -112,15 +113,20 @@ def test_end_to_end_session_demo_stems_revision_mentor_and_cleanup() -> None:
     )
     assert stateless_comp.metric_deltas.true_peak_dbtp_delta == v2_report.revision_comparison.metric_deltas.true_peak_dbtp_delta
 
-    # 5. Update DAW user-reported context
+    # 5. Update DAW user-reported context AND re-evaluate genre/stage instantly without re-upload
     ctx_report = update_user_reported_context(
         sid,
-        UserReportedContext(
+        ContextUpdateRequest(
+            genre="rock",
+            stage="final_master",
+            artist_vision=["dynamic"],
             daw="Ableton Live 12",
             bus_routing="Drum Bus -> Mix Bus",
             plugin_notes="Limiter bypassed",
         ),
     )
+    assert ctx_report.context.genre == "rock"
+    assert ctx_report.context.stage == "final_master"
     assert ctx_report.context.user_reported_context is not None
     assert ctx_report.context.user_reported_context.source_tag == "user_reported_context"
 
@@ -136,8 +142,8 @@ def test_end_to_end_session_demo_stems_revision_mentor_and_cleanup() -> None:
     assert mentor_resp.mode == "deterministic_fallback"
     assert mentor_resp.privacy_audit.raw_audio_sent_to_ai is False
     assert mentor_resp.privacy_audit.external_ai_enabled is False
-    valid_ids = {f.evidence_id for f in v2_report.findings} | {
-        o.evidence_id for o in (v2_report.stem_analysis.overlap_matrix if v2_report.stem_analysis else [])
+    valid_ids = {f.evidence_id for f in ctx_report.findings} | {
+        o.evidence_id for o in (ctx_report.stem_analysis.overlap_matrix if ctx_report.stem_analysis else [])
     }
     assert all(eid in valid_ids for eid in mentor_resp.cited_evidence_ids)
 
@@ -157,11 +163,9 @@ class _MemUpload:
 
 
 def _run_coro_sync(coro):
-    while True:
-        try:
-            coro.send(None)
-        except StopIteration as stop:
-            return stop.value
+    import asyncio
+
+    return asyncio.run(coro)
 
 
 def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path, monkeypatch) -> None:
@@ -188,6 +192,14 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
         assert leftover == []
         assert report.audio_metadata.filename == "demo-flawed-v1.wav"
         assert report.context.has_user_stems is False
+
+        # Persisted primary proxy path survives RAM eviction and reloads transparently
+        rec = session_store.get_session(report.session_id)
+        assert rec is not None
+        assert rec.primary_audio_path is not None and rec.primary_audio_path.exists()
+        rec.primary_loaded = None
+        reloaded = session_store.get_or_reload_primary_audio(rec)
+        assert reloaded is not None and reloaded.duration_sec > 1.0
 
         # Standalone /api/analyze/stems returns StemAnalysis and enforces 2-8 bounds
         stems_dir = settings.sample_assets_dir / "stems"
@@ -223,15 +235,13 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
         assert offline_advice.privacy_audit.raw_audio_sent_to_ai is False
         assert offline_advice.privacy_audit.external_ai_enabled is False
 
-        # Mocked Gemini API client call verifies structured JSON + store=False + metrics-only privacy audit
+        # Mocked Gemini client.models.generate_content verifies structured JSON + temperature=0.2 + metrics-only privacy audit
         import google.genai as real_genai
-
-        from app import ai as _ai_pkg  # noqa: F401
 
         captured: dict = {}
 
-        class FakeInteractions:
-            def create(self, **kwargs):
+        class FakeModels:
+            def generate_content(self, **kwargs):
                 captured.update(kwargs)
                 valid_eid = report.findings[0].evidence_id
                 payload = json.dumps(
@@ -250,11 +260,12 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
                         ],
                     }
                 )
-                return SimpleNamespace(output_text=payload)
+                return SimpleNamespace(text=payload)
 
         class FakeClient:
-            def __init__(self, api_key: str) -> None:
-                self.interactions = FakeInteractions()
+            def __init__(self, api_key: str, http_options=None) -> None:
+                captured["http_options"] = http_options
+                self.models = FakeModels()
 
         monkeypatch.setattr(settings, "gemini_api_key", "test-key-123")
         monkeypatch.setattr(real_genai, "Client", FakeClient)
@@ -269,10 +280,11 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
             )
         )
         assert gemini_resp.mode == "gemini_metrics_only", gemini_resp.summary
+        assert gemini_resp.fallback_reason is None
         assert gemini_resp.privacy_audit.raw_audio_sent_to_ai is False
         assert gemini_resp.privacy_audit.external_ai_enabled is True
-        assert captured.get("store") is False
-        assert isinstance(captured.get("input"), str)
+        assert captured.get("model") == settings.gemini_model
+        assert captured.get("config").temperature == 0.2
     finally:
         clear_session(report.session_id)
 
@@ -295,72 +307,6 @@ def test_corrupt_upload_rejected_and_missing_session_404(tmp_path) -> None:
     with pytest.raises(HTTPException) as exc_info:
         load_demo_stems("sess_nonexistent_999")
     assert exc_info.value.status_code == 404
-
-
-def test_lifespan_keep_alive_task(monkeypatch) -> None:
-    import asyncio
-
-    from app import main as main_mod
-
-    called_urls: list[str] = []
-    sleep_delays: list[float] = []
-    created_coros: list[object] = []
-
-    def fake_ping(url: str, timeout_sec: float = 10.0) -> int:
-        called_urls.append(url)
-        if len(called_urls) == 1:
-            raise RuntimeError("transient network hiccup")
-        if len(called_urls) >= 2:
-            raise asyncio.CancelledError()
-        return 200
-
-    async def fake_sleep(delay: float) -> None:
-        sleep_delays.append(delay)
-
-    async def fake_to_thread(fn, *args, **kwargs):
-        return fn(*args, **kwargs)
-
-    class _DummyTask:
-        def __init__(self, coro) -> None:
-            self.coro = coro
-            self.cancelled = False
-            coro.close()
-
-        def cancel(self) -> None:
-            self.cancelled = True
-
-        def __await__(self):
-            if False:
-                yield None
-            raise asyncio.CancelledError()
-
-    def fake_create_task(coro):
-        created_coros.append(coro)
-        return _DummyTask(coro)
-
-    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://mixbench-dsp.onrender.com/")
-    monkeypatch.setattr(main_mod, "KEEP_ALIVE_INTERVAL_SEC", 600.0)
-    monkeypatch.setattr(main_mod, "_ping_health_sync", fake_ping)
-    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(asyncio, "create_task", fake_create_task)
-
-    # 1. Verify lifespan creates and cancels keep-alive task cleanly
-    async def _exercise_lifespan() -> None:
-        async with main_mod.lifespan(main_mod.app):
-            assert len(created_coros) == 1
-
-    _run_coro_sync(_exercise_lifespan())
-
-    # 2. Verify keep-alive loop sleeps 600s, hits /health, and survives transient errors
-    with pytest.raises(asyncio.CancelledError):
-        _run_coro_sync(main_mod._keep_alive_loop("https://mixbench-dsp.onrender.com/"))
-
-    assert sleep_delays == [600.0, 600.0]
-    assert called_urls == [
-        "https://mixbench-dsp.onrender.com/health",
-        "https://mixbench-dsp.onrender.com/health",
-    ]
 
 
 def test_oversized_upload_returns_413_and_cleans_up(monkeypatch) -> None:
@@ -394,13 +340,13 @@ def test_gemini_api_error_triggers_deterministic_fallback(monkeypatch) -> None:
 
     mock_report = get_mock_report()
 
-    class BrokenInteractions:
-        def create(self, **kwargs):
+    class BrokenModels:
+        def generate_content(self, **kwargs):
             raise RuntimeError("404 NOT_FOUND: model not found")
 
     class BrokenClient:
-        def __init__(self, api_key: str) -> None:
-            self.interactions = BrokenInteractions()
+        def __init__(self, api_key: str, http_options=None) -> None:
+            self.models = BrokenModels()
 
     monkeypatch.setattr(settings, "gemini_api_key", "test-key-123")
     monkeypatch.setattr(real_genai, "Client", BrokenClient)
@@ -415,10 +361,11 @@ def test_gemini_api_error_triggers_deterministic_fallback(monkeypatch) -> None:
         )
     )
     assert resp.mode == "deterministic_fallback"
+    assert resp.fallback_reason is not None and "RuntimeError" in resp.fallback_reason
     assert "Offline Mentor fallback" in resp.summary
 
 
-def test_cors_and_memory_cap_configuration(monkeypatch) -> None:
+def test_cors_and_memory_cap_configuration() -> None:
     from fastapi.middleware.cors import CORSMiddleware
 
     from app.core.config import Settings

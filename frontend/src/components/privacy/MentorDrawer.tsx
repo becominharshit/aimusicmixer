@@ -19,6 +19,7 @@ interface MentorDrawerProps {
   onJumpToEvidence: (evidenceId: string) => void;
   privacyPrefs?: PrivacyPreferences;
   onPrivacyPrefsChange?: (prefs: PrivacyPreferences) => void;
+  privacySaveState?: "idle" | "saving" | "saved" | "error";
   isSignedIn?: boolean;
 }
 
@@ -33,6 +34,7 @@ export function MentorDrawer({
   onJumpToEvidence,
   privacyPrefs,
   onPrivacyPrefsChange,
+  privacySaveState = "idle",
   isSignedIn = false,
 }: MentorDrawerProps) {
   useEffect(() => {
@@ -55,7 +57,7 @@ export function MentorDrawer({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18, ease: STUDIO_EASE }}
             onClick={onClose}
-            className="fixed inset-0 z-50 bg-[rgba(24,34,32,0.28)] backdrop-blur-[2px]"
+            className="no-print fixed inset-0 z-50 bg-[rgba(24,34,32,0.28)] backdrop-blur-[2px]"
           />
           <motion.aside
             key="mentor-sheet"
@@ -66,18 +68,18 @@ export function MentorDrawer({
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={STUDIO_SPRING}
-            className="fixed top-0 right-0 bottom-0 z-50 flex w-full max-w-[460px] flex-col border-l border-[rgba(24,34,32,0.08)] bg-[#FAFAFA] shadow-lg"
+            className="no-print fixed top-0 right-0 bottom-0 z-50 flex w-full max-w-[500px] flex-col overflow-x-hidden border-l border-[rgba(24,34,32,0.08)] bg-[#FAFAFA] shadow-lg"
           >
-            <div className="flex items-center justify-between border-b border-[rgba(24,34,32,0.08)] bg-[#FFFFFF] px-5 py-4">
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center bg-[#EBF3F1] text-[#3A7269] squircle-inner">
+            <div className="flex items-center justify-between border-b border-[rgba(24,34,32,0.08)] bg-[#FFFFFF] px-4 py-3.5 sm:px-5 sm:py-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center bg-[#EBF3F1] text-[#3A7269] squircle-inner">
                   <Sparkles className="h-4 w-4" aria-hidden="true" />
                 </span>
-                <div>
+                <div className="min-w-0">
                   <h2 className="text-sm font-bold text-[#182220]">
                     AI Mix Mentor
                   </h2>
-                  <p className="text-[11px] text-[#52605D]">
+                  <p className="truncate text-[11px] text-[#52605D]">
                     Evidence-grounded coaching · Three-tier granular consent
                   </p>
                 </div>
@@ -86,13 +88,13 @@ export function MentorDrawer({
                 type="button"
                 onClick={onClose}
                 aria-label="Close AI Mix Mentor"
-                className="inline-flex h-8 w-8 items-center justify-center text-[#52605D] hover:bg-[#F5F5F7] hover:text-[#182220] squircle-inner cursor-pointer"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-[#52605D] hover:bg-[#F5F5F7] hover:text-[#182220] squircle-inner cursor-pointer"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-5">
               <MentorPrivacyPanel
                 report={report}
                 mentorAdvice={mentorAdvice}
@@ -101,6 +103,7 @@ export function MentorDrawer({
                 onSaveDawContext={onSaveDawContext}
                 privacyPrefs={privacyPrefs}
                 onPrivacyPrefsChange={onPrivacyPrefsChange}
+                privacySaveState={privacySaveState}
                 isSignedIn={isSignedIn}
                 onJumpToEvidence={(eid) => {
                   onJumpToEvidence(eid);

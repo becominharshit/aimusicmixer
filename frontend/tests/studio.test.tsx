@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MotionConfig } from "motion/react";
 import { StudioAudioEngine } from "@/audio/StudioAudioEngine";
 import { BottomTransportDock } from "@/components/BottomTransportDock";
+import { FindingCard } from "@/components/FindingCard";
 import { StudioHeader } from "@/components/StudioHeader";
 import { MAX_SINGLE_FILE_BYTES, UploadStage } from "@/components/UploadStage";
 import { RevisionInspector } from "@/components/advanced/RevisionInspector";
@@ -46,6 +47,7 @@ const mockReport: AnalysisReport = {
     crest_factor_db: 14.6,
     psr_db: 11.2,
     phase_correlation_avg: 0.78,
+    low_end_phase_correlation: 0.91,
     stereo_width_ratio: 0.42,
   },
   streaming_estimates: [],
@@ -57,6 +59,7 @@ const mockReport: AnalysisReport = {
       category: "tonal_balance",
       severity: "caution",
       confidence: "measured",
+      band_name: "low",
       title: "Low-End Buildup Around 60–250 Hz",
       timestamp_start_sec: 4,
       timestamp_end_sec: 12,
@@ -79,7 +82,7 @@ const mockReport: AnalysisReport = {
 };
 
 describe("MixBench UI & Privacy Contracts", () => {
-  it("renders Simple Mix Check with telemetry and evidence_id without fake aggregate scores", () => {
+  it("renders Simple Mix Check with telemetry, platform preview, and evidence_id without fake aggregate scores", () => {
     render(
       <MotionConfig reducedMotion="user">
         <SimpleView
@@ -103,6 +106,7 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(screen.getByText(/Listen:/i)).toBeInTheDocument();
     expect(screen.getByText(/What to try:/i)).toBeInTheDocument();
     expect(screen.getByText(/Recheck:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Platform Loudness Normalization Preview/i)).toBeInTheDocument();
     expect(screen.queryByText(/\/100/)).not.toBeInTheDocument();
   });
 
@@ -192,14 +196,17 @@ describe("MixBench UI & Privacy Contracts", () => {
         onUploadRevision={vi.fn()}
         onLoadDemoRevision={vi.fn()}
         onAuditionRevised={vi.fn()}
+        onAuditionBaseline={vi.fn()}
       />
     );
 
     expect(screen.getByText(/-2\.10 dBTP/i)).toBeInTheDocument();
     expect(screen.getByText("improved")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Baseline v1/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Revised v2/i })).toBeInTheDocument();
   });
 
-  it("initializes StudioAudioEngine cleanly with default Full Range and Stereo modes", () => {
+  it("initializes StudioAudioEngine cleanly with Full Range, Stereo, and Corrective EQ toggle", () => {
     const engine = new StudioAudioEngine();
     const state = engine.getState();
     expect(state.activeSource).toBe("primary");
@@ -207,14 +214,37 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(state.deviceProfile).toBe("full");
     expect(state.matchLoudness).toBe(true);
     expect(state.loudnessOffsetDb).toBe(0);
+    expect(state.activeCorrectiveEqId).toBeNull();
   });
 
-  it("renders live backend health states in StudioHeader including waking cold-start and offline popover", () => {
+  it("handles FindingCard No-Audio disabled state and corrective EQ audition button", () => {
+    const onAudition = vi.fn();
+    const onToggleEq = vi.fn();
+    const onRecheck = vi.fn();
+
+    render(
+      <FindingCard
+        finding={mockReport.findings[0]}
+        index={0}
+        hasAudio={false}
+        onAudition={onAudition}
+        onRecheck={onRecheck}
+        onToggleCorrectiveEq={onToggleEq}
+      />
+    );
+
+    const noAudioBtn = screen.getByRole("button", { name: /No Audio/i });
+    expect(noAudioBtn).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Recheck in v2/i }));
+    expect(onRecheck).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders live backend health states and report export controls in StudioHeader", () => {
     const { rerender } = render(
       <StudioHeader
         mode="simple"
         onModeChange={vi.fn()}
-        report={null}
+        report={mockReport}
         onClearSession={vi.fn()}
         healthStatus="online"
         healthData={{ status: "ok", ffmpeg_available: true, gemini_configured: false }}
@@ -223,6 +253,8 @@ describe("MixBench UI & Privacy Contracts", () => {
       />
     );
     expect(screen.getByText("DSP Engine Online")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Export JSON report/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Print PDF report/i })).toBeInTheDocument();
 
     rerender(
       <StudioHeader
@@ -263,7 +295,7 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(screen.getByText(/Failed to fetch/i)).toBeInTheDocument();
   });
 
-  it("renders WorkspaceSubNav tabs and BottomTransportDock translation profiles cleanly", () => {
+  it("renders WorkspaceSubNav tabs and calibrated BottomTransportDock translation profiles cleanly", () => {
     render(
       <>
         <WorkspaceSubNav
@@ -300,7 +332,7 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(screen.getByRole("tab", { name: /Original Stems/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Revision Check/i })).toBeInTheDocument();
     expect(screen.getByText(/300Hz–4\.5kHz · Mono/i)).toBeInTheDocument();
-    expect(screen.getByText(/180Hz–12kHz/i)).toBeInTheDocument();
+    expect(screen.getByText(/150Hz–8kHz/i)).toBeInTheDocument();
   });
 
   it("blocks files over 50 MB client-side and gracefully disables Supabase when env vars are unset", () => {

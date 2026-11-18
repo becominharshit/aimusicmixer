@@ -67,6 +67,7 @@ class GlobalMetrics(BaseModel):
     plr_db: float = 0.0
     psr_db: float
     phase_correlation_avg: float
+    low_end_phase_correlation: float = 1.0
     stereo_width_ratio: float
 
 
@@ -97,6 +98,7 @@ class Finding(BaseModel):
     category: FindingCategory
     severity: SeverityType
     confidence: ConfidenceType = "measured"
+    band_name: BandName | None = None
     title: str
     timestamp_start_sec: float
     timestamp_end_sec: float
@@ -230,6 +232,7 @@ class MentorRequest(BaseModel):
 class MentorResponse(BaseModel):
     mode: Literal["deterministic_fallback", "gemini_metrics_only", "gemini_multimodal_audio"]
     model_used: str
+    fallback_reason: str | None = None
     summary: str
     vision_alignment_note: str
     prioritized_actions: list[MentorAction] = Field(default_factory=list)
@@ -240,6 +243,16 @@ class MentorResponse(BaseModel):
 class CompareReportsRequest(BaseModel):
     baseline: AnalysisReport
     revised: AnalysisReport
+
+
+class ContextUpdateRequest(BaseModel):
+    genre: GenreType | None = None
+    stage: StageType | None = None
+    artist_vision: list[ArtistVisionTag] | None = None
+    daw: str | None = None
+    bus_routing: str | None = None
+    plugin_notes: str | None = None
+    source_tag: Literal["user_reported_context"] = "user_reported_context"
 
 
 class MentorStandaloneRequest(MentorRequest):

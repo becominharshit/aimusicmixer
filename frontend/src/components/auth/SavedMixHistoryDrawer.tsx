@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { FolderOpen, GitCompare, History, RefreshCw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,29 +12,38 @@ interface SavedMixHistoryDrawerProps {
   open: boolean;
   onClose: () => void;
   analyses: SavedAnalysisRecord[];
+  hasMore?: boolean;
   isLoading: boolean;
   activeReport: AnalysisReport | null;
   isComparingSaved: boolean;
   onRefresh: () => void;
-  onLoadReport: (report: AnalysisReport) => void;
+  onLoadMore?: () => void;
+  onLoadReport: (record: SavedAnalysisRecord) => void;
   onCompareAgainstActive: (baselineReport: AnalysisReport) => void;
-  onDeleteAnalysis: (analysisId: string) => void;
+  onDeleteAnalysis: (analysisId: string, proxyStoragePath?: string | null) => void;
 }
 
 export function SavedMixHistoryDrawer({
   open,
   onClose,
   analyses,
+  hasMore = false,
   isLoading,
   activeReport,
   isComparingSaved,
   onRefresh,
+  onLoadMore,
   onLoadReport,
   onCompareAgainstActive,
   onDeleteAnalysis,
 }: SavedMixHistoryDrawerProps) {
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setConfirmDeleteId(null);
+      return;
+    }
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -53,7 +62,7 @@ export function SavedMixHistoryDrawer({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18, ease: STUDIO_EASE }}
             onClick={onClose}
-            className="fixed inset-0 z-50 bg-[rgba(24,34,32,0.28)] backdrop-blur-[2px]"
+            className="no-print fixed inset-0 z-50 bg-[rgba(24,34,32,0.28)] backdrop-blur-[2px]"
           />
           <motion.aside
             key="history-sheet"
@@ -64,7 +73,7 @@ export function SavedMixHistoryDrawer({
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={STUDIO_SPRING}
-            className="fixed top-0 right-0 bottom-0 z-50 flex w-full max-w-[460px] flex-col border-l border-[rgba(24,34,32,0.08)] bg-[#FAFAFA] shadow-lg"
+            className="no-print fixed top-0 right-0 bottom-0 z-50 flex w-full max-w-[480px] flex-col border-l border-[rgba(24,34,32,0.08)] bg-[#FAFAFA] shadow-lg"
           >
             <div className="flex items-center justify-between border-b border-[rgba(24,34,32,0.08)] bg-[#FFFFFF] px-5 py-4">
               <div className="flex items-center gap-2">
@@ -112,92 +121,141 @@ export function SavedMixHistoryDrawer({
                     No saved analyses yet
                   </div>
                   <p className="text-xs text-[#52605D]">
-                    Analyze a mix or revision while signed in and your structured AnalysisReport v1.0 telemetry will appear here automatically.
+                    Analyze an uploaded mix or revision while signed in and your structured AnalysisReport v1.0 telemetry will appear here automatically.
                   </p>
                 </div>
               ) : (
-                analyses.map((row) => {
-                  const rep = row.report_json;
-                  const canCompare =
-                    Boolean(activeReport) && activeReport?.report_id !== rep.report_id;
+                <>
+                  {analyses.map((row) => {
+                    const rep = row.report_json;
+                    const canCompare =
+                      Boolean(activeReport) && activeReport?.report_id !== rep.report_id;
+                    const confirming = confirmDeleteId === row.id;
 
-                  return (
-                    <div
-                      key={row.id}
-                      className="bg-[#FFFFFF] p-4 hairline-border squircle-inner space-y-2.5"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate text-xs font-semibold text-[#182220]">
-                              {row.track_name}
-                            </span>
-                            <span className="rounded-full bg-[#EBF3F1] px-2 py-0.5 text-[10px] font-semibold text-[#3A7269] tabular-telemetry">
-                              {row.version_label}
-                            </span>
+                    return (
+                      <div
+                        key={row.id}
+                        className="bg-[#FFFFFF] p-4 hairline-border squircle-inner space-y-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="truncate text-xs font-semibold text-[#182220]">
+                                {row.track_name}
+                              </span>
+                              <span className="rounded-full bg-[#EBF3F1] px-2 py-0.5 text-[10px] font-semibold text-[#3A7269] tabular-telemetry">
+                                {row.version_label}
+                              </span>
+                              {row.parent_analysis_id && (
+                                <span className="rounded-full bg-[#F5F5F7] px-2 py-0.5 text-[10px] font-medium text-[#52605D]">
+                                  Linked v1
+                                </span>
+                              )}
+                              {row.proxy_storage_path && (
+                                <span className="rounded-full bg-[#ECFDF3] px-2 py-0.5 text-[10px] font-medium text-[#15803D]">
+                                  Audio Proxy
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-[#52605D]">
+                              {row.genre} · {row.stage.replaceAll("_", " ")} ·{" "}
+                              {new Date(row.created_at).toLocaleDateString()}
+                            </div>
                           </div>
-                          <div className="text-[11px] text-[#52605D]">
-                            {row.genre} · {row.stage.replaceAll("_", " ")} ·{" "}
-                            {new Date(row.created_at).toLocaleDateString()}
-                          </div>
+
+                          {confirming ? (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmDeleteId(null);
+                                  onDeleteAnalysis(row.id, row.proxy_storage_path);
+                                }}
+                                className="bg-[#BE123C] px-2 py-1 text-[10px] font-semibold text-white squircle-inner cursor-pointer hover:bg-[#9F1239]"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="bg-[#F5F5F7] px-2 py-1 text-[10px] font-medium text-[#52605D] squircle-inner cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(row.id)}
+                              aria-label={`Delete saved analysis ${row.track_name}`}
+                              className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#52605D] hover:bg-[#FFF1F3] hover:text-[#BE123C] squircle-inner cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => onDeleteAnalysis(row.id)}
-                          aria-label={`Delete saved analysis ${row.track_name}`}
-                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#52605D] hover:bg-[#FFF1F3] hover:text-[#BE123C] squircle-inner cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                        </button>
-                      </div>
 
-                      <div className="flex flex-wrap gap-2 text-[11px] text-[#182220] tabular-telemetry">
-                        <span className="bg-[#F5F5F7] px-2 py-0.5 squircle-inner">
-                          {rep.global_metrics.integrated_lufs.toFixed(1)} LUFS
-                        </span>
-                        <span className="bg-[#F5F5F7] px-2 py-0.5 squircle-inner">
-                          {rep.global_metrics.true_peak_dbtp >= 0 ? "+" : ""}
-                          {rep.global_metrics.true_peak_dbtp.toFixed(2)} dBTP
-                        </span>
-                        <span className="bg-[#F5F5F7] px-2 py-0.5 squircle-inner">
-                          Corr {rep.global_metrics.phase_correlation_avg >= 0 ? "+" : ""}
-                          {rep.global_metrics.phase_correlation_avg.toFixed(2)}
-                        </span>
-                      </div>
+                        <div className="flex flex-wrap gap-2 text-[11px] text-[#182220] tabular-telemetry">
+                          <span className="bg-[#F5F5F7] px-2 py-0.5 squircle-inner">
+                            {rep.global_metrics.integrated_lufs.toFixed(1)} LUFS
+                          </span>
+                          <span className="bg-[#F5F5F7] px-2 py-0.5 squircle-inner">
+                            {rep.global_metrics.true_peak_dbtp >= 0 ? "+" : ""}
+                            {rep.global_metrics.true_peak_dbtp.toFixed(2)} dBTP
+                          </span>
+                          <span className="bg-[#F5F5F7] px-2 py-0.5 squircle-inner">
+                            Corr {rep.global_metrics.phase_correlation_avg >= 0 ? "+" : ""}
+                            {rep.global_metrics.phase_correlation_avg.toFixed(2)}
+                          </span>
+                        </div>
 
-                      <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            onLoadReport(rep);
-                            onClose();
-                          }}
-                        >
-                          <FolderOpen className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-                          Load Report
-                        </Button>
-
-                        {canCompare && (
+                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
                           <Button
                             type="button"
-                            variant="soft"
+                            variant="secondary"
                             size="sm"
-                            disabled={isComparingSaved}
                             onClick={() => {
-                              onCompareAgainstActive(rep);
+                              onLoadReport(row);
                               onClose();
                             }}
                           >
-                            <GitCompare className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-                            Compare vs Open Mix
+                            <FolderOpen className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                            Load Report
                           </Button>
-                        )}
+
+                          {canCompare && (
+                            <Button
+                              type="button"
+                              variant="soft"
+                              size="sm"
+                              disabled={isComparingSaved}
+                              onClick={() => {
+                                onCompareAgainstActive(rep);
+                                onClose();
+                              }}
+                            >
+                              <GitCompare className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                              Compare vs Open Mix
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+
+                  {hasMore && onLoadMore && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      disabled={isLoading}
+                      onClick={onLoadMore}
+                    >
+                      {isLoading ? "Loading more..." : "Load More Saved Mixes"}
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           </motion.aside>

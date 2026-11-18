@@ -18,7 +18,7 @@ class AudioIngestionError(ValueError):
 
 @dataclass
 class LoadedAudio:
-    samples: np.ndarray  # shape: (n_samples, n_channels), float64
+    samples: np.ndarray  # shape: (n_samples, n_channels), float32
     sample_rate: int
     channels: int
     bit_depth: int
@@ -86,7 +86,7 @@ def _run_ffprobe(file_path: Path) -> dict:
 def _compute_waveform_peaks(samples: np.ndarray, num_bins: int = 240) -> list[list[float]]:
     if len(samples) == 0:
         return []
-    mono = np.mean(samples, axis=1) if samples.ndim > 1 else samples
+    mono = np.mean(samples, axis=1, dtype=np.float32) if samples.ndim > 1 else samples
     actual_bins = min(num_bins, len(mono))
     chunks = np.array_split(mono, actual_bins)
     peaks: list[list[float]] = []
@@ -121,44 +121,47 @@ def load_audio_file(file_path: Path, max_bytes: int | None = None) -> LoadedAudi
     channels = probe["channels"]
     bit_depth = probe["bit_depth"]
 
-    # Read lossless formats directly at native sample rate and channel count (zero librosa mono downmix)
-    try:
-        info = sf.info(str(file_path))
-        subtype = str(info.subtype or "")
-        if "24" in subtype:
-            bit_depth = 24
-        elif "32" in subtype or "FLOAT" in subtype:
-            bit_depth = 32
-        elif "16" in subtype:
-            bit_depth = 16
+    # Read lossless mono/stereo directly at native sample rate as float32 (halves RAM vs float64).
+    # Surround (>2 ch) files are always routed through FFmpeg (-ac 2) for ITU-R standard downmix.
+    if channels <= 2:
+        try:
+            info = sf.info(str(file_path))
+            subtype = str(info.subtype or "")
+            if "24" in subtype:
+                bit_depth = 24
+            elif "32" in subtype or "FLOAT" in subtype:
+                bit_depth = 32
+            elif "16" in subtype:
+                bit_depth = 16
 
-        # Pre-allocate when frame count is known to avoid 2x RAM spikes from vstack
-        with sf.SoundFile(str(file_path)) as f:
-            sample_rate = f.samplerate
-            channels = f.channels
-            total_frames = int(f.frames or 0)
-            if total_frames > 0:
-                buf = np.empty((total_frames, channels), dtype="float64")
-                offset = 0
-                for block in f.blocks(blocksize=262144, dtype="float64", always_2d=True):
-                    n_read = block.shape[0]
-                    end = min(total_frames, offset + n_read)
-                    if end > offset:
-                        buf[offset:end] = block[: end - offset]
-                        offset = end
-                samples = buf[:offset] if offset < total_frames else buf
-            else:
-                chunks: list[np.ndarray] = []
-                for block in f.blocks(blocksize=262144, dtype="float64", always_2d=True):
-                    chunks.append(block)
-                if chunks:
-                    samples = np.vstack(chunks)
-                    chunks.clear()
-    except Exception:
-        samples = None
+            with sf.SoundFile(str(file_path)) as f:
+                sample_rate = f.samplerate
+                channels = f.channels
+                if channels <= 2:
+                    total_frames = int(f.frames or 0)
+                    if total_frames > 0:
+                        buf = np.empty((total_frames, channels), dtype=np.float32)
+                        offset = 0
+                        for block in f.blocks(blocksize=262144, dtype="float32", always_2d=True):
+                            n_read = block.shape[0]
+                            end = min(total_frames, offset + n_read)
+                            if end > offset:
+                                buf[offset:end] = block[: end - offset]
+                                offset = end
+                        samples = buf[:offset] if offset < total_frames else buf
+                    else:
+                        chunks: list[np.ndarray] = []
+                        for block in f.blocks(blocksize=262144, dtype="float32", always_2d=True):
+                            chunks.append(block)
+                        if chunks:
+                            samples = np.vstack(chunks).astype(np.float32, copy=False)
+                            chunks.clear()
+        except Exception:
+            samples = None
 
-    # Fallback via FFmpeg for MP3 / M4A / AAC while preserving native sample rate and stereo channels
+    # Decode compressed formats (MP3/M4A/AAC) or downmix surround (>2ch) via FFmpeg
     if samples is None:
+        target_channels = min(2, max(1, channels))
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_wav = Path(tmp.name)
         try:
@@ -170,6 +173,8 @@ def load_audio_file(file_path: Path, max_bytes: int | None = None) -> LoadedAudi
                 "-i",
                 str(file_path),
                 "-vn",
+                "-ac",
+                str(target_channels),
                 "-acodec",
                 "pcm_f32le",
                 str(tmp_wav),
@@ -179,7 +184,7 @@ def load_audio_file(file_path: Path, max_bytes: int | None = None) -> LoadedAudi
                 raise AudioIngestionError(
                     f"Failed to decode audio stream: {proc.stderr.strip() or 'invalid payload'}"
                 )
-            samples, sample_rate = sf.read(str(tmp_wav), dtype="float64", always_2d=True)
+            samples, sample_rate = sf.read(str(tmp_wav), dtype="float32", always_2d=True)
             channels = samples.shape[1]
         finally:
             tmp_wav.unlink(missing_ok=True)
@@ -187,7 +192,10 @@ def load_audio_file(file_path: Path, max_bytes: int | None = None) -> LoadedAudi
     if samples is None or samples.shape[0] == 0:
         raise AudioIngestionError("Decoded audio contains zero samples.")
 
-    # Normalize shape strictly to (n_samples, channels) and cap >2ch down to stereo if ever uploaded
+    if samples.dtype != np.float32:
+        samples = samples.astype(np.float32, copy=False)
+
+    # Safety guard if any container still reported >2 channels
     if samples.shape[1] > 2:
         samples = samples[:, :2]
         channels = 2
@@ -220,6 +228,8 @@ def create_playback_proxy(source_path: Path, target_dir: Path, stem_name: str = 
         "-vn",
         "-ar",
         "44100",
+        "-ac",
+        "2",
         "-c:a",
         "aac",
         "-b:a",
@@ -241,6 +251,8 @@ def create_playback_proxy(source_path: Path, target_dir: Path, stem_name: str = 
         "-vn",
         "-ar",
         "44100",
+        "-ac",
+        "2",
         "-acodec",
         "pcm_s16le",
         str(wav_path),

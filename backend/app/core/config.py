@@ -19,10 +19,14 @@ class Settings(BaseSettings):
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
     allowed_origins: str = ""
+    allowed_origin_regex: str = r"^https://[a-zA-Z0-9-]+\.vercel\.app$"
     cors_origins: str = "*"
     max_single_file_mb: int = 50
     max_stem_total_mb: int = 150
     session_ttl_minutes: int = 60
+    max_disk_sessions: int = 15
+    rate_limit_max_requests: int = 30
+    rate_limit_window_seconds: int = 60
     tmp_sessions_dir: Path = Path(tempfile.gettempdir()) / "mixbench_sessions"
     sample_assets_dir: Path = _default_sample_assets_dir()
 

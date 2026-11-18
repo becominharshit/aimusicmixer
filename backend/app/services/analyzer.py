@@ -14,6 +14,7 @@ from app.dsp import (
     create_playback_proxy,
     load_audio_file,
 )
+from app.dsp.spectrum import build_spectral_bands_from_energies
 from app.rules import compute_streaming_estimates, evaluate_mix_findings
 from app.schemas.report import (
     AnalysisContext,
@@ -23,6 +24,7 @@ from app.schemas.report import (
     PrivacyAudit,
     TimeSeries,
 )
+from app.services.session_store import CachedDspSnapshot
 
 
 def analyze_audio_to_report(
@@ -34,7 +36,8 @@ def analyze_audio_to_report(
     proxy_url: str,
     context: AnalysisContext,
     max_file_bytes: int | None = None,
-) -> tuple[AnalysisReport, LoadedAudio]:
+    return_snapshot: bool = False,
+) -> tuple[AnalysisReport, LoadedAudio] | tuple[AnalysisReport, LoadedAudio, CachedDspSnapshot]:
     """Run the full deterministic DSP pipeline on a single mix file."""
     loaded = load_audio_file(source_path, max_bytes=max_file_bytes)
     create_playback_proxy(source_path, proxy_dir, stem_name=proxy_name)
@@ -62,6 +65,7 @@ def analyze_audio_to_report(
         plr_db=dynamics.plr_db,
         psr_db=dynamics.psr_db,
         phase_correlation_avg=stereo.phase_correlation_avg,
+        low_end_phase_correlation=stereo.low_end_phase_correlation,
         stereo_width_ratio=stereo.stereo_width_ratio,
     )
 
@@ -76,7 +80,6 @@ def analyze_audio_to_report(
         stereo=stereo,
     )
 
-    # Align time-series lengths cleanly
     n_pts = max(len(loudness.short_term_lufs_series), len(stereo.phase_correlation_series))
     st_series = list(loudness.short_term_lufs_series)
     ph_series = list(stereo.phase_correlation_series)
@@ -114,4 +117,52 @@ def analyze_audio_to_report(
         revision_comparison=None,
         privacy_audit=PrivacyAudit(),
     )
+
+    if return_snapshot:
+        snapshot = CachedDspSnapshot(
+            duration_sec=loaded.duration_sec,
+            loudness=loudness,
+            peaks=peaks,
+            dynamics=dynamics,
+            spectral=spectral,
+            stereo=stereo,
+            band_energies_db={b.band: b.energy_db for b in spectral.bands},
+        )
+        return report, loaded, snapshot
     return report, loaded
+
+
+def reevaluate_report_context(
+    report: AnalysisReport,
+    snapshot: CachedDspSnapshot | None,
+    new_context: AnalysisContext,
+) -> AnalysisReport:
+    """Recompute genre-relative spectral deltas and pedagogical findings from cached telemetry in <1 ms."""
+    report.context = new_context
+
+    band_energies = (
+        snapshot.band_energies_db
+        if snapshot is not None
+        else {b.band: b.energy_db for b in report.spectral_bands}
+    )
+    updated_bands = build_spectral_bands_from_energies(band_energies, new_context.genre)
+    report.spectral_bands = updated_bands
+
+    if snapshot is not None:
+        from app.dsp.spectrum import SpectralAnalysisResult
+
+        updated_spectral = SpectralAnalysisResult(
+            bands=updated_bands,
+            band_peak_windows=snapshot.spectral.band_peak_windows,
+        )
+        report.streaming_estimates = compute_streaming_estimates(report.global_metrics)
+        report.findings = evaluate_mix_findings(
+            context=new_context,
+            duration_sec=snapshot.duration_sec,
+            loudness=snapshot.loudness,
+            peaks=snapshot.peaks,
+            dynamics=snapshot.dynamics,
+            spectral=updated_spectral,
+            stereo=snapshot.stereo,
+        )
+    return report

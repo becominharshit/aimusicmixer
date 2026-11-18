@@ -33,9 +33,18 @@ export interface SavedAnalysisRecord {
   stage: string;
   artist_vision: string | null;
   version_label: string;
+  parent_analysis_id?: string | null;
+  proxy_storage_path?: string | null;
   report_json: AnalysisReport;
   created_at: string;
 }
+
+export interface PaginatedAnalysesResult {
+  records: SavedAnalysisRecord[];
+  hasMore: boolean;
+}
+
+const MIX_PROXIES_BUCKET = "mix-proxies";
 
 export async function fetchOrCreateUserProfile(user: User): Promise<UserProfileRecord | null> {
   const supabase = getSupabaseBrowserClient();
@@ -100,19 +109,83 @@ export async function saveProfilePrivacyPreferences(
   return !error;
 }
 
-export async function fetchSavedAnalyses(userId: string): Promise<SavedAnalysisRecord[]> {
+export async function fetchSavedAnalyses(
+  userId: string,
+  offset = 0,
+  limit = 25
+): Promise<PaginatedAnalysesResult> {
   const supabase = getSupabaseBrowserClient();
-  if (!supabase) return [];
+  if (!supabase) return { records: [], hasMore: false };
 
+  const safeLimit = Math.max(1, Math.min(limit, 50));
   const { data, error } = await supabase
     .from("analyses")
-    .select("id, user_id, track_name, genre, stage, artist_vision, version_label, report_json, created_at")
+    .select(
+      "id, user_id, track_name, genre, stage, artist_vision, version_label, parent_analysis_id, proxy_storage_path, report_json, created_at"
+    )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .limit(30);
+    .range(offset, offset + safeLimit);
 
-  if (error || !data) return [];
-  return data as SavedAnalysisRecord[];
+  if (error || !data) return { records: [], hasMore: false };
+  const rows = data as SavedAnalysisRecord[];
+  const hasMore = rows.length > safeLimit;
+  return {
+    records: hasMore ? rows.slice(0, safeLimit) : rows,
+    hasMore,
+  };
+}
+
+export async function uploadMixProxyToStorage(params: {
+  userId: string;
+  analysisId: string;
+  proxyUrl: string;
+}): Promise<string | null> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase || !params.proxyUrl) return null;
+
+  try {
+    const res = await fetch(params.proxyUrl);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const extMatch = params.proxyUrl.split("?")[0].match(/\.([a-z0-9]{2,5})$/i);
+    const ext = extMatch ? extMatch[1].toLowerCase() : "m4a";
+    const storagePath = `${params.userId}/${params.analysisId}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(MIX_PROXIES_BUCKET)
+      .upload(storagePath, blob, {
+        contentType: blob.type || "audio/mp4",
+        upsert: true,
+      });
+
+    if (uploadError) return null;
+
+    await supabase
+      .from("analyses")
+      .update({ proxy_storage_path: storagePath })
+      .eq("id", params.analysisId)
+      .eq("user_id", params.userId);
+
+    return storagePath;
+  } catch {
+    return null;
+  }
+}
+
+export async function getSignedMixProxyUrl(
+  proxyStoragePath: string,
+  expiresInSec = 3600
+): Promise<string | null> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase || !proxyStoragePath) return null;
+
+  const { data, error } = await supabase.storage
+    .from(MIX_PROXIES_BUCKET)
+    .createSignedUrl(proxyStoragePath, expiresInSec);
+
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
 }
 
 export async function saveUserAnalysis(params: {
@@ -120,6 +193,7 @@ export async function saveUserAnalysis(params: {
   report: AnalysisReport;
   versionLabel?: string;
   trackNameOverride?: string;
+  parentAnalysisId?: string | null;
 }): Promise<SavedAnalysisRecord | null> {
   const supabase = getSupabaseBrowserClient();
   if (!supabase) return null;
@@ -134,18 +208,33 @@ export async function saveUserAnalysis(params: {
       stage: report.context.stage,
       artist_vision: report.context.artist_vision.join(", ") || null,
       version_label: params.versionLabel || "v1",
+      parent_analysis_id: params.parentAnalysisId ?? null,
       report_json: report,
     })
-    .select("id, user_id, track_name, genre, stage, artist_vision, version_label, report_json, created_at")
+    .select(
+      "id, user_id, track_name, genre, stage, artist_vision, version_label, parent_analysis_id, proxy_storage_path, report_json, created_at"
+    )
     .single();
 
   if (error || !data) return null;
   return data as SavedAnalysisRecord;
 }
 
-export async function deleteSavedAnalysis(userId: string, analysisId: string): Promise<boolean> {
+export async function deleteSavedAnalysis(
+  userId: string,
+  analysisId: string,
+  proxyStoragePath?: string | null
+): Promise<boolean> {
   const supabase = getSupabaseBrowserClient();
   if (!supabase) return false;
+
+  if (proxyStoragePath) {
+    try {
+      await supabase.storage.from(MIX_PROXIES_BUCKET).remove([proxyStoragePath]);
+    } catch {
+      // Non-fatal if proxy object already removed
+    }
+  }
 
   const { error } = await supabase
     .from("analyses")

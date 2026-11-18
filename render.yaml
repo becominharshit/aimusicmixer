@@ -8,7 +8,11 @@ services:
     envVars:
       - key: ALLOWED_ORIGINS
         value: https://frontend-tau-kohl-prgmf10seo.vercel.app
+      - key: ALLOWED_ORIGIN_REGEX
+        value: ^https://[a-zA-Z0-9-]+\.vercel\.app$
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
       - key: GEMINI_API_KEY
         sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"

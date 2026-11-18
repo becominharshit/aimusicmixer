@@ -10,6 +10,7 @@ import {
   PlayCircle,
   SlidersHorizontal,
   UploadCloud,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,6 +21,24 @@ import type { AnalysisReport, ArtistVisionTag, GenreType, StageType } from "@/ty
 
 export const MAX_SINGLE_FILE_MB = 50;
 export const MAX_SINGLE_FILE_BYTES = MAX_SINGLE_FILE_MB * 1024 * 1024;
+
+const ACCEPTED_EXTENSIONS = new Set([".wav", ".flac", ".mp3", ".aiff", ".aif", ".ogg", ".m4a", ".aac"]);
+const ACCEPTED_MIMES = new Set([
+  "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
+  "audio/vnd.wave",
+  "audio/flac",
+  "audio/x-flac",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/aiff",
+  "audio/x-aiff",
+  "audio/ogg",
+  "audio/mp4",
+  "audio/aac",
+  "audio/x-m4a",
+]);
 
 const GENRE_OPTIONS: { value: GenreType; label: string }[] = [
   { value: "electronic", label: "Electronic / Dance" },
@@ -55,6 +74,8 @@ interface UploadStageProps {
   onToggleVision: (tag: ArtistVisionTag) => void;
   isAnalyzing: boolean;
   activeStepIndex: number;
+  uploadProgress?: number | null;
+  onCancelUpload?: () => void;
   errorMessage: string | null;
   healthStatus: HealthStatus;
   onRetryHealth: () => void;
@@ -74,6 +95,8 @@ export function UploadStage({
   onToggleVision,
   isAnalyzing,
   activeStepIndex,
+  uploadProgress = null,
+  onCancelUpload,
   errorMessage,
   healthStatus,
   onRetryHealth,
@@ -90,6 +113,18 @@ export function UploadStage({
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
+    const extMatch = file.name.toLowerCase().match(/\.[a-z0-9]+$/);
+    const ext = extMatch ? extMatch[0] : "";
+    const mime = (file.type || "").toLowerCase();
+
+    if (!ACCEPTED_EXTENSIONS.has(ext) && !(mime && (ACCEPTED_MIMES.has(mime) || mime.startsWith("audio/")))) {
+      setClientSizeError(
+        `"${file.name}" is not a supported audio format. Upload WAV, FLAC, MP3, AIFF, OGG, M4A, or AAC.`
+      );
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
     if (file.size > MAX_SINGLE_FILE_BYTES) {
       const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
       setClientSizeError(
@@ -104,6 +139,7 @@ export function UploadStage({
   };
 
   const displayedError = clientSizeError || errorMessage;
+  const uploadingPct = typeof uploadProgress === "number" ? Math.max(0, Math.min(100, uploadProgress)) : null;
 
   return (
     <section className="mx-auto max-w-4xl py-6 sm:py-10">
@@ -112,7 +148,7 @@ export function UploadStage({
           Diagnose your mix before it leaves your DAW
         </h1>
         <p className="max-w-[68ch] text-sm text-[#52605D] sm:text-base">
-          Upload a stereo mixdown (WAV, FLAC, MP3, AIFF, OGG up to 50 MB). Deterministic ITU-R BS.1770 loudness,
+          Upload a stereo mixdown (WAV, FLAC, MP3, AIFF, OGG, M4A up to 50 MB). Deterministic ITU-R BS.1770 loudness,
           4x True Peak, and 6-band balance run locally on ephemeral session storage—never sent to AI training.
         </p>
       </div>
@@ -252,14 +288,38 @@ export function UploadStage({
               transition={{ duration: 0.22, ease: STUDIO_EASE }}
               className="w-full max-w-md space-y-3 text-left"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-semibold text-[#182220]">
-                  Running Deterministic DSP Pipeline
+                  {uploadingPct !== null && uploadingPct < 100
+                    ? `Uploading Audio (${uploadingPct}%)`
+                    : "Running Deterministic DSP Pipeline"}
                 </span>
-                <span className="text-xs text-[#3A7269] tabular-telemetry">
-                  Step {Math.min(activeStepIndex + 1, ANALYSIS_STEPS.length)} / {ANALYSIS_STEPS.length}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#3A7269] tabular-telemetry">
+                    Step {Math.min(activeStepIndex + 1, ANALYSIS_STEPS.length)} / {ANALYSIS_STEPS.length}
+                  </span>
+                  {onCancelUpload && (
+                    <button
+                      type="button"
+                      onClick={onCancelUpload}
+                      className="inline-flex items-center gap-1 bg-[#F5F5F7] px-2 py-1 text-[11px] font-medium text-[#52605D] hover:text-[#BE123C] hairline-border squircle-inner cursor-pointer"
+                    >
+                      <X className="h-3 w-3" aria-hidden="true" />
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {uploadingPct !== null && (
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#F5F5F7]">
+                  <div
+                    className="h-full bg-[#3A7269] transition-all duration-150"
+                    style={{ width: `${uploadingPct}%` }}
+                  />
+                </div>
+              )}
+
               <div className="space-y-2">
                 {ANALYSIS_STEPS.map((label, idx) => {
                   const done = idx < activeStepIndex;
@@ -303,7 +363,7 @@ export function UploadStage({
                 Drop your mixdown here or browse files
               </p>
               <p className="mt-1 text-xs text-[#52605D]">
-                WAV · FLAC · AIFF · MP3 · OGG · Native sample rates preserved (44.1 / 48 / 96 kHz)
+                WAV · FLAC · AIFF · MP3 · OGG · M4A · Native sample rates preserved (44.1 / 48 / 96 kHz)
               </p>
 
               <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
@@ -354,7 +414,7 @@ export function UploadStage({
             <div className="flex items-start gap-2">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <span>
-                Python DSP backend is currently unreachable. Start the FastAPI server or click the header status pill to inspect your API URL.
+                DSP backend is currently unreachable. Check the header status pill to inspect your API URL.
               </span>
             </div>
             <button

@@ -142,7 +142,7 @@ def compare_revisions(
                     status = "unchanged"
                     summary = "Integrated loudness stayed within +/-0.5 LU of v1."
             elif bf.category == "tonal_balance":
-                band_key = bf.evidence_id.replace("ev_tonal_", "").replace("_01", "")
+                band_key = bf.band_name or bf.evidence_id.replace("ev_tonal_", "").replace("_01", "")
                 b_d = next((abs(b.delta_vs_genre_median_db) for b in baseline.spectral_bands if b.band == band_key), None)
                 r_d = next((abs(b.delta_vs_genre_median_db) for b in revised.spectral_bands if b.band == band_key), None)
                 if b_d is not None and r_d is not None and r_d < b_d - 0.5:
@@ -171,8 +171,13 @@ def compare_revisions(
         )
 
     # Ensure core spectral tonal shifts not already in statuses are tracked concisely when >= 1.2 dB change occurs
+    band_by_eid = {
+        f.evidence_id: (f.band_name or f.evidence_id.replace("ev_tonal_", "").replace("_01", ""))
+        for f in baseline.findings
+        if f.category == "tonal_balance"
+    }
     tracked_tonal = {
-        s.evidence_id.replace("ev_tonal_", "").replace("_01", "")
+        band_by_eid.get(s.evidence_id) or s.evidence_id.replace("ev_tonal_", "").replace("_01", "")
         for s in statuses
         if s.category == "tonal_balance"
     }

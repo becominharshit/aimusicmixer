@@ -50,13 +50,13 @@ export function WorkspaceSubNav({
     {
       id: "stems",
       label: "Original Stems",
-      badge: report.context.has_user_stems ? `${report.context.stem_count}` : "Locked",
+      badge: report.context.has_user_stems ? `${report.context.stem_count} stems` : "Locked",
       icon: Layers,
     },
     {
       id: "revisions",
       label: "Revision Check (v1 → v2)",
-      badge: report.revision_comparison ? "Compared" : undefined,
+      badge: report.revision_comparison ? "v1 → v2" : undefined,
       icon: GitCompare,
     },
   ];
@@ -68,8 +68,8 @@ export function WorkspaceSubNav({
       : "Offline Ready";
 
   return (
-    <div className="border-b border-[rgba(24,34,32,0.06)] bg-[#F5F5F7]/75">
-      <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2 px-4 py-2 sm:px-6">
+    <div className="no-print border-b border-[rgba(24,34,32,0.06)] bg-[#F5F5F7]/75">
+      <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-6">
         <nav
           aria-label="MixBench workflow sections"
           className="relative inline-flex max-w-full flex-wrap items-center gap-1 bg-[#FFFFFF] p-1 hairline-border squircle-inner"

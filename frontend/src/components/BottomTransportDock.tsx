@@ -23,6 +23,7 @@ interface BottomTransportDockProps {
   matchLoudness: boolean;
   loudnessOffsetDb: number;
   loopEnabled: boolean;
+  hasPrimary?: boolean;
   hasReference: boolean;
   hasRevised: boolean;
   onTogglePlay: () => void;
@@ -43,6 +44,7 @@ export function BottomTransportDock({
   matchLoudness,
   loudnessOffsetDb,
   loopEnabled,
+  hasPrimary = true,
   hasReference,
   hasRevised,
   onTogglePlay,
@@ -55,6 +57,41 @@ export function BottomTransportDock({
 }: BottomTransportDockProps) {
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const timecodeRef = useRef<HTMLSpanElement | null>(null);
+
+  // Guarded global keyboard shortcuts: Space (Play/Pause) and M (Mono Fold toggle)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable ||
+          target.getAttribute("role") === "textbox"
+        ) {
+          return;
+        }
+      }
+
+      if (e.code === "Space") {
+        // Don't hijack Space when focused directly on a button/switch/tab
+        if (target && (target.tagName === "BUTTON" || target.getAttribute("role") === "switch")) {
+          return;
+        }
+        e.preventDefault();
+        if (hasPrimary) onTogglePlay();
+      } else if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        onChangeStereo(stereoMode === "mono" ? "stereo" : "mono");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [hasPrimary, onTogglePlay, onChangeStereo, stereoMode]);
 
   // Decoupled 60fps RAF loop updates playhead bar & tabular timestamp with zero React state ticks
   useEffect(() => {
@@ -77,7 +114,7 @@ export function BottomTransportDock({
   }, [durationSec]);
 
   const sources: { id: AudioSourceSlot; label: string; enabled: boolean }[] = [
-    { id: "primary", label: "Mix A", enabled: true },
+    { id: "primary", label: "Mix A", enabled: hasPrimary },
     { id: "reference", label: "Ref B", enabled: hasReference },
     { id: "revised", label: "Mix v2", enabled: hasRevised },
   ];
@@ -90,14 +127,14 @@ export function BottomTransportDock({
   }[] = [
     { id: "full", label: "Full Range", sub: "Flat bypass", icon: Speaker },
     { id: "smartphone", label: "Smartphone", sub: "300Hz–4.5kHz · Mono", icon: Smartphone },
-    { id: "laptop", label: "Laptop", sub: "180Hz–12kHz", icon: Laptop },
+    { id: "laptop", label: "Laptop", sub: "150Hz–8kHz", icon: Laptop },
   ];
 
   return (
     <div
       role="region"
       aria-label="Persistent MixBench Transport and Mix Translation Lab"
-      className="sticky bottom-0 left-0 right-0 z-30 border-t border-[rgba(24,34,32,0.08)] bg-[#FFFFFF]/95 backdrop-blur-md"
+      className="no-print sticky bottom-0 left-0 right-0 z-30 border-t border-[rgba(24,34,32,0.08)] bg-[#FFFFFF]/95 backdrop-blur-md"
     >
       {/* Top 60fps interactive progress hairline */}
       <div
@@ -122,9 +159,16 @@ export function BottomTransportDock({
       </div>
 
       <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-6 sm:py-2.5">
-        {/* Left: Transport + Timecode + Loop */}
+        {/* Left: Transport + Timecode + Loop Problem Window */}
         <div className="flex items-center gap-2">
-          <Button type="button" variant="primary" size="sm" onClick={onTogglePlay}>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            disabled={!hasPrimary}
+            title="Spacebar to play / pause"
+            onClick={onTogglePlay}
+          >
             {isPlaying ? (
               <>
                 <Pause className="h-3.5 w-3.5" aria-hidden="true" />
@@ -147,12 +191,13 @@ export function BottomTransportDock({
             type="button"
             variant={loopEnabled ? "soft" : "secondary"}
             size="sm"
+            disabled={!hasPrimary}
             onClick={onToggleLoop}
             aria-pressed={loopEnabled}
-            title="Loop selected window"
+            title="Loop selected problem window"
           >
             <Repeat className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-            <span className="hidden sm:inline">{loopEnabled ? "Looping" : "Loop"}</span>
+            <span className="hidden sm:inline">{loopEnabled ? "Looping Window" : "Loop Window"}</span>
           </Button>
         </div>
 
@@ -205,7 +250,7 @@ export function BottomTransportDock({
             </div>
           )}
 
-          {/* Stereo <-> Equal-power Mono Fold */}
+          {/* Stereo <-> Mono Fold (Keyboard shortcut: M) */}
           <div className="relative inline-flex items-center bg-[#F5F5F7] p-0.5 hairline-border squircle-inner">
             {(
               [
@@ -219,6 +264,7 @@ export function BottomTransportDock({
                   key={opt.id}
                   type="button"
                   whileTap={TACTILE_TAP}
+                  title="Keyboard shortcut: M"
                   onClick={() => onChangeStereo(opt.id)}
                   className={`relative z-10 px-2.5 py-1 text-[11px] font-medium squircle-inner cursor-pointer ${
                     active ? "text-[#182220]" : "text-[#52605D] hover:text-[#182220]"

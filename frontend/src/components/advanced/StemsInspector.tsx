@@ -25,6 +25,40 @@ interface StemsInspectorProps {
   onSaveDawContext?: (ctx: { daw: string; bus_routing: string; plugin_notes: string }) => void;
 }
 
+async function measureAudioFileDurationMs(file: File): Promise<number | null> {
+  if (typeof document === "undefined" || typeof URL.createObjectURL !== "function") {
+    return null;
+  }
+  return new Promise<number | null>((resolve) => {
+    const objectUrl = URL.createObjectURL(file);
+    const audio = document.createElement("audio");
+    const timer = window.setTimeout(() => {
+      cleanup();
+      resolve(null);
+    }, 3000);
+
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      audio.onloadedmetadata = null;
+      audio.onerror = null;
+      audio.src = "";
+      URL.revokeObjectURL(objectUrl);
+    };
+
+    audio.preload = "metadata";
+    audio.onloadedmetadata = () => {
+      const dur = Number.isFinite(audio.duration) ? audio.duration * 1000 : null;
+      cleanup();
+      resolve(dur);
+    };
+    audio.onerror = () => {
+      cleanup();
+      resolve(null);
+    };
+    audio.src = objectUrl;
+  });
+}
+
 export function StemsInspector({
   report,
   isUploading,
@@ -43,8 +77,31 @@ export function StemsInspector({
     report.context.user_reported_context?.plugin_notes || ""
   );
   const [contextSaved, setContextSaved] = useState(false);
+  const [pendingAlignmentWarning, setPendingAlignmentWarning] = useState<{
+    files: File[];
+    deltaMs: number;
+  } | null>(null);
 
   const stems = report.stem_analysis;
+
+  const handleSelectedStems = async (files: File[]) => {
+    setPendingAlignmentWarning(null);
+    if (files.length < 2) {
+      onUploadStems(files);
+      return;
+    }
+
+    const durations = await Promise.all(files.map((f) => measureAudioFileDurationMs(f)));
+    const valid = durations.filter((d): d is number => typeof d === "number" && d > 0);
+    if (valid.length >= 2) {
+      const deltaMs = Math.max(...valid) - Math.min(...valid);
+      if (deltaMs > 50) {
+        setPendingAlignmentWarning({ files, deltaMs });
+        return;
+      }
+    }
+    onUploadStems(files);
+  };
 
   const dawContextDrawer = (
     <div className="bg-[#FFFFFF] p-4 hairline-border squircle-outer">
@@ -164,11 +221,12 @@ export function StemsInspector({
             ref={inputRef}
             type="file"
             multiple
-            accept=".wav,.flac,.mp3,.aiff,.aif,.ogg"
+            accept=".wav,.flac,.mp3,.aiff,.aif,.ogg,.m4a"
             className="sr-only"
             onChange={(e) => {
               const list = e.target.files ? Array.from(e.target.files) : [];
-              if (list.length > 0) onUploadStems(list);
+              if (inputRef.current) inputRef.current.value = "";
+              if (list.length > 0) void handleSelectedStems(list);
             }}
           />
 
@@ -195,6 +253,44 @@ export function StemsInspector({
             </Button>
           </div>
         </div>
+
+        {pendingAlignmentWarning && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 bg-[#FEF7EC] p-4 text-xs text-[#B45309] border border-[rgba(180,83,9,0.28)] squircle-inner"
+          >
+            <div className="flex items-start gap-2 max-w-2xl">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                Selected stems diverge in duration by{" "}
+                <strong>{pendingAlignmentWarning.deltaMs.toFixed(0)} ms</strong> (&gt; 50 ms threshold).
+                Re-export all stems from bar 1 with identical bounce range for accurate phase residual checks.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setPendingAlignmentWarning(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  const files = pendingAlignmentWarning.files;
+                  setPendingAlignmentWarning(null);
+                  onUploadStems(files);
+                }}
+              >
+                Upload Anyway
+              </Button>
+            </div>
+          </div>
+        )}
 
         {errorMessage && (
           <div

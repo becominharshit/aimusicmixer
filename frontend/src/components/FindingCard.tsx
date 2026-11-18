@@ -2,17 +2,30 @@
 
 import React, { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertOctagon, AlertTriangle, CheckCircle2, ChevronDown, Headphones } from "lucide-react";
+import {
+  AlertOctagon,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  GitCompare,
+  Headphones,
+  Sliders,
+} from "lucide-react";
+import type { CorrectiveEqConfig } from "@/audio/StudioAudioEngine";
 import { STUDIO_EASE, TACTILE_TAP } from "@/lib/motion";
 import { formatTimecode } from "@/lib/utils";
-import type { Finding } from "@/types/report";
+import type { BandName, Finding } from "@/types/report";
 
 interface FindingCardProps {
   finding: Finding;
   index: number;
   isActive?: boolean;
+  hasAudio?: boolean;
+  isEqActive?: boolean;
   onSelect?: (finding: Finding) => void;
   onAudition: (finding: Finding) => void;
+  onRecheck?: (finding: Finding) => void;
+  onToggleCorrectiveEq?: (eq: CorrectiveEqConfig) => void;
   compact?: boolean;
 }
 
@@ -36,13 +49,13 @@ const SEVERITY_STYLES = {
 
 const CATEGORY_TECH_NOTE: Record<string, string> = {
   true_peak:
-    "Measured using 4x polyphase FIR oversampling (scipy.signal.resample_poly) cross-checked against FFmpeg ebur128 inter-sample reconstruction.",
+    "Measured using 4x polyphase FIR oversampling inter-sample peak reconstruction cross-checked against ITU-R BS.1770 boundaries.",
   loudness:
     "Measured using ITU-R BS.1770 K-weighted integrated loudness across 400 ms gated blocks and 3 s short-term sliding windows.",
   dynamics:
     "Peak-to-Loudness Ratio (PLR) and PSR quantify remaining transient punch relative to sustained body loudness.",
   stereo_phase:
-    "1-second energy-weighted Pearson correlation across L/R channels. Values below 0.0 indicate mono sum cancellation.",
+    "1-second energy-weighted Pearson correlation across L/R channels plus 120 Hz low-passed sub-bass correlation check.",
   tonal_balance:
     "6-band Welch power spectral density normalized relative to the track average energy (gain-invariant tilt vs. genre profile).",
   stems_overlap:
@@ -51,17 +64,57 @@ const CATEGORY_TECH_NOTE: Record<string, string> = {
     "Validated via container header ffprobe metadata inspection and sample-level peak bounds.",
 };
 
+const BAND_CENTER_HZ: Record<BandName, number> = {
+  sub: 45,
+  low: 140,
+  low_mid: 380,
+  high_mid: 1800,
+  presence: 6000,
+  air: 12000,
+};
+
+function deriveSuggestedEq(finding: Finding): CorrectiveEqConfig | null {
+  if (finding.category !== "tonal_balance" || finding.severity === "safe") {
+    return null;
+  }
+  const bandFromId = finding.evidence_id
+    .replace("ev_tonal_", "")
+    .replace("_01", "") as BandName;
+  const band: BandName =
+    finding.band_name ?? (bandFromId in BAND_CENTER_HZ ? bandFromId : "low_mid");
+  const freqHz = BAND_CENTER_HZ[band] ?? 380;
+
+  const numMatch = finding.measured_value.match(/([+-]?\d+(?:\.\d+)?)\s*dB/i);
+  const delta = numMatch ? Number.parseFloat(numMatch[1]) : 2.5;
+  const gainDb =
+    delta >= 0
+      ? -Math.max(1.5, Math.min(4.5, Math.abs(delta) * 0.55))
+      : Math.max(1.5, Math.min(4.0, Math.abs(delta) * 0.5));
+
+  return {
+    id: finding.evidence_id,
+    freqHz,
+    q: band === "low" || band === "low_mid" ? 1.4 : 1.1,
+    gainDb: Number(gainDb.toFixed(1)),
+  };
+}
+
 export function FindingCard({
   finding,
   index,
   isActive = false,
+  hasAudio = true,
+  isEqActive = false,
   onSelect,
   onAudition,
+  onRecheck,
+  onToggleCorrectiveEq,
   compact = false,
 }: FindingCardProps) {
   const [learnWhyOpen, setLearnWhyOpen] = useState(!compact && index === 0);
   const style = SEVERITY_STYLES[finding.severity];
   const Icon = style.icon;
+  const suggestedEq = deriveSuggestedEq(finding);
 
   return (
     <motion.article
@@ -98,15 +151,30 @@ export function FindingCard({
 
         <motion.button
           type="button"
-          whileTap={TACTILE_TAP}
+          disabled={!hasAudio}
+          whileTap={hasAudio ? TACTILE_TAP : undefined}
+          title={
+            hasAudio
+              ? `Jump to and loop ${formatTimecode(finding.timestamp_start_sec)}`
+              : "Audio proxy unavailable for archived report — upload or re-attach audio to audition"
+          }
           onClick={(e) => {
             e.stopPropagation();
-            onAudition(finding);
+            if (hasAudio) onAudition(finding);
           }}
-          className="inline-flex items-center gap-1.5 bg-[#EBF3F1] px-3 py-1.5 text-xs font-medium text-[#182220] border border-[rgba(58,114,105,0.24)] hover:bg-[#DFECE9] squircle-inner cursor-pointer transition-colors"
+          className={`no-print inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border squircle-inner transition-colors ${
+            hasAudio
+              ? "bg-[#EBF3F1] text-[#182220] border-[rgba(58,114,105,0.24)] hover:bg-[#DFECE9] cursor-pointer"
+              : "bg-[#F5F5F7] text-[#52605D]/60 border-[rgba(24,34,32,0.08)] cursor-not-allowed"
+          }`}
         >
-          <Headphones className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-          <span>Jump to {formatTimecode(finding.timestamp_start_sec)}</span>
+          <Headphones
+            className={`h-3.5 w-3.5 ${hasAudio ? "text-[#3A7269]" : "text-[#52605D]/50"}`}
+            aria-hidden="true"
+          />
+          <span>
+            {hasAudio ? `Jump to ${formatTimecode(finding.timestamp_start_sec)}` : "No Audio"}
+          </span>
         </motion.button>
       </div>
 
@@ -133,9 +201,58 @@ export function FindingCard({
           <span className="font-semibold text-[#182220]">What to try: </span>
           <span className="text-[#52605D]">{finding.what_to_try}</span>
         </div>
-        <div className="text-xs text-[#52605D]">
-          <strong className="font-semibold text-[#182220]">Recheck: </strong>
-          <span>{finding.recheck_target}</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#52605D]">
+          <div>
+            <strong className="font-semibold text-[#182220]">Recheck: </strong>
+            <span>{finding.recheck_target}</span>
+          </div>
+
+          <div className="no-print flex flex-wrap items-center gap-2">
+            {suggestedEq && onToggleCorrectiveEq && (
+              <button
+                type="button"
+                disabled={!hasAudio}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (hasAudio) onToggleCorrectiveEq(suggestedEq);
+                }}
+                aria-pressed={isEqActive}
+                title={
+                  hasAudio
+                    ? `Preview ${suggestedEq.gainDb >= 0 ? "+" : ""}${suggestedEq.gainDb.toFixed(1)} dB peaking EQ at ${suggestedEq.freqHz} Hz`
+                    : "Audio proxy required to audition corrective EQ"
+                }
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium squircle-inner transition-colors ${
+                  !hasAudio
+                    ? "bg-[#F5F5F7] text-[#52605D]/50 cursor-not-allowed"
+                    : isEqActive
+                      ? "bg-[#3A7269] text-white cursor-pointer"
+                      : "bg-[#EBF3F1] text-[#3A7269] hover:bg-[#DFECE9] cursor-pointer"
+                }`}
+              >
+                <Sliders className="h-3 w-3" aria-hidden="true" />
+                <span>
+                  {isEqActive
+                    ? `Bypass Preview EQ (${suggestedEq.freqHz} Hz)`
+                    : `Audition ${suggestedEq.gainDb >= 0 ? "+" : ""}${suggestedEq.gainDb} dB @ ${suggestedEq.freqHz} Hz`}
+                </span>
+              </button>
+            )}
+
+            {onRecheck && finding.severity !== "safe" && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRecheck(finding);
+                }}
+                className="inline-flex items-center gap-1.5 bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-medium text-[#182220] hairline-border hover:border-[rgba(58,114,105,0.4)] squircle-inner cursor-pointer"
+              >
+                <GitCompare className="h-3 w-3 text-[#3A7269]" aria-hidden="true" />
+                <span>Recheck in v2</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

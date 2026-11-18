@@ -15,21 +15,48 @@ create table if not exists public.profiles (
   updated_at timestamptz default now()
 );
 
+-- Automatic updated_at timestamp trigger for public.profiles
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists set_profiles_updated_at on public.profiles;
+create trigger set_profiles_updated_at
+  before update on public.profiles
+  for each row execute procedure public.set_updated_at();
+
 -- 2. Saved Mix & Revision Analyses (Stores canonical AnalysisReport v1.0 JSON telemetry)
 create table if not exists public.analyses (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users on delete cascade not null,
+  parent_analysis_id uuid references public.analyses(id) on delete set null,
   track_name text not null,
   genre text not null,
   stage text not null,
   artist_vision text,
   version_label text default 'v1',
+  proxy_storage_path text,
   report_json jsonb not null,
   created_at timestamptz default now()
 );
 
+-- Idempotent column upgrades for existing deployments
+alter table public.analyses
+  add column if not exists parent_analysis_id uuid references public.analyses(id) on delete set null;
+alter table public.analyses
+  add column if not exists proxy_storage_path text;
+
 create index if not exists analyses_user_created_idx
   on public.analyses (user_id, created_at desc);
+
+create index if not exists analyses_parent_idx
+  on public.analyses (parent_analysis_id);
 
 -- 3. Enable Row-Level Security (RLS)
 alter table public.profiles enable row level security;
@@ -114,3 +141,50 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- 7. Private Supabase Storage Bucket (mix-proxies) for persisted compressed .m4a playback proxies
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'mix-proxies',
+  'mix-proxies',
+  false,
+  15728640,
+  array['audio/mp4', 'audio/aac', 'audio/x-m4a', 'audio/wav', 'audio/mpeg']
+)
+on conflict (id) do nothing;
+
+drop policy if exists "mix_proxies_select_own" on storage.objects;
+create policy "mix_proxies_select_own"
+  on storage.objects for select
+  using (
+    bucket_id = 'mix-proxies'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "mix_proxies_insert_own" on storage.objects;
+create policy "mix_proxies_insert_own"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'mix-proxies'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "mix_proxies_update_own" on storage.objects;
+create policy "mix_proxies_update_own"
+  on storage.objects for update
+  using (
+    bucket_id = 'mix-proxies'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  )
+  with check (
+    bucket_id = 'mix-proxies'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "mix_proxies_delete_own" on storage.objects;
+create policy "mix_proxies_delete_own"
+  on storage.objects for delete
+  using (
+    bucket_id = 'mix-proxies'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );

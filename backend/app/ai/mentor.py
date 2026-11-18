@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 import tempfile
 from pathlib import Path
@@ -16,6 +15,8 @@ from app.schemas.report import (
     MentorResponse,
     PrivacyAudit,
 )
+
+GEMINI_REQUEST_TIMEOUT_MS = 25_000
 
 
 class MentorLLMOutput(BaseModel):
@@ -55,6 +56,32 @@ def _vision_note(report: AnalysisReport) -> str:
     if "punchy" in vision or "dynamic" in vision:
         parts.append("Preserving PSR (>= 7 dB) and transient crest keeps kick/snare snap alive under streaming normalization.")
     return " ".join(parts)
+
+
+def select_audio_clip_start_sec(report: AnalysisReport, clip_duration_sec: float = 25.0) -> float:
+    """
+    Pick the highest-leverage 25s window for opt-in multimodal Gemini listening:
+    1) Highest-severity finding (alert -> caution -> safe) that has a localized non-zero start timestamp.
+    2) Else fall back to the short-term LUFS peak (chorus/drop) rather than defaulting blindly to t=0.0.
+    """
+    duration = max(0.0, float(report.audio_metadata.duration_sec))
+    max_start = max(0.0, duration - clip_duration_sec)
+    severity_rank = {"alert": 0, "caution": 1, "safe": 2}
+    ordered = sorted(report.findings, key=lambda f: severity_rank.get(f.severity, 3))
+    for f in ordered:
+        if f.timestamp_start_sec > 0.0:
+            return round(min(max_start, max(0.0, f.timestamp_start_sec)), 2)
+
+    series = report.time_series.short_term_lufs
+    if series:
+        step = max(0.1, float(report.time_series.step_sec or 1.0))
+        peak_idx = max(range(len(series)), key=lambda i: series[i])
+        peak_sec = peak_idx * step
+        if peak_sec > 0.0:
+            start = max(0.0, peak_sec - min(5.0, clip_duration_sec * 0.2))
+            return round(min(max_start, start), 2)
+
+    return 0.0
 
 
 def build_deterministic_mentor_response(
@@ -105,6 +132,7 @@ def build_deterministic_mentor_response(
     return MentorResponse(
         mode="deterministic_fallback",
         model_used="deterministic-dsp-mentor-v1",
+        fallback_reason=fallback_reason,
         summary=summary,
         vision_alignment_note=_vision_note(report),
         prioritized_actions=actions,
@@ -128,28 +156,13 @@ def _sanitized_metrics_payload(report: AnalysisReport) -> dict:
     return payload
 
 
-def _extract_interaction_text(interaction: object) -> str:
-    text = getattr(interaction, "output_text", None)
-    if isinstance(text, str) and text.strip():
-        return text
-    steps = getattr(interaction, "steps", None) or []
-    parts: list[str] = []
-    for step in steps:
-        if getattr(step, "type", None) == "model_output":
-            for block in getattr(step, "content", None) or []:
-                block_text = getattr(block, "text", None)
-                if isinstance(block_text, str):
-                    parts.append(block_text)
-    return "".join(parts).strip() or "{}"
-
-
 def generate_mentor_advice(
     report: AnalysisReport,
     request: MentorRequest,
     primary_audio_path: Path | None = None,
     fallback_proxy_path: Path | None = None,
 ) -> MentorResponse:
-    """Enforce three-tier consent and evidence-id grounding before calling Gemini Interactions API."""
+    """Enforce three-tier consent, timeout, proxy fallback, and evidence-id grounding using stable Gemini generate_content."""
     # Toggle A must be explicitly enabled before any external Gemini call occurs
     if not request.allow_metrics_ai:
         return build_deterministic_mentor_response(report, request)
@@ -185,48 +198,42 @@ def generate_mentor_advice(
         else (fallback_proxy_path if fallback_proxy_path is not None and fallback_proxy_path.exists() else None)
     )
     use_audio = bool(request.allow_audio_ai and clip_source is not None)
-    input_content: list[dict] | str = user_prompt
     tmp_clip: Path | None = None
 
     try:
         from google import genai
+        from google.genai import types
 
-        client = genai.Client(api_key=settings.gemini_api_key.strip())
+        http_options = types.HttpOptions(timeout=GEMINI_REQUEST_TIMEOUT_MS)
+        client = genai.Client(api_key=settings.gemini_api_key.strip(), http_options=http_options)
 
+        contents: object = user_prompt
         if use_audio and clip_source is not None:
-            top_ts = report.findings[0].timestamp_start_sec if report.findings else 0.0
+            clip_start_sec = select_audio_clip_start_sec(report, clip_duration_sec=25.0)
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
                 tmp_clip = Path(tf.name)
-            actual_clip = extract_audio_clip(clip_source, tmp_clip, start_sec=top_ts, duration_sec=25.0)
+            actual_clip = extract_audio_clip(clip_source, tmp_clip, start_sec=clip_start_sec, duration_sec=25.0)
             tmp_clip = actual_clip
             audio_bytes = actual_clip.read_bytes()
             mime = "audio/mp3" if actual_clip.suffix.lower() == ".mp3" else "audio/aac"
-            input_content = [
-                {
-                    "type": "text",
-                    "text": user_prompt + "\n\nAttached is an explicitly consented 25-second snippet around the top finding.",
-                },
-                {
-                    "type": "audio",
-                    "data": base64.b64encode(audio_bytes).decode("utf-8"),
-                    "mime_type": mime,
-                },
+            contents = [
+                f"{user_prompt}\n\nAttached is an explicitly consented 25-second snippet starting at {clip_start_sec:.1f}s.",
+                types.Part.from_bytes(data=audio_bytes, mime_type=mime),
             ]
 
-        interaction = client.interactions.create(
-            model=settings.gemini_model,
+        config = types.GenerateContentConfig(
             system_instruction=system_rules,
-            input=input_content,
-            response_format=[
-                {
-                    "type": "text",
-                    "mime_type": "application/json",
-                    "schema": MentorLLMOutput.model_json_schema(),
-                }
-            ],
-            store=False,
+            response_mime_type="application/json",
+            response_schema=MentorLLMOutput,
+            temperature=0.2,
+            http_options=http_options,
         )
-        raw_output = _extract_interaction_text(interaction)
+        response = client.models.generate_content(
+            model=settings.gemini_model,
+            contents=contents,
+            config=config,
+        )
+        raw_output = (getattr(response, "text", None) or "").strip() or "{}"
         parsed = MentorLLMOutput.model_validate_json(raw_output)
 
         # Verify every evidence_id exists in the deterministic DSP report
@@ -245,13 +252,14 @@ def generate_mentor_advice(
 
         mode = "gemini_multimodal_audio" if use_audio else "gemini_metrics_only"
         retention_note = (
-            "Sent metrics JSON + 25s audio snippet with store=False. No-training is independent from ephemeral API processing."
+            "Sent metrics JSON + 25s audio snippet via stateless generate_content. Training opt-in flag tracked independently."
             if use_audio
-            else "Sent structured numerical DSP JSON only (zero audio bytes transmitted) with store=False. No-training is independent from ephemeral API processing."
+            else "Sent structured numerical DSP JSON only (zero audio bytes transmitted) via stateless generate_content."
         )
         return MentorResponse(
             mode=mode,
             model_used=settings.gemini_model,
+            fallback_reason=None,
             summary=parsed.summary,
             vision_alignment_note=parsed.vision_alignment_note,
             prioritized_actions=verified_actions,

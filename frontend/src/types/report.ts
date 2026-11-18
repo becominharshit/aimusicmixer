@@ -64,6 +64,7 @@ export interface GlobalMetrics {
   plr_db?: number;
   psr_db: number;
   phase_correlation_avg: number;
+  low_end_phase_correlation?: number;
   stereo_width_ratio: number;
 }
 
@@ -94,6 +95,7 @@ export interface Finding {
   category: FindingCategory;
   severity: SeverityType;
   confidence: ConfidenceType;
+  band_name?: BandName | null;
   title: string;
   timestamp_start_sec: number;
   timestamp_end_sec: number;
@@ -244,6 +246,7 @@ export interface MentorRequest {
 export interface MentorResponse {
   mode: "deterministic_fallback" | "gemini_metrics_only" | "gemini_multimodal_audio";
   model_used: string;
+  fallback_reason?: string | null;
   summary: string;
   vision_alignment_note: string;
   prioritized_actions: MentorAction[];

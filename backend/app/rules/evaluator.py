@@ -264,6 +264,29 @@ def evaluate_mix_findings(
             )
         )
 
+    if stereo.low_end_phase_correlation < 0.30:
+        low_sev = "alert" if stereo.low_end_phase_correlation < 0.0 else "caution"
+        findings.append(
+            Finding(
+                evidence_id="ev_phase_low_01",
+                category="stereo_phase",
+                severity=low_sev,
+                confidence="measured",
+                band_name="sub",
+                title=f"Wide / Uncentered Sub-Bass Below 120 Hz ({stereo.low_end_phase_correlation:+.2f})",
+                timestamp_start_sec=p_start,
+                timestamp_end_sec=p_end,
+                measured_value=f"Sub-120 Hz correlation {stereo.low_end_phase_correlation:+.2f} (recommended >= +0.70)",
+                what_happened=(
+                    f"4th-order Butterworth 120 Hz low-pass correlation measures {stereo.low_end_phase_correlation:+.2f}, indicating significant Side energy in the low end."
+                ),
+                why_it_matters="Stereo sub-bass suffers heavy cancellation in mono playback (club PAs, phone speakers) and wastes headroom on vinyl or streaming masters.",
+                listen_prompt=f"Switch Stereo Mode to Mono Fold around {_fmt_time(p_start)} and listen to kick/sub weight drop or hollow out.",
+                what_to_try="Insert a Mid/Side EQ on your master or bass bus and high-pass the Side channel at 100–130 Hz so sub frequencies sum cleanly in mono.",
+                recheck_target="Confirm <120 Hz phase correlation climbs above +0.70.",
+            )
+        )
+
     # 3. Spectral Tonal Balance Findings
     band_candidates: list[tuple[float, SpectralBand]] = []
     for sb in spectral.bands:
@@ -325,6 +348,7 @@ def evaluate_mix_findings(
                 category="tonal_balance",
                 severity=severity,
                 confidence="measured",
+                band_name=sb.band,
                 title=title,
                 timestamp_start_sec=w_start,
                 timestamp_end_sec=w_end,
@@ -430,8 +454,8 @@ def evaluate_mix_findings(
                 title=f"Solid Mono Phase Translation ({stereo.phase_correlation_avg:+.2f})",
                 timestamp_start_sec=loud_start,
                 timestamp_end_sec=loud_end,
-                measured_value=f"Avg correlation {stereo.phase_correlation_avg:+.2f}, Width {stereo.stereo_width_ratio:.2f}",
-                what_happened=f"L/R phase correlation averages {stereo.phase_correlation_avg:+.2f} with healthy Mid/Side balance.",
+                measured_value=f"Avg correlation {stereo.phase_correlation_avg:+.2f}, Sub <120Hz {stereo.low_end_phase_correlation:+.2f}, Width {stereo.stereo_width_ratio:.2f}",
+                what_happened=f"L/R phase correlation averages {stereo.phase_correlation_avg:+.2f} (sub-120 Hz {stereo.low_end_phase_correlation:+.2f}) with healthy Mid/Side balance.",
                 why_it_matters="Positive correlation ensures your mix holds together without hollowing out on mono phone speakers or club PAs.",
                 listen_prompt=f"Toggle Stereo and Mono Fold around {_fmt_time(loud_start)} to verify snare and bass weight stay locked.",
                 what_to_try="Preserve this stereo foundation if you add spatial effects later—keep sub-bass mono below 120 Hz.",

@@ -2,6 +2,7 @@
 
 import React from "react";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import type { CorrectiveEqConfig } from "@/audio/StudioAudioEngine";
 import { FindingCard } from "@/components/FindingCard";
 import { DiagnosticCharts } from "@/components/advanced/DiagnosticCharts";
 import { WaveformStage } from "@/components/advanced/WaveformStage";
@@ -9,27 +10,36 @@ import type { AnalysisReport, Finding } from "@/types/report";
 
 interface AdvancedWorkbenchProps {
   report: AnalysisReport;
+  hasAudio?: boolean;
   activeFindingId: string | null;
+  activeCorrectiveEqId?: string | null;
   loopEnabled: boolean;
   loopStartSec: number;
   loopEndSec: number;
   onSeek: (timeSec: number) => void;
   onSelectFinding: (finding: Finding) => void;
   onAuditionFinding: (finding: Finding) => void;
+  onRecheckFinding?: (finding: Finding) => void;
+  onToggleCorrectiveEq?: (eq: CorrectiveEqConfig) => void;
 }
 
 export function AdvancedWorkbench({
   report,
+  hasAudio = true,
   activeFindingId,
+  activeCorrectiveEqId = null,
   loopEnabled,
   loopStartSec,
   loopEndSec,
   onSeek,
   onSelectFinding,
   onAuditionFinding,
+  onRecheckFinding,
+  onToggleCorrectiveEq,
 }: AdvancedWorkbenchProps) {
   const m = report.global_metrics;
   const plr = m.plr_db ?? Math.max(0, m.true_peak_dbtp - m.integrated_lufs);
+  const subCorr = m.low_end_phase_correlation;
   const spotifyEst = report.streaming_estimates.find((s) =>
     s.platform.toLowerCase().includes("spotify")
   );
@@ -87,7 +97,7 @@ export function AdvancedWorkbench({
         </div>
 
         <div className="bg-[#FFFFFF] p-4 hairline-border squircle-inner">
-          <div className="text-[11px] font-medium text-[#52605D]">Stereo Correlation</div>
+          <div className="text-[11px] font-medium text-[#52605D]">Stereo &amp; Sub Phase</div>
           <div
             className={`mt-1 text-xl font-semibold tabular-telemetry ${
               m.phase_correlation_avg < 0
@@ -99,9 +109,19 @@ export function AdvancedWorkbench({
           >
             {m.phase_correlation_avg >= 0 ? "+" : ""}
             {m.phase_correlation_avg.toFixed(2)}
+            {typeof subCorr === "number" && (
+              <span
+                className={`ml-1.5 text-xs font-medium ${
+                  subCorr < 0.3 ? "text-[#B45309]" : "text-[#52605D]"
+                }`}
+              >
+                (Sub {subCorr >= 0 ? "+" : ""}
+                {subCorr.toFixed(2)})
+              </span>
+            )}
           </div>
           <div className="mt-1 text-[11px] text-[#52605D] tabular-telemetry">
-            M/S width ratio {m.stereo_width_ratio.toFixed(2)}
+            M/S width {m.stereo_width_ratio.toFixed(2)} · &lt;120 Hz mono check
           </div>
         </div>
 
@@ -161,7 +181,9 @@ export function AdvancedWorkbench({
               <h2 className="text-sm font-semibold text-[#182220]">
                 Prioritized Evidence ({report.findings.length})
               </h2>
-              <span className="text-[11px] text-[#52605D]">Click any card to audition</span>
+              <span className="text-[11px] text-[#52605D]">
+                {hasAudio ? "Click any card to audition" : "Telemetry-only archive"}
+              </span>
             </div>
 
             <div className="max-h-[75vh] space-y-3 overflow-y-auto pr-1">
@@ -171,9 +193,13 @@ export function AdvancedWorkbench({
                   finding={finding}
                   index={idx}
                   compact
+                  hasAudio={hasAudio}
                   isActive={activeFindingId === finding.evidence_id}
+                  isEqActive={activeCorrectiveEqId === finding.evidence_id}
                   onSelect={onSelectFinding}
                   onAudition={onAuditionFinding}
+                  onRecheck={onRecheckFinding}
+                  onToggleCorrectiveEq={onToggleCorrectiveEq}
                 />
               ))}
             </div>

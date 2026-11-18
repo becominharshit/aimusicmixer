@@ -11,10 +11,25 @@ import type {
   UserReportedContext,
 } from "@/types/report";
 
-export const API_BASE_URL =
+const RAW_API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/+$/, "") ||
   process.env.NEXT_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, "") ||
-  "http://localhost:8000";
+  "";
+
+function computeApiBaseUrl(): string {
+  if (!RAW_API_BASE_URL) return "";
+  if (
+    typeof window !== "undefined" &&
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(RAW_API_BASE_URL) &&
+    window.location.hostname !== "localhost" &&
+    window.location.hostname !== "127.0.0.1"
+  ) {
+    return "";
+  }
+  return RAW_API_BASE_URL;
+}
+
+export const API_BASE_URL = computeApiBaseUrl();
 
 export function resolveApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
@@ -35,6 +50,86 @@ async function handleResponse<T>(res: Response): Promise<T> {
     throw new Error(message);
   }
   return (await res.json()) as T;
+}
+
+export interface UploadRequestOptions {
+  onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
+}
+
+export function uploadWithProgress<T>(params: {
+  url: string;
+  formData: FormData;
+  onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
+}): Promise<T> {
+  if (typeof XMLHttpRequest === "undefined") {
+    return fetch(params.url, {
+      method: "POST",
+      body: params.formData,
+      signal: params.signal,
+    }).then((res) => handleResponse<T>(res));
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", params.url, true);
+
+    const handleAbort = () => {
+      xhr.abort();
+      reject(new DOMException("Upload cancelled by user.", "AbortError"));
+    };
+
+    if (params.signal) {
+      if (params.signal.aborted) {
+        reject(new DOMException("Upload cancelled by user.", "AbortError"));
+        return;
+      }
+      params.signal.addEventListener("abort", handleAbort, { once: true });
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (!params.onProgress) return;
+      if (event.lengthComputable && event.total > 0) {
+        const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+        params.onProgress(pct);
+      }
+    };
+
+    xhr.onload = () => {
+      params.signal?.removeEventListener("abort", handleAbort);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as T);
+        } catch {
+          reject(new Error("Invalid JSON response from MixBench server."));
+        }
+      } else {
+        let message = `Request failed (${xhr.status})`;
+        try {
+          const parsed = JSON.parse(xhr.responseText);
+          if (typeof parsed?.detail === "string") {
+            message = parsed.detail;
+          }
+        } catch {
+          // Ignore non-JSON error body
+        }
+        reject(new Error(message));
+      }
+    };
+
+    xhr.onerror = () => {
+      params.signal?.removeEventListener("abort", handleAbort);
+      reject(new Error("Network error while uploading audio to MixBench DSP backend."));
+    };
+
+    xhr.onabort = () => {
+      params.signal?.removeEventListener("abort", handleAbort);
+      reject(new DOMException("Upload cancelled by user.", "AbortError"));
+    };
+
+    xhr.send(params.formData);
+  });
 }
 
 export async function checkBackendHealth(): Promise<BackendHealth> {
@@ -66,6 +161,8 @@ export async function analyzeMixFile(params: {
   genre: GenreType;
   stage: StageType;
   artistVision: ArtistVisionTag[];
+  onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
 }): Promise<AnalysisReport> {
   const form = new FormData();
   form.append("file", params.file);
@@ -73,11 +170,12 @@ export async function analyzeMixFile(params: {
   form.append("stage", params.stage);
   form.append("artist_vision", JSON.stringify(params.artistVision));
 
-  const res = await fetch(resolveApiUrl("/api/analyze"), {
-    method: "POST",
-    body: form,
+  return uploadWithProgress<AnalysisReport>({
+    url: resolveApiUrl("/api/analyze"),
+    formData: form,
+    onProgress: params.onProgress,
+    signal: params.signal,
   });
-  return handleResponse<AnalysisReport>(res);
 }
 
 export async function loadDemoSession(params: {
@@ -99,15 +197,17 @@ export async function loadDemoSession(params: {
 
 export async function uploadReferenceTrack(
   sessionId: string,
-  file: File
+  file: File,
+  options?: UploadRequestOptions
 ): Promise<ReferenceTrackMeta> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/reference`), {
-    method: "POST",
-    body: form,
+  return uploadWithProgress<ReferenceTrackMeta>({
+    url: resolveApiUrl(`/api/v1/sessions/${sessionId}/reference`),
+    formData: form,
+    onProgress: options?.onProgress,
+    signal: options?.signal,
   });
-  return handleResponse<ReferenceTrackMeta>(res);
 }
 
 export async function loadDemoReferenceTrack(sessionId: string): Promise<ReferenceTrackMeta> {
@@ -119,17 +219,19 @@ export async function loadDemoReferenceTrack(sessionId: string): Promise<Referen
 
 export async function uploadUserStems(
   sessionId: string,
-  files: File[]
+  files: File[],
+  options?: UploadRequestOptions
 ): Promise<AnalysisReport> {
   const form = new FormData();
   for (const file of files) {
     form.append("files", file);
   }
-  const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/stems`), {
-    method: "POST",
-    body: form,
+  return uploadWithProgress<AnalysisReport>({
+    url: resolveApiUrl(`/api/v1/sessions/${sessionId}/stems`),
+    formData: form,
+    onProgress: options?.onProgress,
+    signal: options?.signal,
   });
-  return handleResponse<AnalysisReport>(res);
 }
 
 export async function loadDemoStems(sessionId: string): Promise<AnalysisReport> {
@@ -141,15 +243,17 @@ export async function loadDemoStems(sessionId: string): Promise<AnalysisReport> 
 
 export async function compareRevisedMix(
   sessionId: string,
-  file: File
+  file: File,
+  options?: UploadRequestOptions
 ): Promise<AnalysisReport> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/compare`), {
-    method: "POST",
-    body: form,
+  return uploadWithProgress<AnalysisReport>({
+    url: resolveApiUrl(`/api/v1/sessions/${sessionId}/compare`),
+    formData: form,
+    onProgress: options?.onProgress,
+    signal: options?.signal,
   });
-  return handleResponse<AnalysisReport>(res);
 }
 
 export async function compareDemoRevision(sessionId: string): Promise<AnalysisReport> {
@@ -171,16 +275,36 @@ export async function compareSavedReports(
   return handleResponse<RevisionComparison>(res);
 }
 
-export async function updateDawContext(
+export interface SessionContextUpdatePayload {
+  genre?: GenreType;
+  stage?: StageType;
+  artist_vision?: ArtistVisionTag[];
+  daw?: string;
+  bus_routing?: string;
+  plugin_notes?: string;
+  source_tag?: "user_reported_context";
+}
+
+export async function updateSessionContext(
   sessionId: string,
-  context: Omit<UserReportedContext, "source_tag">
+  payload: SessionContextUpdatePayload
 ): Promise<AnalysisReport> {
   const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/context`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...context, source_tag: "user_reported_context" }),
+    body: JSON.stringify({ ...payload, source_tag: "user_reported_context" }),
   });
   return handleResponse<AnalysisReport>(res);
+}
+
+export async function updateDawContext(
+  sessionId: string,
+  context: Omit<UserReportedContext, "source_tag">
+): Promise<AnalysisReport> {
+  return updateSessionContext(sessionId, {
+    ...context,
+    source_tag: "user_reported_context",
+  });
 }
 
 export async function askMentor(

@@ -220,3 +220,16 @@ def test_public_demo_fixtures_dsp_and_revision_improvement(tmp_path: Path) -> No
     assert by_id["ev_true_peak_01"].status == "improved"
     assert by_id["ev_phase_01"].status == "improved"
     assert by_id["ev_tonal_low_mid_01"].status == "improved"
+
+
+def test_low_end_sub_phase_correlation_detected() -> None:
+    sr = 48000
+    t = np.arange(sr * 3, dtype=np.float32) / sr
+    sub_l = 0.4 * np.sin(2.0 * np.pi * 60.0 * t)
+    sub_r = -sub_l  # Inverted 60 Hz sub-bass
+    high_mono = 0.25 * np.sin(2.0 * np.pi * 2000.0 * t)
+    stereo = np.column_stack([sub_l + high_mono, sub_r + high_mono]).astype(np.float32)
+
+    res = compute_stereo_metrics(stereo, sr)
+    assert res.low_end_phase_correlation <= -0.90
+

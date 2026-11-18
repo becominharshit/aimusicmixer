@@ -7,23 +7,29 @@ import {
   GitCompare,
   Headphones,
   Minus,
+  Scale,
   Sparkles,
   Upload,
 } from "lucide-react";
 import type { AudioSourceSlot } from "@/audio/StudioAudioEngine";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import type { SavedAnalysisRecord } from "@/lib/supabase/storage";
 import type { AnalysisReport } from "@/types/report";
 
 interface RevisionInspectorProps {
   report: AnalysisReport;
   activeSource?: AudioSourceSlot;
+  matchLoudness?: boolean;
+  loudnessOffsetDb?: number;
+  hasRevisedAudio?: boolean;
   isUploading: boolean;
   errorMessage: string | null;
   onUploadRevision: (file: File) => void;
   onLoadDemoRevision: () => void;
   onAuditionRevised: () => void;
   onAuditionBaseline?: () => void;
+  onToggleMatchLoudness?: (val: boolean) => void;
   savedAnalyses?: SavedAnalysisRecord[];
   onCompareWithSavedBaseline?: (baselineReport: AnalysisReport) => void;
 }
@@ -31,12 +37,16 @@ interface RevisionInspectorProps {
 export function RevisionInspector({
   report,
   activeSource = "primary",
+  matchLoudness = true,
+  loudnessOffsetDb = 0,
+  hasRevisedAudio = false,
   isUploading,
   errorMessage,
   onUploadRevision,
   onLoadDemoRevision,
   onAuditionRevised,
   onAuditionBaseline,
+  onToggleMatchLoudness,
   savedAnalyses = [],
   onCompareWithSavedBaseline,
 }: RevisionInspectorProps) {
@@ -62,13 +72,13 @@ export function RevisionInspector({
         <input
           ref={inputRef}
           type="file"
-          accept=".wav,.flac,.mp3,.aiff,.aif,.ogg,.m4a"
+          accept=".wav,.flac,.mp3,.aiff,.aif,.ogg,.m4a,.aac"
           className="sr-only"
           onChange={(e) => {
             if (e.target.files?.[0]) onUploadRevision(e.target.files[0]);
           }}
         />
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="no-print flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="primary"
@@ -90,30 +100,6 @@ export function RevisionInspector({
               <Sparkles className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
               Load Sample Revised Mix (v2)
             </Button>
-          )}
-          {comp && (
-            <>
-              {onAuditionBaseline && (
-                <Button
-                  type="button"
-                  variant={activeSource === "primary" ? "soft" : "secondary"}
-                  size="sm"
-                  onClick={onAuditionBaseline}
-                >
-                  <Headphones className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-                  Audition v1
-                </Button>
-              )}
-              <Button
-                type="button"
-                variant={activeSource === "revised" ? "soft" : "secondary"}
-                size="sm"
-                onClick={onAuditionRevised}
-              >
-                <Headphones className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-                Audition v2
-              </Button>
-            </>
           )}
         </div>
       </div>
@@ -162,6 +148,50 @@ export function RevisionInspector({
         </div>
       ) : (
         <>
+          {/* Live Audible v1 <-> v2 A/B & Match LUFS Strip */}
+          <div className="no-print flex flex-wrap items-center justify-between gap-3 bg-[#FFFFFF] p-4 hairline-border squircle-outer">
+            <div className="flex flex-wrap items-center gap-2">
+              {onAuditionBaseline && (
+                <Button
+                  type="button"
+                  variant={activeSource === "primary" ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={onAuditionBaseline}
+                >
+                  <Headphones className="h-3.5 w-3.5" aria-hidden="true" />
+                  A: Baseline v1 ({comp.baseline_filename})
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant={activeSource === "revised" ? "primary" : "secondary"}
+                size="sm"
+                disabled={!hasRevisedAudio && !comp.revised_playback_proxy_url}
+                onClick={onAuditionRevised}
+              >
+                <Headphones className="h-3.5 w-3.5" aria-hidden="true" />
+                B: Revised v2 ({comp.revised_filename})
+              </Button>
+            </div>
+
+            {onToggleMatchLoudness && (
+              <div className="inline-flex items-center gap-2 bg-[#F5F5F7] px-3 py-1.5 text-xs hairline-border squircle-inner">
+                <Scale className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                <span className="font-medium text-[#182220]">Match LUFS v1 ↔ v2</span>
+                <span className="text-[#3A7269] tabular-telemetry">
+                  {matchLoudness
+                    ? `${loudnessOffsetDb >= 0 ? "+" : ""}${loudnessOffsetDb.toFixed(1)} dB`
+                    : "Unmatched"}
+                </span>
+                <Switch
+                  checked={matchLoudness}
+                  onCheckedChange={onToggleMatchLoudness}
+                  aria-label="Toggle Revision v1 v2 LUFS match"
+                />
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[
               {

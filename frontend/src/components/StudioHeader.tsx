@@ -5,9 +5,11 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   AlertCircle,
   CheckCircle2,
+  Download,
   History,
   LogIn,
   LogOut,
+  Printer,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -80,6 +82,30 @@ export function StudioHeader({
     };
   }, [popoverOpen]);
 
+  const handleExportJson = () => {
+    if (!report) return;
+    const safeName = report.audio_metadata.filename
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_");
+    const blob = new Blob([JSON.stringify(report, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `MixBench_${safeName || "session"}_${report.report_id}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrintPdf = () => {
+    if (typeof window !== "undefined") {
+      window.print();
+    }
+  };
+
   const privacyLabel = report?.privacy_audit.raw_audio_sent_to_ai
     ? "Audio AI Opt-In"
     : report?.privacy_audit.external_ai_enabled
@@ -95,10 +121,21 @@ export function StudioHeader({
           ? "Backend Unreachable — Check API URL"
           : "Checking DSP Engine";
 
+  const compactStatusText =
+    healthStatus === "online"
+      ? "Online"
+      : healthStatus === "waking"
+        ? "Waking…"
+        : healthStatus === "offline"
+          ? "Offline"
+          : "Checking";
+
+  const configuredHealthEndpoint = `${API_BASE_URL || ""}/health`;
+
   return (
-    <header className="border-b border-[rgba(24,34,32,0.08)] bg-[#FAFAFA]/94 backdrop-blur-md sm:sticky sm:top-0 sm:z-40">
-      <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
+    <header className="border-b border-[rgba(24,34,32,0.08)] bg-[#FAFAFA]/94 backdrop-blur-md sm:sticky sm:top-0 sm:z-40 print:border-0 print:bg-white">
+      <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-[#3A7269] text-white squircle-inner">
             <svg
               width="20"
@@ -126,21 +163,21 @@ export function StudioHeader({
                 v1.0
               </span>
             </div>
-            <p className="text-xs text-[#52605D]">
+            <p className="hidden text-xs text-[#52605D] sm:block">
               Learn mixing &amp; mastering by doing
             </p>
           </div>
         </div>
 
-        {/* Simple <-> Advanced Mode Switcher (SSR immediate, zero CLS) */}
+        {/* Simple <-> Advanced Mode Switcher (wraps cleanly on 375px viewports) */}
         <nav
           aria-label="Workspace mode"
-          className="relative inline-flex min-h-[38px] items-center bg-[#F5F5F7] p-1 hairline-border squircle-inner"
+          className="no-print relative inline-flex max-w-full min-h-[38px] items-center bg-[#F5F5F7] p-1 hairline-border squircle-inner"
         >
           {(
             [
-              { id: "simple", label: "Simple Mix Check" },
-              { id: "advanced", label: "Advanced Mix Check" },
+              { id: "simple", label: "Simple Mix Check", shortLabel: "Simple" },
+              { id: "advanced", label: "Advanced Mix Check", shortLabel: "Advanced" },
             ] as const
           ).map((item) => {
             const active = mode === item.id;
@@ -150,7 +187,7 @@ export function StudioHeader({
                 type="button"
                 whileTap={TACTILE_TAP}
                 onClick={() => onModeChange(item.id)}
-                className={`relative z-10 px-3.5 py-1.5 text-xs font-medium transition-colors duration-150 sm:text-sm cursor-pointer squircle-inner ${
+                className={`relative z-10 px-2.5 py-1.5 text-xs font-medium transition-colors duration-150 sm:px-3.5 sm:text-sm cursor-pointer squircle-inner ${
                   active ? "text-[#182220]" : "text-[#52605D] hover:text-[#182220]"
                 }`}
                 aria-pressed={active}
@@ -162,13 +199,14 @@ export function StudioHeader({
                     className="absolute inset-0 -z-10 bg-[#FFFFFF] hairline-border squircle-inner shadow-2xs"
                   />
                 )}
-                {item.label}
+                <span className="hidden sm:inline">{item.label}</span>
+                <span className="sm:hidden">{item.shortLabel}</span>
               </motion.button>
             );
           })}
         </nav>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="no-print flex flex-wrap items-center gap-1.5 sm:gap-2">
           {report && (
             <div className="hidden items-center gap-2 bg-[#FFFFFF] px-3 py-1.5 text-xs hairline-border squircle-inner xl:flex">
               <span className="max-w-[160px] truncate font-medium text-[#182220]">
@@ -185,7 +223,7 @@ export function StudioHeader({
           {/* Privacy Mode Indicator */}
           {report && (
             <div
-              className={`hidden items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium squircle-inner sm:inline-flex ${
+              className={`hidden items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium squircle-inner md:inline-flex ${
                 report.privacy_audit.raw_audio_sent_to_ai
                   ? "bg-[#FEF7EC] text-[#B45309] border border-[rgba(180,83,9,0.25)]"
                   : report.privacy_audit.external_ai_enabled
@@ -202,6 +240,34 @@ export function StudioHeader({
             </div>
           )}
 
+          {/* Export Studio Report (JSON + Print PDF) */}
+          {report && (
+            <div className="inline-flex items-center gap-1">
+              <motion.button
+                type="button"
+                whileTap={TACTILE_TAP}
+                onClick={handleExportJson}
+                title="Download AnalysisReport v1.0 JSON"
+                aria-label="Export JSON report"
+                className="inline-flex min-h-[32px] items-center gap-1 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+              >
+                <Download className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                <span className="hidden lg:inline">Export JSON</span>
+              </motion.button>
+              <motion.button
+                type="button"
+                whileTap={TACTILE_TAP}
+                onClick={handlePrintPdf}
+                title="Print clean studio PDF report"
+                aria-label="Print PDF report"
+                className="inline-flex min-h-[32px] items-center gap-1 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+              >
+                <Printer className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                <span className="hidden lg:inline">Print PDF</span>
+              </motion.button>
+            </div>
+          )}
+
           {/* Live Backend Health Status Pill + Actionable Diagnostic Popover */}
           <div ref={popoverRef} className="relative">
             <motion.button
@@ -209,7 +275,9 @@ export function StudioHeader({
               whileTap={TACTILE_TAP}
               onClick={() => setPopoverOpen((prev) => !prev)}
               aria-expanded={popoverOpen}
-              className={`inline-flex min-h-[32px] items-center gap-2 px-3 py-1.5 text-xs font-medium squircle-inner cursor-pointer transition-colors ${
+              aria-label={statusText}
+              title={`${statusText} (${configuredHealthEndpoint})`}
+              className={`inline-flex min-h-[32px] items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-medium squircle-inner cursor-pointer transition-colors ${
                 healthStatus === "online"
                   ? "bg-[#FFFFFF] text-[#182220] hairline-border hover:border-[rgba(58,114,105,0.35)]"
                   : healthStatus === "waking"
@@ -231,7 +299,8 @@ export function StudioHeader({
                         : "bg-[#52605D]/50 animate-pulse"
                 }`}
               />
-              <span>{statusText}</span>
+              <span className="hidden sm:inline">{statusText}</span>
+              <span className="sm:hidden">{compactStatusText}</span>
             </motion.button>
 
             <AnimatePresence>
@@ -243,7 +312,7 @@ export function StudioHeader({
                   transition={{ duration: 0.16, ease: STUDIO_EASE }}
                   role="dialog"
                   aria-label="DSP backend connection diagnostics"
-                  className="absolute right-0 mt-2 w-80 bg-[#FFFFFF] p-4 hairline-border squircle-outer shadow-sm z-50 space-y-3 text-xs"
+                  className="fixed right-3 left-3 sm:absolute sm:left-auto sm:right-0 mt-2 sm:w-80 bg-[#FFFFFF] p-4 hairline-border squircle-outer shadow-sm z-50 space-y-3 text-xs"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.5 font-semibold text-[#182220]">
@@ -269,7 +338,7 @@ export function StudioHeader({
                   <div className="space-y-1.5 bg-[#F5F5F7] p-2.5 squircle-inner">
                     <div className="text-[11px] text-[#52605D]">Configured API Endpoint</div>
                     <div className="break-all font-mono text-[11px] text-[#182220]">
-                      {API_BASE_URL}/health
+                      {configuredHealthEndpoint}
                     </div>
                   </div>
 
@@ -302,12 +371,12 @@ export function StudioHeader({
                   ) : (
                     <div className="space-y-1.5 text-[11px] text-[#52605D]">
                       <p className="text-[#BE123C] font-medium">
-                        {healthError || "Could not establish HTTP connection to FastAPI DSP backend."}
+                        {healthError || "Could not establish HTTP connection to DSP backend."}
                       </p>
                       <p>
-                        Start the Python backend (<code className="text-[#182220]">uvicorn app.main:app --port 8000</code>) or set{" "}
-                        <code className="text-[#182220]">NEXT_PUBLIC_API_URL</code> and{" "}
-                        <code className="text-[#182220]">ALLOWED_ORIGINS</code> in your deployment environment. MixBench never substitutes fake metrics when offline.
+                        Ensure the Next.js server or Python backend is running and{" "}
+                        <code className="text-[#182220]">NEXT_PUBLIC_API_URL</code> /{" "}
+                        <code className="text-[#182220]">ALLOWED_ORIGINS</code> are configured. MixBench never substitutes fake metrics when offline.
                       </p>
                     </div>
                   )}

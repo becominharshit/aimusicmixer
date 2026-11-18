@@ -23,22 +23,35 @@ def compute_dynamics_metrics(
     if samples.size == 0:
         return DynamicsResult(crest_factor_db=0.0, plr_db=0.0, psr_db=0.0, rms_dbfs=-120.0)
 
-    # Chunked RMS calculation avoids allocating a full-track float64 square copy in RAM
-    chunk_len = 262144
+    # Silence-gated chunked RMS: exclude chunks below -60 dBFS (mean_sq < 1e-6)
+    # so digital fade-outs/intros do not artificially inflate Crest Factor.
+    chunk_len = 16384
     n_samples = samples.shape[0]
     peak_lin = 0.0
-    sum_sq = 0.0
+    gated_sum_sq = 0.0
+    gated_count = 0
+    total_sum_sq = 0.0
+    total_count = 0
+
     for start in range(0, n_samples, chunk_len):
-        chunk = samples[start : start + chunk_len]
+        chunk = np.asarray(samples[start : start + chunk_len], dtype=np.float64)
         c_max = max(abs(float(chunk.min())), abs(float(chunk.max())))
         if c_max > peak_lin:
             peak_lin = c_max
-        sum_sq += float(np.sum(chunk * chunk))
+        c_sum_sq = float(np.sum(chunk * chunk))
+        c_count = chunk.size
+        total_sum_sq += c_sum_sq
+        total_count += c_count
+        if c_count > 0 and (c_sum_sq / c_count) >= 1e-6:
+            gated_sum_sq += c_sum_sq
+            gated_count += c_count
 
     if peak_lin <= 1e-12:
         return DynamicsResult(crest_factor_db=0.0, plr_db=0.0, psr_db=0.0, rms_dbfs=-120.0)
 
-    rms = float(np.sqrt(sum_sq / max(1, samples.size)))
+    active_sum_sq = gated_sum_sq if gated_count > 0 else total_sum_sq
+    active_count = gated_count if gated_count > 0 else total_count
+    rms = float(np.sqrt(active_sum_sq / max(1, active_count)))
     rms_dbfs = float(20.0 * np.log10(max(rms, 1e-12)))
     crest_factor = max(0.0, sample_peak_dbfs - rms_dbfs)
     psr = max(0.0, true_peak_dbtp - short_term_max_lufs) if short_term_max_lufs > -69.5 else 0.0

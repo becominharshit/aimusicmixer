@@ -225,7 +225,22 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
               Values near +1.0 sum cleanly in mono; values below 0.0 indicate phase cancellation risk
             </p>
           </div>
-          <div className="flex items-center gap-3 text-xs tabular-telemetry">
+          <div className="flex flex-wrap items-center gap-2 text-xs tabular-telemetry">
+            {typeof report.global_metrics.low_end_phase_correlation === "number" && (
+              <span className="bg-[#F5F5F7] px-2.5 py-1 text-[#52605D] hairline-border squircle-inner">
+                Sub &lt;120Hz:{" "}
+                <strong
+                  className={
+                    report.global_metrics.low_end_phase_correlation < 0.3
+                      ? "text-[#B45309]"
+                      : "text-[#15803D]"
+                  }
+                >
+                  {report.global_metrics.low_end_phase_correlation >= 0 ? "+" : ""}
+                  {report.global_metrics.low_end_phase_correlation.toFixed(2)}
+                </strong>
+              </span>
+            )}
             <span className="text-[#52605D]">
               Min:{" "}
               <strong className={minCorr < 0 ? "text-[#BE123C]" : "text-[#182220]"}>

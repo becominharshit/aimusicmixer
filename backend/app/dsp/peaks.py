@@ -38,21 +38,30 @@ def _chunk_peak_abs(samples: np.ndarray, block_len: int) -> float:
     return max_val
 
 
-def _measure_4x_resample_poly_peak(samples: np.ndarray, sample_rate: int = 48000) -> float:
-    """Measure 4x polyphase FIR oversampled True Peak across chunked 10-second windows."""
+def _measure_4x_resample_poly_peak_and_clips(
+    samples: np.ndarray,
+    sample_rate: int = 48000,
+    clip_threshold_lin: float = 1.0,
+) -> tuple[float, list[float]]:
+    """
+    Measure 4x polyphase FIR oversampled True Peak across chunked 10-second windows
+    and collect clipping timestamps directly from the 4x oversampled waveform (>= 0.0 dBTP).
+    """
     chunk_len = max(4096, int(sample_rate * 10))
     if samples.size == 0 or _chunk_peak_abs(samples, chunk_len) <= 1e-12:
-        return -120.0
+        return -120.0, []
 
     pad = 256
     n_samples = samples.shape[0]
     max_oversampled = 0.0
+    timestamps: list[float] = []
+    last_ts = -1.0
 
     for start in range(0, n_samples, chunk_len):
         end = min(n_samples, start + chunk_len)
         ctx_start = max(0, start - pad)
         ctx_end = min(n_samples, end + pad)
-        chunk = samples[ctx_start:ctx_end]
+        chunk = np.asarray(samples[ctx_start:ctx_end], dtype=np.float32)
 
         oversampled = resample_poly(chunk, up=4, down=1, axis=0)
         trim_left = (start - ctx_start) * 4
@@ -62,9 +71,26 @@ def _measure_4x_resample_poly_peak(samples: np.ndarray, sample_rate: int = 48000
             peak = max(abs(float(core.min())), abs(float(core.max())))
             if peak > max_oversampled:
                 max_oversampled = peak
+
+            if peak >= clip_threshold_lin and len(timestamps) < 50:
+                if core.ndim == 2:
+                    clipped_mask = (np.max(core, axis=1) >= clip_threshold_lin) | (
+                        np.min(core, axis=1) <= -clip_threshold_lin
+                    )
+                else:
+                    clipped_mask = (core >= clip_threshold_lin) | (core <= -clip_threshold_lin)
+                indices = np.flatnonzero(clipped_mask)
+                oversampled_sr = 4.0 * max(sample_rate, 1)
+                for local_idx in indices:
+                    ts = round(float((start / max(sample_rate, 1)) + (int(local_idx) / oversampled_sr)), 2)
+                    if ts - last_ts >= 0.5:
+                        timestamps.append(ts)
+                        last_ts = ts
+                        if len(timestamps) >= 50:
+                            break
         del oversampled, core
 
-    return _linear_to_db(max_oversampled)
+    return _linear_to_db(max_oversampled), timestamps
 
 
 def _measure_ffmpeg_ebur128_true_peak(source_path: Path | None) -> float | None:
@@ -86,14 +112,17 @@ def _measure_ffmpeg_ebur128_true_peak(source_path: Path | None) -> float | None:
     except Exception:
         return None
     output = proc.stderr or ""
-    # FFmpeg ebur128 summary prints: "True peak:\n    Peak:       -0.1 dBFS"
     match = re.search(r"True peak:\s*(?:\r?\n)+\s*Peak:\s*([+-]?\d+(?:\.\d+)?)\s*dBFS", output)
     if match:
         return float(match.group(1))
     return None
 
 
-def _find_clipping_timestamps(samples: np.ndarray, sample_rate: int, threshold: float = 0.999) -> list[float]:
+def _find_sample_clipping_timestamps(
+    samples: np.ndarray,
+    sample_rate: int,
+    threshold: float = 0.999,
+) -> list[float]:
     if samples.size == 0:
         return []
     chunk_len = max(4096, int(sample_rate * 10))
@@ -123,7 +152,10 @@ def compute_peak_metrics(
     sample_rate: int,
     source_path: Path | None = None,
 ) -> PeakResult:
-    """Measure sample peak (dBFS), 4x polyphase True Peak (dBTP), and FFmpeg ebur128 cross-check."""
+    """
+    Measure sample peak (dBFS) and 4x polyphase FIR True Peak (dBTP).
+    Uses FFmpeg ebur128 only as an exception fallback so audio is decoded once.
+    """
     block_len = max(4096, int(sample_rate * 10))
     sample_peak_lin = _chunk_peak_abs(samples, block_len)
     if samples.size == 0 or sample_peak_lin <= 1e-12:
@@ -135,15 +167,16 @@ def compute_peak_metrics(
         )
 
     sample_peak_dbfs = _linear_to_db(sample_peak_lin)
-    poly_dbtp = _measure_4x_resample_poly_peak(samples, sample_rate)
-    ffmpeg_dbtp = _measure_ffmpeg_ebur128_true_peak(source_path)
+    ffmpeg_dbtp: float | None = None
+    clip_times: list[float] = []
 
-    candidates = [sample_peak_dbfs, poly_dbtp]
-    if ffmpeg_dbtp is not None and np.isfinite(ffmpeg_dbtp):
-        candidates.append(ffmpeg_dbtp)
-    true_peak_dbtp = max(candidates)
-
-    clip_times = _find_clipping_timestamps(samples, sample_rate)
+    try:
+        poly_dbtp, clip_times = _measure_4x_resample_poly_peak_and_clips(samples, sample_rate)
+        true_peak_dbtp = max(sample_peak_dbfs, poly_dbtp)
+    except Exception:
+        ffmpeg_dbtp = _measure_ffmpeg_ebur128_true_peak(source_path)
+        true_peak_dbtp = max(sample_peak_dbfs, ffmpeg_dbtp) if ffmpeg_dbtp is not None else sample_peak_dbfs
+        clip_times = _find_sample_clipping_timestamps(samples, sample_rate)
 
     return PeakResult(
         sample_peak_dbfs=round(sample_peak_dbfs, 2),

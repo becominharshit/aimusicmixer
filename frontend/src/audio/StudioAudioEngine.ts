@@ -2,6 +2,13 @@ export type AudioSourceSlot = "primary" | "reference" | "revised";
 export type StereoMode = "stereo" | "mono";
 export type DeviceProfile = "full" | "smartphone" | "laptop";
 
+export interface CorrectiveEqConfig {
+  id: string;
+  freqHz: number;
+  q: number;
+  gainDb: number;
+}
+
 interface SlotState {
   buffer: AudioBuffer | null;
   lufs: number | null;
@@ -11,9 +18,10 @@ interface SlotState {
 /**
  * Persistent Web Audio API Studio Engine.
  * - Lives outside React component trees so Simple <-> Advanced switching never glitches audio.
- * - Uses 15ms exponential GainNode ramps (`setTargetAtTime`) on every play/pause, A/B, mono, and filter toggle.
- * - Performs equal-power mono folding (`0.5L + 0.5R`) to eliminate +6 dB digital clipping.
- * - Applies calibrated BiquadFilterNode approximations for Smartphone and Laptop speaker simulation.
+ * - Unlocks suspended AudioContext synchronously on user gestures (Safari / iOS WebKit safe).
+ * - Uses 15ms exponential GainNode ramps (`setTargetAtTime`) on every play/pause, A/B, mono, and EQ toggle.
+ * - Uses calibrated 0.5L + 0.5R mono summing into a -0.3 dBFS brickwall safety limiter to prevent digital clipping.
+ * - Includes a bypassable Corrective EQ peaking filter (`correctiveEqFilter`) for tonal finding auditioning.
  */
 export class StudioAudioEngine {
   private ctx: AudioContext | null = null;
@@ -28,6 +36,7 @@ export class StudioAudioEngine {
   private stereoMode: StereoMode = "stereo";
   private deviceProfile: DeviceProfile = "full";
   private matchLoudness = true;
+  private correctiveEq: CorrectiveEqConfig | null = null;
 
   private isPlaying = false;
   private startCtxTime = 0;
@@ -47,10 +56,15 @@ export class StudioAudioEngine {
   private rlGain: GainNode | null = null;
   private rrGain: GainNode | null = null;
 
-  // Device Translation Lab filter chain
+  // Bypassable corrective EQ node
+  private correctiveEqFilter: BiquadFilterNode | null = null;
+
+  // Device Translation Lab filter chain + speaker makeup gain + brickwall safety limiter
   private hpFilter: BiquadFilterNode | null = null;
   private midPresenceFilter: BiquadFilterNode | null = null;
   private lpFilter: BiquadFilterNode | null = null;
+  private makeupGainNode: GainNode | null = null;
+  private safetyLimiter: DynamicsCompressorNode | null = null;
   private masterGain: GainNode | null = null;
 
   private listeners = new Set<() => void>();
@@ -66,6 +80,12 @@ export class StudioAudioEngine {
   private emit(): void {
     for (const fn of this.listeners) {
       fn();
+    }
+  }
+
+  private unlockContextSync(ctx: AudioContext): void {
+    if (ctx.state === "suspended") {
+      void ctx.resume();
     }
   }
 
@@ -99,19 +119,40 @@ export class StudioAudioEngine {
       this.lrGain.connect(this.merger, 0, 1);
       this.rrGain.connect(this.merger, 0, 1);
 
+      this.correctiveEqFilter = ctx.createBiquadFilter();
+      this.correctiveEqFilter.type = "peaking";
+      this.correctiveEqFilter.frequency.value = 250;
+      this.correctiveEqFilter.Q.value = 1.4;
+      this.correctiveEqFilter.gain.value = 0;
+
       this.hpFilter = ctx.createBiquadFilter();
       this.midPresenceFilter = ctx.createBiquadFilter();
       this.lpFilter = ctx.createBiquadFilter();
+      this.makeupGainNode = ctx.createGain();
+      this.makeupGainNode.gain.value = 1.0;
+
+      // Brickwall safety limiter (-0.3 dBFS) prevents LUFS-matched or speaker-boosted signals from clipping DAC
+      this.safetyLimiter = ctx.createDynamicsCompressor();
+      this.safetyLimiter.threshold.value = -0.3;
+      this.safetyLimiter.knee.value = 0;
+      this.safetyLimiter.ratio.value = 20;
+      this.safetyLimiter.attack.value = 0.001;
+      this.safetyLimiter.release.value = 0.05;
+
       this.masterGain = ctx.createGain();
       this.masterGain.gain.value = 0.0001;
 
-      this.merger.connect(this.hpFilter);
+      this.merger.connect(this.correctiveEqFilter);
+      this.correctiveEqFilter.connect(this.hpFilter);
       this.hpFilter.connect(this.midPresenceFilter);
       this.midPresenceFilter.connect(this.lpFilter);
-      this.lpFilter.connect(this.masterGain);
+      this.lpFilter.connect(this.makeupGainNode);
+      this.makeupGainNode.connect(this.safetyLimiter);
+      this.safetyLimiter.connect(this.masterGain);
       this.masterGain.connect(ctx.destination);
 
       this.applyMatrixAndFilters(true);
+      this.applyCorrectiveEq(true);
       this.applyLoudnessGain(true);
     }
     return this.ctx;
@@ -132,6 +173,8 @@ export class StudioAudioEngine {
     }
     const arrayBuffer = await res.arrayBuffer();
     const decoded = await ctx.decodeAudioData(arrayBuffer);
+    // Explicitly release prior AudioBuffer reference before assigning the new one
+    this.slots[slot].buffer = null;
     this.slots[slot] = { buffer: decoded, lufs, url };
 
     if (slot === "primary" && this.loopEndSec <= 0) {
@@ -139,6 +182,18 @@ export class StudioAudioEngine {
       this.loopEndSec = decoded.duration;
     }
     this.applyLoudnessGain(false);
+    this.emit();
+  }
+
+  clearSlot(slot: AudioSourceSlot): void {
+    if (this.activeSource === slot && this.isPlaying) {
+      this.pause();
+    }
+    this.slots[slot] = { buffer: null, lufs: null, url: null };
+    if (this.activeSource === slot && slot !== "primary") {
+      this.activeSource = "primary";
+      this.applyLoudnessGain(false);
+    }
     this.emit();
   }
 
@@ -173,6 +228,7 @@ export class StudioAudioEngine {
       stereoMode: this.stereoMode,
       deviceProfile: this.deviceProfile,
       matchLoudness: this.matchLoudness,
+      activeCorrectiveEqId: this.correctiveEq?.id ?? null,
       isPlaying: this.isPlaying,
       loopEnabled: this.loopEnabled,
       loopStartSec: this.loopStartSec,
@@ -193,7 +249,7 @@ export class StudioAudioEngine {
     if (primaryLufs === null || slotLufs === null) {
       return 0;
     }
-    return Math.max(-18, Math.min(6, primaryLufs - slotLufs));
+    return Math.max(-18.0, Math.min(12.0, primaryLufs - slotLufs));
   }
 
   private applyLoudnessGain(immediate: boolean): void {
@@ -208,6 +264,25 @@ export class StudioAudioEngine {
     }
   }
 
+  private applyCorrectiveEq(immediate: boolean): void {
+    if (!this.ctx || !this.correctiveEqFilter) return;
+    const now = this.ctx.currentTime;
+    const tau = 0.015;
+    const freq = this.correctiveEq ? Math.max(20, Math.min(20000, this.correctiveEq.freqHz)) : 250;
+    const q = this.correctiveEq ? Math.max(0.2, Math.min(10, this.correctiveEq.q)) : 1.4;
+    const gain = this.correctiveEq ? Math.max(-12, Math.min(12, this.correctiveEq.gainDb)) : 0;
+
+    if (immediate) {
+      this.correctiveEqFilter.frequency.setValueAtTime(freq, now);
+      this.correctiveEqFilter.Q.setValueAtTime(q, now);
+      this.correctiveEqFilter.gain.setValueAtTime(gain, now);
+    } else {
+      this.correctiveEqFilter.frequency.setTargetAtTime(freq, now, tau);
+      this.correctiveEqFilter.Q.setTargetAtTime(q, now, tau);
+      this.correctiveEqFilter.gain.setTargetAtTime(gain, now, tau);
+    }
+  }
+
   private applyMatrixAndFilters(immediate: boolean): void {
     if (
       !this.ctx ||
@@ -217,14 +292,15 @@ export class StudioAudioEngine {
       !this.rrGain ||
       !this.hpFilter ||
       !this.midPresenceFilter ||
-      !this.lpFilter
+      !this.lpFilter ||
+      !this.makeupGainNode
     ) {
       return;
     }
     const now = this.ctx.currentTime;
     const tau = 0.015;
 
-    // Smartphone always collapses to equal-power mono; explicit Mono toggle also collapses to 0.5L + 0.5R
+    // Smartphone always collapses to mono; explicit Mono toggle folds to peak-safe 0.5L + 0.5R
     let ll = 1;
     let lr = 0;
     let rl = 0;
@@ -235,7 +311,7 @@ export class StudioAudioEngine {
       rl = 0.5;
       rr = 0.5;
     } else if (this.deviceProfile === "laptop") {
-      // Narrowed laptop speaker crossfeed
+      // Narrowed laptop speaker acoustic crossfeed
       ll = 0.72;
       lr = 0.28;
       rl = 0.28;
@@ -255,7 +331,7 @@ export class StudioAudioEngine {
     setG(this.rrGain, rr);
 
     if (this.deviceProfile === "smartphone") {
-      // Generic Smartphone: band-limited 300 Hz - 4.5 kHz + equal-power mono fold
+      // Generic Smartphone: band-limited 300 Hz - 4.5 kHz + mono fold + +2.5 dB makeup gain
       this.hpFilter.type = "highpass";
       this.hpFilter.frequency.setTargetAtTime(300, now, tau);
       this.hpFilter.Q.setTargetAtTime(0.75, now, tau);
@@ -268,10 +344,12 @@ export class StudioAudioEngine {
       this.lpFilter.type = "lowpass";
       this.lpFilter.frequency.setTargetAtTime(4500, now, tau);
       this.lpFilter.Q.setTargetAtTime(0.75, now, tau);
+
+      setG(this.makeupGainNode, Math.pow(10, 2.5 / 20));
     } else if (this.deviceProfile === "laptop") {
-      // Generic Laptop Speakers: 180 Hz - 12 kHz narrowed stereo profile
+      // Generic Laptop Speakers: calibrated 150 Hz - 8 kHz narrowed stereo profile + +1.5 dB makeup gain
       this.hpFilter.type = "highpass";
-      this.hpFilter.frequency.setTargetAtTime(180, now, tau);
+      this.hpFilter.frequency.setTargetAtTime(150, now, tau);
       this.hpFilter.Q.setTargetAtTime(0.75, now, tau);
 
       this.midPresenceFilter.type = "peaking";
@@ -280,8 +358,10 @@ export class StudioAudioEngine {
       this.midPresenceFilter.gain.setTargetAtTime(0.8, now, tau);
 
       this.lpFilter.type = "lowpass";
-      this.lpFilter.frequency.setTargetAtTime(12000, now, tau);
+      this.lpFilter.frequency.setTargetAtTime(8000, now, tau);
       this.lpFilter.Q.setTargetAtTime(0.75, now, tau);
+
+      setG(this.makeupGainNode, Math.pow(10, 1.5 / 20));
     } else {
       // Full Range flat bypass
       this.hpFilter.type = "allpass";
@@ -291,6 +371,8 @@ export class StudioAudioEngine {
       this.lpFilter.type = "lowpass";
       this.lpFilter.frequency.setTargetAtTime(22000, now, tau);
       this.lpFilter.Q.setTargetAtTime(0.707, now, tau);
+
+      setG(this.makeupGainNode, 1.0);
     }
   }
 
@@ -313,6 +395,7 @@ export class StudioAudioEngine {
 
   private startPlaybackAt(posSec: number): void {
     const ctx = this.ensureGraph();
+    this.unlockContextSync(ctx);
     const buf = this.slots[this.activeSource].buffer || this.slots.primary.buffer;
     if (!buf || !this.sourceGainNode || !this.masterGain) return;
 
@@ -352,8 +435,10 @@ export class StudioAudioEngine {
 
   async play(): Promise<void> {
     const ctx = this.ensureGraph();
-    if (ctx.state === "suspended") {
-      await ctx.resume();
+    // Call resume() synchronously inside user gesture before awaiting so Safari/iOS unlocks cleanly
+    const resumePromise = ctx.state === "suspended" ? ctx.resume() : null;
+    if (resumePromise) {
+      await resumePromise;
     }
     if (this.isPlaying) return;
     this.startPlaybackAt(this.offsetSec);
@@ -388,8 +473,9 @@ export class StudioAudioEngine {
     this.offsetSec = clamped;
     if (this.isPlaying || autoPlay) {
       const ctx = this.ensureGraph();
-      if (ctx.state === "suspended") {
-        await ctx.resume();
+      const resumePromise = ctx.state === "suspended" ? ctx.resume() : null;
+      if (resumePromise) {
+        await resumePromise;
       }
       this.startPlaybackAt(clamped);
     } else {
@@ -398,6 +484,8 @@ export class StudioAudioEngine {
   }
 
   async auditionRange(startSec: number, endSec: number): Promise<void> {
+    const ctx = this.ensureGraph();
+    this.unlockContextSync(ctx);
     const dur = this.getDurationSec();
     const s = Math.max(0, Math.min(startSec, Math.max(0, dur - 0.5)));
     const e = Math.max(s + 1.0, Math.min(endSec, dur));
@@ -421,6 +509,7 @@ export class StudioAudioEngine {
 
   async setActiveSource(slot: AudioSourceSlot): Promise<void> {
     if (this.activeSource === slot || !this.slots[slot].buffer) return;
+    if (this.ctx) this.unlockContextSync(this.ctx);
     const curPos = this.getCurrentTimeSec();
     this.activeSource = slot;
     this.applyLoudnessGain(false);
@@ -434,6 +523,7 @@ export class StudioAudioEngine {
 
   setStereoMode(mode: StereoMode): void {
     if (this.stereoMode === mode) return;
+    if (this.ctx) this.unlockContextSync(this.ctx);
     this.stereoMode = mode;
     this.applyMatrixAndFilters(false);
     this.emit();
@@ -441,6 +531,7 @@ export class StudioAudioEngine {
 
   setDeviceProfile(profile: DeviceProfile): void {
     if (this.deviceProfile === profile) return;
+    if (this.ctx) this.unlockContextSync(this.ctx);
     this.deviceProfile = profile;
     this.applyMatrixAndFilters(false);
     this.emit();
@@ -453,6 +544,17 @@ export class StudioAudioEngine {
     this.emit();
   }
 
+  setCorrectiveEq(eq: CorrectiveEqConfig | null): void {
+    if (this.ctx) this.unlockContextSync(this.ctx);
+    if (eq && this.correctiveEq?.id === eq.id) {
+      this.correctiveEq = null;
+    } else {
+      this.correctiveEq = eq;
+    }
+    this.applyCorrectiveEq(false);
+    this.emit();
+  }
+
   reset(): void {
     this.stopCurrentSourceNode();
     this.isPlaying = false;
@@ -460,13 +562,17 @@ export class StudioAudioEngine {
     this.activeSource = "primary";
     this.stereoMode = "stereo";
     this.deviceProfile = "full";
+    this.correctiveEq = null;
     this.loopEnabled = false;
+    this.loopStartSec = 0;
+    this.loopEndSec = 0;
     this.slots = {
       primary: { buffer: null, lufs: null, url: null },
       reference: { buffer: null, lufs: null, url: null },
       revised: { buffer: null, lufs: null, url: null },
     };
     this.applyMatrixAndFilters(true);
+    this.applyCorrectiveEq(true);
     this.applyLoudnessGain(true);
     this.emit();
   }
