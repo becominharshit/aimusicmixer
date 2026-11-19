@@ -20,7 +20,7 @@ from app.schemas.report import (
 
 logger = logging.getLogger(__name__)
 
-GEMINI_REQUEST_TIMEOUT_SEC = 20.0
+GEMINI_REQUEST_TIMEOUT_SEC = 35.0
 GEMINI_REQUEST_TIMEOUT_MS = int(GEMINI_REQUEST_TIMEOUT_SEC * 1000)
 
 
@@ -238,25 +238,76 @@ def _invoke_gemini_sync(
             types.Part.from_bytes(data=audio_bytes, mime_type=mime),
         ]
 
-    # Always use thinking_level="low" so gemini-4-hydrogen latency stays well under 10s
-    config_kwargs: dict[str, object] = {
-        "system_instruction": system_rules,
-        "response_mime_type": "application/json",
-        "response_schema": MentorLLMOutput,
-        "http_options": http_options,
-    }
-    try:
-        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="low")
-    except Exception:
-        # Older google-genai SDK versions may not expose thinking_level on ThinkingConfig
-        pass
+    # Prefer thinking_level="minimal" for lowest structured JSON latency; safely retry once
+    # with thinking_level="low" if the installed SDK or gemini-4-hydrogen endpoint rejects "minimal".
+    def _build_config(level: str | None) -> types.GenerateContentConfig:
+        cfg_kwargs: dict[str, object] = {
+            "system_instruction": system_rules,
+            "response_mime_type": "application/json",
+            "response_schema": MentorLLMOutput,
+            "http_options": http_options,
+        }
+        if level is not None:
+            cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=level)
+        return types.GenerateContentConfig(**cfg_kwargs)
 
-    config = types.GenerateContentConfig(**config_kwargs)
-    response = client.models.generate_content(
-        model=settings.gemini_model,
-        contents=contents,
-        config=config,
-    )
+    def _is_unsupported_thinking_level_error(exc: Exception) -> bool:
+        msg = f"{type(exc).__name__}: {exc}".lower()
+        return any(
+            token in msg
+            for token in (
+                "thinking_level",
+                "thinkinglevel",
+                "thinking level",
+                "minimal",
+                "invalid_argument",
+                "unsupported",
+                "enum",
+                "400",
+            )
+        )
+
+    try:
+        config = _build_config("minimal")
+        try:
+            response = client.models.generate_content(
+                model=settings.gemini_model,
+                contents=contents,
+                config=config,
+            )
+        except Exception as minimal_exc:
+            if not _is_unsupported_thinking_level_error(minimal_exc):
+                raise
+            logger.info(
+                "AI Mix Mentor thinking_level='minimal' rejected (%s: %s); retrying once with thinking_level='low'.",
+                type(minimal_exc).__name__,
+                minimal_exc,
+            )
+            try:
+                low_config = _build_config("low")
+            except Exception:
+                low_config = _build_config(None)
+            response = client.models.generate_content(
+                model=settings.gemini_model,
+                contents=contents,
+                config=low_config,
+            )
+    except (TypeError, ValueError) as cfg_exc:
+        logger.info(
+            "AI Mix Mentor SDK rejected thinking_level='minimal' (%s: %s); falling back to thinking_level='low'.",
+            type(cfg_exc).__name__,
+            cfg_exc,
+        )
+        try:
+            low_config = _build_config("low")
+        except Exception:
+            low_config = _build_config(None)
+        response = client.models.generate_content(
+            model=settings.gemini_model,
+            contents=contents,
+            config=low_config,
+        )
+
     raw_output = (getattr(response, "text", None) or "").strip() or "{}"
     parsed = MentorLLMOutput.model_validate_json(raw_output)
 
@@ -331,11 +382,7 @@ def generate_mentor_advice(
     try:
         return _invoke_gemini_sync(report, request, clip_source, use_audio)
     except Exception as exc:
-        logger.warning(
-            "AI Mix Mentor call failed (%s: %s); returning deterministic Offline Mentor fallback.",
-            type(exc).__name__,
-            exc,
-        )
+        logger.warning("AI Mix Mentor fallback (%s): %s", type(exc).__name__, exc)
         return build_deterministic_mentor_response(
             report,
             request,
@@ -354,7 +401,7 @@ async def generate_mentor_advice_async(
     Async FastAPI mentor entry point:
     - Enforces three-tier consent before any network call.
     - Offloads synchronous Google GenAI SDK work via asyncio.to_thread so the event loop never blocks.
-    - Enforces a strict 20-second timeout with asyncio.wait_for and returns deterministic fallback immediately on timeout/error.
+    - Enforces a strict 35.0s timeout with asyncio.wait_for and returns deterministic fallback immediately on timeout/error.
     """
     if not request.allow_metrics_ai:
         return build_deterministic_mentor_response(report, request)
@@ -384,14 +431,10 @@ async def generate_mentor_advice_async(
         return build_deterministic_mentor_response(
             report,
             request,
-            fallback_reason=f"Offline Mentor fallback (Timeout after {int(timeout_sec)}s)",
+            fallback_reason=f"Offline Mentor fallback (Timeout after {int(round(timeout_sec))}s)",
         )
     except Exception as exc:
-        logger.warning(
-            "AI Mix Mentor SDK/API error (%s: %s); returning deterministic Offline Mentor fallback.",
-            type(exc).__name__,
-            exc,
-        )
+        logger.warning("AI Mix Mentor fallback (%s): %s", type(exc).__name__, exc)
         return build_deterministic_mentor_response(
             report,
             request,

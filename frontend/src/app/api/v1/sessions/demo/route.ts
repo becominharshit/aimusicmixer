@@ -8,6 +8,7 @@ import { analyzeAudioToReport } from "@/server/services/analyzer";
 import { sessionStore } from "@/server/services/sessionStore";
 import {
   HttpStatusError,
+  extractVerifiedJwtSub,
   handleRouteError,
   instantiateReportFromCachedDemo,
   parseArtistVision,
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
       rawVision = form.get("artist_vision") ?? rawVision;
     }
 
-    const rec = await sessionStore.createSession();
+    const rec = await sessionStore.createSession(extractVerifiedJwtSub(request));
     sessionIdForCleanup = rec.sessionId;
     const context: AnalysisContext = {
       genre: parseGenre(rawGenre),

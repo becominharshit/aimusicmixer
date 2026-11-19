@@ -37,26 +37,47 @@ async function assertNoButtonOverlap(group: Locator, label: string) {
 }
 
 test.describe("MixBench Global Launch Visual & Functional QA", () => {
-  test("desktop 1440x900: zero pill overlap, Audition EQ, Recheck scroll-to-top, BPM/Vectorscope/Auto-Fix, and privacy defaults", async ({
+  test("desktop 1440x900: hero preview, studio components, theme toggle, zero overlap, mentor recovery, and privacy defaults", async ({
     page,
   }) => {
     const consoleErrors: string[] = [];
+    const pageErrors: string[] = [];
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
+    });
+    page.on("pageerror", (err) => {
+      pageErrors.push(err.message);
     });
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
 
-    await expect(page.getByRole("button", { name: /Try Sample Flawed Mix/i })).toBeVisible();
-    await page.getByRole("button", { name: /Try Sample Flawed Mix/i }).click();
+    // Verify dual-theme toggle works cleanly (Dark Vinyl default -> Daylight Studio Light -> Dark)
+    const themeToggle = page.getByTestId("theme-toggle");
+    await expect(themeToggle).toBeVisible();
+    await themeToggle.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await themeToggle.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+    await expect(page.getByRole("button", { name: /Try Sample Flawed Mix/i }).first()).toBeVisible();
+    await page.getByRole("button", { name: /Try Sample Flawed Mix/i }).first().click();
 
     // Wait for deterministic DSP report to render
     await expect(page.getByText(/demo-flawed-v1\.wav/i).first()).toBeVisible({ timeout: 25_000 });
 
-    // Simple View must expose Audition EQ on findings and Recheck in v2
+    // Signature Studio Components render cleanly in Simple View
+    await expect(page.getByTestId("spinning-disc-player")).toBeVisible();
+    await expect(page.getByTestId("flaw-timeline-bar")).toBeVisible();
+    await expect(page.getByTestId("live-spectral-graph")).toBeVisible();
+
+    // Finding cards expose classification badges, DAW repair checkboxes, and Audition EQ
     const auditionEqBtn = page.getByRole("button", { name: /Audition .* dB @/i }).first();
     await expect(auditionEqBtn).toBeVisible();
+    const firstCheckbox = page.getByRole("checkbox").first();
+    await expect(firstCheckbox).toBeVisible();
+    await firstCheckbox.click();
+    await expect(firstCheckbox).toBeChecked();
 
     // Verify no overlapping pills in WorkspaceSubNav and BottomTransportDock
     await assertNoButtonOverlap(page.getByTestId("workspace-subnav"), "WorkspaceSubNav (1440px)");
@@ -84,13 +105,15 @@ test.describe("MixBench Global Launch Visual & Functional QA", () => {
     const scrollYAfterRecheck = await page.evaluate(() => window.scrollY);
     expect(scrollYAfterRecheck).toBeLessThanOrEqual(40);
 
-    // Switch to Advanced Mix Check -> verify BPM badge, Song Sections, Transient Punch, and Stereo Vectorscope
-    await page.getByRole("button", { name: /Advanced Mix Check/i }).click();
+    // Switch to Advanced Mix Check -> verify FlawTimelineBar, LiveSpectralGraph, BPM badge, Song Sections, and Stereo Vectorscope
+    await page.getByRole("button", { name: "Advanced Mix Check", exact: true }).click();
+    await expect(page.getByTestId("flaw-timeline-bar")).toBeVisible();
+    await expect(page.getByTestId("live-spectral-graph")).toBeVisible();
     await expect(page.getByTestId("waveform-bpm-badge")).toBeVisible();
     await expect(page.getByTestId("waveform-sections")).toBeVisible();
     await expect(page.getByTestId("stereo-vectorscope")).toBeVisible();
 
-    // Open Mentor Drawer -> verify all 3 privacy toggles default OFF and clean close
+    // Open Mentor Drawer -> verify all 3 privacy toggles default OFF, run Offline Mentor cleanly (exits loading), and close
     await page.getByRole("button", { name: /AI Mix Mentor/i }).click();
     const toggleA = page.getByRole("switch", { name: /Toggle A Metrics-Only AI Mentor/i });
     const toggleB = page.getByRole("switch", { name: /Toggle B Direct Audio Listening Opt-In/i });
@@ -100,25 +123,36 @@ test.describe("MixBench Global Launch Visual & Functional QA", () => {
     await expect(toggleB).toBeDisabled();
     await expect(toggleC).toHaveAttribute("aria-checked", "false");
 
+    await page.getByRole("button", { name: /Run Offline Deterministic Mentor/i }).click();
+    await expect(page.getByText(/Generating Coaching\.\.\./i)).toBeHidden({ timeout: 15_000 });
+
     await page.getByRole("button", { name: /Close AI Mix Mentor/i }).click();
     await expect(toggleA).toBeHidden();
+
+    // Zero horizontal overflow at 1440px
+    const desktopOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    );
+    expect(desktopOverflow).toBeLessThanOrEqual(2);
 
     // Filter out expected HMR WebSocket noise if any
     const realErrors = consoleErrors.filter((e) => !e.toLowerCase().includes("websocket"));
     expect(realErrors, `Unexpected browser console errors: ${realErrors.join(" | ")}`).toEqual([]);
+    expect(pageErrors, `Unexpected uncaught page errors: ${pageErrors.join(" | ")}`).toEqual([]);
   });
 
-  test("mobile 375x812: zero horizontal overflow and zero overlapping pills", async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 812 });
+  test("mobile 390x844: zero horizontal overflow and zero overlapping pills", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
 
-    await page.getByRole("button", { name: /Try Sample Flawed Mix/i }).click();
+    await page.getByRole("button", { name: /Try Sample Flawed Mix/i }).first().click();
     await expect(page.getByText(/demo-flawed-v1\.wav/i).first()).toBeVisible({ timeout: 25_000 });
 
-    await assertNoButtonOverlap(page.getByTestId("workspace-subnav"), "WorkspaceSubNav (375px)");
-    await assertNoButtonOverlap(page.getByTestId("dock-source-group"), "Dock Source Group (375px)");
-    await assertNoButtonOverlap(page.getByTestId("dock-stereo-group"), "Dock Stereo Group (375px)");
-    await assertNoButtonOverlap(page.getByTestId("dock-device-group"), "Dock Device Group (375px)");
+    await expect(page.getByTestId("spinning-disc-player")).toBeVisible();
+    await assertNoButtonOverlap(page.getByTestId("workspace-subnav"), "WorkspaceSubNav (390px)");
+    await assertNoButtonOverlap(page.getByTestId("dock-source-group"), "Dock Source Group (390px)");
+    await assertNoButtonOverlap(page.getByTestId("dock-stereo-group"), "Dock Stereo Group (390px)");
+    await assertNoButtonOverlap(page.getByTestId("dock-device-group"), "Dock Device Group (390px)");
 
     const horizontalOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth
@@ -126,19 +160,24 @@ test.describe("MixBench Global Launch Visual & Functional QA", () => {
     expect(horizontalOverflow).toBeLessThanOrEqual(4);
   });
 
-  test("legal and client share routes return 200 and render studio documentation", async ({
+  test("diagnostics /status, legal, and client share routes return 200 and render cleanly", async ({
     page,
   }) => {
+    const statusRes = await page.goto("/status");
+    expect(statusRes?.status()).toBe(200);
+    await expect(page.getByRole("heading", { name: /System Status & API Contract/i })).toBeVisible();
+    await expect(page.getByText(/\/api\/v1\/analyze\/mock/i)).toBeVisible();
+
     const privacyRes = await page.goto("/privacy");
     expect(privacyRes?.status()).toBe(200);
     await expect(page.getByRole("heading", { name: /Zero-Audio-by-Default/i })).toBeVisible();
 
     const termsRes = await page.goto("/terms");
     expect(termsRes?.status()).toBe(200);
-    await expect(page.getByRole("heading", { name: /Studio Service Terms/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /MixBench Terms of Use/i })).toBeVisible();
 
     const shareRes = await page.goto("/share/demo");
     expect(shareRes?.status()).toBe(200);
-    await expect(page.getByText(/Shared Client Review/i)).toBeVisible();
+    await expect(page.getByText(/Read-Only Client Review/i)).toBeVisible();
   });
 });

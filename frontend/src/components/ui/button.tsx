@@ -5,16 +5,19 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-[background-color,border-color,color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 cursor-pointer squircle-inner focus-visible:outline-2 focus-visible:outline-[#3A7269] focus-visible:outline-offset-2",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-[background-color,border-color,color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 cursor-pointer squircle-inner focus-visible:outline-2 focus-visible:outline-[var(--studio-mint)] focus-visible:outline-offset-2",
   {
     variants: {
       variant: {
-        primary: "bg-[#3A7269] text-white hover:bg-[#316058] border border-transparent",
+        primary:
+          "bg-[var(--studio-mint)] text-[#0B0D11] font-semibold hover:brightness-105 border border-transparent",
         secondary:
-          "bg-[#FFFFFF] text-[#182220] border border-[rgba(24,34,32,0.08)] hover:border-[rgba(58,114,105,0.35)] hover:bg-[#F5F5F7]",
-        soft: "bg-[#EBF3F1] text-[#182220] border border-[rgba(58,114,105,0.18)] hover:bg-[#DFECE9]",
-        ghost: "bg-transparent text-[#52605D] hover:bg-[#F5F5F7] hover:text-[#182220]",
-        danger: "bg-[#FFF1F3] text-[#BE123C] border border-[rgba(190,18,60,0.2)] hover:bg-[#FFE4E8]",
+          "bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-hairline)] hover:border-[var(--border-active)] hover:bg-[var(--bg-elevated-hover)]",
+        soft: "bg-[var(--studio-mint-soft)] text-[var(--text-primary)] border border-[var(--border-active)] hover:brightness-110",
+        ghost:
+          "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-inset)] hover:text-[var(--text-primary)]",
+        danger:
+          "bg-[var(--studio-vermilion-soft)] text-[var(--studio-vermilion)] border border-[var(--studio-vermilion)]/30 hover:bg-[var(--studio-vermilion)] hover:text-[#0B0D11]",
       },
       size: {
         sm: "h-8 px-3 text-xs",

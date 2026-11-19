@@ -335,7 +335,7 @@ export async function updateDawContext(
   });
 }
 
-export const MENTOR_REQUEST_TIMEOUT_MS = 28_000;
+export const MENTOR_REQUEST_TIMEOUT_MS = 42_000;
 
 export async function askMentor(
   sessionId: string,

@@ -16,6 +16,53 @@ class AudioIngestionError(ValueError):
     """Raised when an uploaded audio file fails format, header, or bounds validation."""
 
 
+class UnsupportedAudioMediaError(AudioIngestionError):
+    """Raised when an uploaded file's binary magic bytes do not match a supported audio format (HTTP 415)."""
+
+
+def validate_audio_magic_bytes(file_path: Path) -> str:
+    """
+    Inspect the leading binary signature (magic bytes) of an uploaded file before invoking
+    ffprobe/ffmpeg so disguised executables, HTML, scripts, or arbitrary payloads are rejected immediately.
+    """
+    try:
+        with file_path.open("rb") as fh:
+            header = fh.read(32)
+    except OSError as exc:
+        raise AudioIngestionError("Uploaded audio file could not be read from disk.") from exc
+
+    if len(header) < 4:
+        raise UnsupportedAudioMediaError(
+            "Unsupported or truncated media payload: missing valid audio file signature."
+        )
+
+    # WAV / RF64 (RIFF....WAVE or RF64....WAVE)
+    if len(header) >= 12 and header[0:4] in (b"RIFF", b"RF64") and header[8:12] == b"WAVE":
+        return "wav"
+    # FLAC (fLaC)
+    if header[0:4] == b"fLaC":
+        return "flac"
+    # AIFF / AIFC (FORM....AIFF or FORM....AIFC)
+    if len(header) >= 12 and header[0:4] == b"FORM" and header[8:12] in (b"AIFF", b"AIFC"):
+        return "aiff"
+    # OGG container (OggS)
+    if header[0:4] == b"OggS":
+        return "ogg"
+    # MP4 / M4A ISO Base Media File Format (....ftyp)
+    if len(header) >= 8 and header[4:8] == b"ftyp":
+        return "m4a"
+    # MP3 with ID3v2 tag
+    if header[0:3] == b"ID3":
+        return "mp3"
+    # Raw MPEG Layer III / ADTS AAC frame sync (0xFFE0 mask with valid layer/version bits)
+    if header[0] == 0xFF and (header[1] & 0xE0) == 0xE0 and header[1] != 0xFF:
+        return "mp3_or_aac"
+
+    raise UnsupportedAudioMediaError(
+        "Unsupported media type: file binary signature does not match WAV, FLAC, MP3, AIFF, OGG, M4A, or AAC."
+    )
+
+
 @dataclass
 class LoadedAudio:
     samples: np.ndarray  # shape: (n_samples, n_channels), float32
@@ -114,6 +161,7 @@ def load_audio_file(file_path: Path, max_bytes: int | None = None) -> LoadedAudi
             f"File exceeds size limit ({file_size / (1024 * 1024):.1f} MB)."
         )
 
+    validate_audio_magic_bytes(file_path)
     probe = _run_ffprobe(file_path)
 
     samples: np.ndarray | None = None

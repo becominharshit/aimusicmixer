@@ -28,6 +28,7 @@ export interface SessionRecord {
   createdEpoch: number;
   lastAccessedEpoch: number;
   directory: string;
+  ownerUserId: string | null;
   primaryAudioPath: string | null;
   primaryLoaded: LoadedAudio | null;
   primaryReport: AnalysisReport | null;
@@ -36,6 +37,20 @@ export interface SessionRecord {
   revisedReport: AnalysisReport | null;
   referenceAudioPath: string | null;
   proxyFiles: Map<string, string>;
+}
+
+export interface Sha256CachedAnalysis {
+  sha256: string;
+  durationSec: number;
+  sampleRate: number;
+  channels: number;
+  bitDepth: number;
+  waveformPeaks: number[][];
+  snapshot: CachedDspSnapshot;
+  globalMetrics: GlobalMetrics;
+  timeSeries: TimeSeries;
+  proxyBytes: Buffer;
+  proxyExt: string;
 }
 
 export interface DemoMixCacheEntry {
@@ -62,6 +77,8 @@ class SessionStore {
   private sessions = new Map<string, SessionRecord>();
   private rateBuckets = new Map<string, number[]>();
   private rateLastPruneMs = 0;
+  private sha256Cache = new Map<string, Sha256CachedAnalysis>();
+  private readonly maxSha256Cache = 24;
   readonly demoMixCache = new Map<string, DemoMixCacheEntry>();
   readonly demoRefCache = new Map<string, DemoRefCacheEntry>();
 
@@ -70,6 +87,28 @@ class SessionStore {
     this.ttlMs = (ttlMinutes ?? serverConfig.sessionTtlMinutes) * 60 * 1000;
     this.maxDiskSessions = maxDiskSessions ?? serverConfig.maxDiskSessions;
     fs.mkdirSync(this.rootDir, { recursive: true });
+  }
+
+  get sha256CacheSize(): number {
+    return this.sha256Cache.size;
+  }
+
+  getCachedAnalysisByHash(sha256: string): Sha256CachedAnalysis | null {
+    const entry = this.sha256Cache.get(sha256);
+    if (!entry) return null;
+    this.sha256Cache.delete(sha256);
+    this.sha256Cache.set(sha256, entry);
+    return entry;
+  }
+
+  setCachedAnalysisByHash(sha256: string, entry: Sha256CachedAnalysis): void {
+    this.sha256Cache.delete(sha256);
+    this.sha256Cache.set(sha256, entry);
+    while (this.sha256Cache.size > this.maxSha256Cache) {
+      const oldestKey = this.sha256Cache.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.sha256Cache.delete(oldestKey);
+    }
   }
 
   private pruneRateBuckets(now: number, windowMs: number): void {
@@ -152,7 +191,7 @@ class SessionStore {
     }
   }
 
-  async createSession(): Promise<SessionRecord> {
+  async createSession(ownerUserId: string | null = null): Promise<SessionRecord> {
     await this.purgeExpired();
     await this.evictRamAndDiskLru();
 
@@ -165,6 +204,7 @@ class SessionStore {
       createdEpoch: now,
       lastAccessedEpoch: now,
       directory,
+      ownerUserId,
       primaryAudioPath: null,
       primaryLoaded: null,
       primaryReport: null,

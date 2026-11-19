@@ -110,26 +110,26 @@ export function AuthModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-describedby="auth-modal-desc" className="max-w-md space-y-4">
         <div className="space-y-1.5 pr-8">
-          <DialogTitle className="font-[family-name:var(--font-heading)] text-lg font-bold tracking-[-0.02em]">
+          <DialogTitle className="font-display text-lg font-bold tracking-[-0.02em] text-[var(--text-primary)]">
             {authMode === "signin" ? "Sign in to MixBench" : "Create MixBench Account"}
           </DialogTitle>
-          <p id="auth-modal-desc" className="text-xs leading-relaxed text-[#52605D]">
+          <p id="auth-modal-desc" className="text-xs leading-relaxed text-[var(--text-secondary)]">
             {promptReason ||
               "Optional cloud sync for saving Mix Analysis History across sessions, audio proxy playback, and persisting your privacy toggles. Anonymous mixing & DSP diagnostics remain unlocked without an account."}
           </p>
         </div>
 
         {!configured ? (
-          <div className="bg-[#F5F5F7] p-4 text-xs text-[#52605D] hairline-border squircle-inner space-y-1.5">
-            <div className="font-semibold text-[#182220]">Cloud Persistence Disabled</div>
+          <div className="bg-[var(--bg-inset)] p-4 text-xs text-[var(--text-secondary)] hairline-border squircle-inner space-y-1.5">
+            <div className="font-semibold text-[var(--text-primary)]">Cloud Persistence Disabled</div>
             <p>
-              Set <code className="text-[#182220]">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-              <code className="text-[#182220]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to enable sign-in and cross-session mix history.
+              Set <code className="text-[var(--text-primary)]">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+              <code className="text-[var(--text-primary)]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to enable sign-in and cross-session mix history.
             </p>
             {errorMsg && (
               <div
                 role="alert"
-                className="mt-2 bg-[#FFF1F3] px-3 py-2 text-xs text-[#BE123C] border border-[rgba(190,18,60,0.22)] squircle-inner"
+                className="mt-2 bg-[var(--studio-vermilion-soft)] px-3 py-2 text-xs text-[var(--studio-vermilion)] border border-[var(--studio-vermilion)]/30 squircle-inner"
               >
                 {errorMsg}
               </div>
@@ -166,15 +166,15 @@ export function AuthModal({
               Continue with Google
             </Button>
 
-            <div className="flex items-center gap-3 text-[11px] text-[#52605D]">
-              <span className="h-px flex-1 bg-[rgba(24,34,32,0.08)]" />
+            <div className="flex items-center gap-3 text-[11px] text-[var(--text-muted)]">
+              <span className="h-px flex-1 bg-[var(--border-hairline)]" />
               <span>or email</span>
-              <span className="h-px flex-1 bg-[rgba(24,34,32,0.08)]" />
+              <span className="h-px flex-1 bg-[var(--border-hairline)]" />
             </div>
 
             <form onSubmit={handleEmailAuth} className="space-y-3">
               <div className="space-y-1">
-                <label htmlFor="auth-email" className="block text-xs font-medium text-[#182220]">
+                <label htmlFor="auth-email" className="block text-xs font-medium text-[var(--text-primary)]">
                   Email
                 </label>
                 <input
@@ -184,12 +184,12 @@ export function AuthModal({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="engineer@studio.com"
-                  className="w-full bg-[#FAFAFA] px-3 py-2 text-xs text-[#182220] hairline-border squircle-inner focus:border-[#3A7269] focus:outline-none"
+                  className="w-full bg-[var(--bg-inset)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] hairline-border squircle-inner focus:border-[var(--studio-mint)] focus:outline-none"
                 />
               </div>
 
               <div className="space-y-1">
-                <label htmlFor="auth-password" className="block text-xs font-medium text-[#182220]">
+                <label htmlFor="auth-password" className="block text-xs font-medium text-[var(--text-primary)]">
                   Password
                 </label>
                 <input
@@ -200,14 +200,14 @@ export function AuthModal({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="At least 6 characters"
-                  className="w-full bg-[#FAFAFA] px-3 py-2 text-xs text-[#182220] hairline-border squircle-inner focus:border-[#3A7269] focus:outline-none"
+                  className="w-full bg-[var(--bg-inset)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] hairline-border squircle-inner focus:border-[var(--studio-mint)] focus:outline-none"
                 />
               </div>
 
               {errorMsg && (
                 <div
                   role="alert"
-                  className="bg-[#FFF1F3] px-3 py-2 text-xs text-[#BE123C] border border-[rgba(190,18,60,0.22)] squircle-inner"
+                  className="bg-[var(--studio-vermilion-soft)] px-3 py-2 text-xs text-[var(--studio-vermilion)] border border-[var(--studio-vermilion)]/30 squircle-inner"
                 >
                   {errorMsg}
                 </div>
@@ -216,7 +216,7 @@ export function AuthModal({
               {infoMsg && (
                 <div
                   role="status"
-                  className="bg-[#ECFDF3] px-3 py-2 text-xs text-[#15803D] border border-[rgba(21,128,61,0.2)] squircle-inner"
+                  className="bg-[var(--studio-mint-soft)] px-3 py-2 text-xs text-[var(--studio-mint)] border border-[var(--studio-mint)]/30 squircle-inner"
                 >
                   {infoMsg}
                 </div>
@@ -231,7 +231,7 @@ export function AuthModal({
               </Button>
             </form>
 
-            <div className="flex items-center justify-between pt-1 text-xs text-[#52605D]">
+            <div className="flex items-center justify-between pt-1 text-xs text-[var(--text-secondary)]">
               <button
                 type="button"
                 onClick={() => {
@@ -239,25 +239,25 @@ export function AuthModal({
                   setErrorMsg(null);
                   setInfoMsg(null);
                 }}
-                className="font-medium text-[#3A7269] hover:underline cursor-pointer"
+                className="font-medium text-[var(--studio-mint)] hover:underline cursor-pointer"
               >
                 {authMode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in"}
               </button>
               <span className="inline-flex items-center gap-1 text-[11px]">
-                <ShieldCheck className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                <ShieldCheck className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
                 Privacy defaults OFF
               </span>
             </div>
           </>
         )}
 
-        <div className="border-t border-[rgba(24,34,32,0.06)] pt-2 text-center text-[11px] text-[#52605D]">
+        <div className="border-t border-[var(--border-hairline)] pt-2 text-center text-[11px] text-[var(--text-secondary)]">
           By using MixBench, you acknowledge our{" "}
-          <Link href="/privacy" className="font-medium text-[#3A7269] hover:underline">
+          <Link href="/privacy" className="font-medium text-[var(--studio-mint)] hover:underline">
             Privacy Policy
           </Link>{" "}
           and{" "}
-          <Link href="/terms" className="font-medium text-[#3A7269] hover:underline">
+          <Link href="/terms" className="font-medium text-[var(--studio-mint)] hover:underline">
             Terms of Use
           </Link>
           .

@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  Activity,
   AlertCircle,
   Check,
   CheckCircle2,
@@ -11,11 +13,13 @@ import {
   Link2,
   LogIn,
   LogOut,
+  Moon,
   Printer,
   RefreshCw,
   ShieldCheck,
   Sliders,
   Sparkles,
+  Sun,
   Trash2,
   User,
 } from "lucide-react";
@@ -72,7 +76,26 @@ export function StudioHeader({
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [isDarkTheme, setIsDarkTheme] = useState(true);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      setIsDarkTheme(document.documentElement.classList.contains("dark"));
+    }
+  }, []);
+
+  const handleToggleTheme = () => {
+    if (typeof document === "undefined") return;
+    const nextDark = !document.documentElement.classList.contains("dark");
+    document.documentElement.classList.toggle("dark", nextDark);
+    setIsDarkTheme(nextDark);
+    try {
+      window.localStorage.setItem("mixbench_theme", nextDark ? "dark" : "light");
+    } catch {
+      // Ignore storage quota / private mode
+    }
+  };
 
   useEffect(() => {
     if (!popoverOpen) return;
@@ -204,22 +227,21 @@ export function StudioHeader({
   const configuredHealthEndpoint = `${API_BASE_URL || ""}/health`;
 
   return (
-    <header className="border-b border-[rgba(24,34,32,0.08)] bg-[#FAFAFA]/94 backdrop-blur-md sm:sticky sm:top-0 sm:z-40 print:border-0 print:bg-white">
+    <header className="border-b border-[var(--border-hairline)] bg-[var(--bg-canvas)]/92 backdrop-blur-md sm:sticky sm:top-0 sm:z-40 print:border-0 print:bg-white">
       <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
         <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-[#3A7269] text-white squircle-inner">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--studio-mint)] text-[#0B0D11] squircle-inner shadow-xs">
             <svg
               width="20"
               height="20"
               viewBox="0 0 24 24"
               fill="none"
               aria-hidden="true"
-              className="text-white"
             >
               <path
                 d="M4 12h2.5l2-6 3 12 2.5-9 2 3H20"
                 stroke="currentColor"
-                strokeWidth="2"
+                strokeWidth="2.2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
@@ -227,15 +249,15 @@ export function StudioHeader({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-[family-name:var(--font-heading)] text-base font-bold tracking-[-0.02em] text-[#182220]">
+              <span className="font-display text-base font-bold tracking-[-0.02em] text-[var(--text-primary)]">
                 MixBench
               </span>
-              <span className="hidden rounded-full bg-[#EBF3F1] px-2 py-0.5 text-[11px] font-medium text-[#3A7269] sm:inline-flex">
+              <span className="hidden rounded-md bg-[var(--studio-mint-soft)] px-2 py-0.5 tabular-telemetry text-[10px] font-semibold text-[var(--studio-mint)] sm:inline-flex">
                 v1.0
               </span>
             </div>
-            <p className="hidden text-xs text-[#52605D] sm:block">
-              Learn mixing &amp; mastering by doing
+            <p className="hidden text-xs text-[var(--text-secondary)] sm:block">
+              Deterministic Audio DSP Workbench
             </p>
           </div>
         </div>
@@ -243,7 +265,7 @@ export function StudioHeader({
         {/* Simple <-> Advanced Mode Switcher */}
         <nav
           aria-label="Workspace mode"
-          className="no-print relative inline-flex max-w-full min-h-[38px] shrink-0 flex-nowrap items-center gap-1 overflow-x-auto bg-[#F5F5F7] p-1 hairline-border squircle-inner"
+          className="no-print relative inline-flex max-w-full min-h-[38px] shrink-0 flex-nowrap items-center gap-1 overflow-x-auto bg-[var(--bg-inset)] p-1 hairline-border squircle-inner"
         >
           {(
             [
@@ -259,7 +281,7 @@ export function StudioHeader({
                 whileTap={TACTILE_TAP}
                 onClick={() => onModeChange(item.id)}
                 className={`relative z-10 shrink-0 whitespace-nowrap px-2.5 py-1.5 text-xs font-medium transition-colors duration-150 sm:px-3.5 sm:text-sm cursor-pointer squircle-inner ${
-                  active ? "text-[#182220]" : "text-[#52605D] hover:text-[#182220]"
+                  active ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 }`}
                 aria-pressed={active}
               >
@@ -267,7 +289,7 @@ export function StudioHeader({
                   <motion.span
                     layoutId="workspace-mode-pill"
                     transition={STUDIO_SPRING}
-                    className="pointer-events-none absolute inset-0 -z-10 bg-[#FFFFFF] hairline-border squircle-inner shadow-2xs"
+                    className="pointer-events-none absolute inset-0 -z-10 bg-[var(--bg-elevated)] hairline-border squircle-inner shadow-2xs"
                   />
                 )}
                 <span className="hidden sm:inline">{item.label}</span>
@@ -278,12 +300,30 @@ export function StudioHeader({
         </nav>
 
         <div className="no-print flex flex-wrap items-center gap-1.5 sm:gap-2">
+          {/* Dark Vinyl / Daylight Studio Theme Toggle */}
+          <motion.button
+            type="button"
+            data-testid="theme-toggle"
+            whileTap={TACTILE_TAP}
+            onClick={handleToggleTheme}
+            aria-label="Toggle studio theme"
+            title={isDarkTheme ? "Switch to Daylight Studio Light" : "Switch to Vinyl-Carbon Dark"}
+            className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
+          >
+            {isDarkTheme ? (
+              <Sun className="h-3.5 w-3.5 text-[var(--studio-amber)]" aria-hidden="true" />
+            ) : (
+              <Moon className="h-3.5 w-3.5 text-[var(--studio-cobalt)]" aria-hidden="true" />
+            )}
+            <span className="hidden 2xl:inline">{isDarkTheme ? "Daylight" : "Vinyl Dark"}</span>
+          </motion.button>
+
           {report && (
-            <div className="hidden items-center gap-2 bg-[#FFFFFF] px-3 py-1.5 text-xs hairline-border squircle-inner xl:flex">
-              <span className="max-w-[150px] truncate font-medium text-[#182220]">
+            <div className="hidden items-center gap-2 bg-[var(--bg-elevated)] px-3 py-1.5 text-xs hairline-border squircle-inner xl:flex">
+              <span className="max-w-[140px] truncate font-medium text-[var(--text-primary)]">
                 {report.audio_metadata.filename}
               </span>
-              <span className="text-[#52605D] tabular-telemetry">
+              <span className="text-[var(--text-secondary)] tabular-telemetry">
                 {(report.audio_metadata.sample_rate_hz / 1000).toFixed(1)} kHz ·{" "}
                 {report.audio_metadata.bit_depth}-bit ·{" "}
                 {formatTimecode(report.audio_metadata.duration_sec)}
@@ -296,16 +336,16 @@ export function StudioHeader({
             <div
               className={`hidden items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium squircle-inner 2xl:inline-flex ${
                 report.privacy_audit.raw_audio_sent_to_ai
-                  ? "bg-[#FEF7EC] text-[#B45309] border border-[rgba(180,83,9,0.25)]"
+                  ? "bg-[var(--studio-amber-soft)] text-[var(--studio-amber)] border border-[var(--studio-amber)]/35"
                   : report.privacy_audit.external_ai_enabled
-                    ? "bg-[#EBF3F1] text-[#3A7269] border border-[rgba(58,114,105,0.22)]"
-                    : "bg-[#FFFFFF] text-[#182220] hairline-border"
+                    ? "bg-[var(--studio-mint-soft)] text-[var(--studio-mint)] border border-[var(--border-active)]"
+                    : "bg-[var(--bg-elevated)] text-[var(--text-primary)] hairline-border"
               }`}
             >
               {report.privacy_audit.external_ai_enabled ? (
-                <Sparkles className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                <Sparkles className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
               ) : (
-                <ShieldCheck className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                <ShieldCheck className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
               )}
               <span>{privacyLabel}</span>
             </div>
@@ -320,9 +360,9 @@ export function StudioHeader({
                 onClick={handleExportEqPreset}
                 title="Download DAW-ready EQ & M/S Sub Preset JSON"
                 aria-label="Download EQ Preset"
-                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
               >
-                <Sliders className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                <Sliders className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
                 <span className="hidden lg:inline">EQ Preset</span>
               </motion.button>
               <motion.button
@@ -331,9 +371,9 @@ export function StudioHeader({
                 onClick={handleExportJson}
                 title="Download AnalysisReport v1.0 JSON"
                 aria-label="Export JSON report"
-                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
               >
-                <Download className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                <Download className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
                 <span className="hidden xl:inline">JSON</span>
               </motion.button>
               {onShareReviewLink && (
@@ -344,16 +384,16 @@ export function StudioHeader({
                   onClick={() => void handleShareClick()}
                   title="Copy read-only Client Review Link"
                   aria-label="Share Review Link"
-                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
                   {shareCopied ? (
                     <>
-                      <Check className="h-3.5 w-3.5 text-[#15803D]" aria-hidden="true" />
-                      <span className="hidden lg:inline text-[#15803D]">Copied</span>
+                      <Check className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
+                      <span className="hidden lg:inline text-[var(--studio-mint)]">Copied</span>
                     </>
                   ) : (
                     <>
-                      <Link2 className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                      <Link2 className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
                       <span className="hidden lg:inline">Share</span>
                     </>
                   )}
@@ -365,9 +405,9 @@ export function StudioHeader({
                 onClick={handlePrintPdf}
                 title="Print clean studio PDF report"
                 aria-label="Print PDF report"
-                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
               >
-                <Printer className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                <Printer className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
                 <span className="hidden xl:inline">PDF</span>
               </motion.button>
             </div>
@@ -384,24 +424,24 @@ export function StudioHeader({
               title={`${statusText} (${configuredHealthEndpoint})`}
               className={`inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-medium squircle-inner cursor-pointer transition-colors ${
                 healthStatus === "online"
-                  ? "bg-[#FFFFFF] text-[#182220] hairline-border hover:border-[rgba(58,114,105,0.35)]"
+                  ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] hairline-border hover:border-[var(--border-active)]"
                   : healthStatus === "waking"
-                    ? "bg-[#FEF7EC] text-[#B45309] border border-[rgba(180,83,9,0.28)] hover:bg-[#FDEFD9]"
+                    ? "bg-[var(--studio-amber-soft)] text-[var(--studio-amber)] border border-[var(--studio-amber)]/35"
                     : healthStatus === "offline"
-                      ? "bg-[#FFF1F3] text-[#BE123C] border border-[rgba(190,18,60,0.28)] hover:bg-[#FFE4E8]"
-                      : "bg-[#F5F5F7] text-[#52605D] hairline-border"
+                      ? "bg-[var(--studio-vermilion-soft)] text-[var(--studio-vermilion)] border border-[var(--studio-vermilion)]/35"
+                      : "bg-[var(--bg-inset)] text-[var(--text-secondary)] hairline-border"
               }`}
             >
               <span
                 aria-hidden="true"
                 className={`h-2 w-2 rounded-full ${
                   healthStatus === "online"
-                    ? "bg-[#3A7269]"
+                    ? "bg-[var(--studio-mint)]"
                     : healthStatus === "waking"
-                      ? "bg-[#D97706] animate-pulse"
+                      ? "bg-[var(--studio-amber)] animate-pulse"
                       : healthStatus === "offline"
-                        ? "bg-[#BE123C]"
-                        : "bg-[#52605D]/50 animate-pulse"
+                        ? "bg-[var(--studio-vermilion)]"
+                        : "bg-[var(--text-muted)] animate-pulse"
                 }`}
               />
               <span className="hidden sm:inline">{statusText}</span>
@@ -417,47 +457,47 @@ export function StudioHeader({
                   transition={{ duration: 0.16, ease: STUDIO_EASE }}
                   role="dialog"
                   aria-label="DSP backend connection diagnostics"
-                  className="fixed right-3 left-3 sm:absolute sm:left-auto sm:right-0 mt-2 sm:w-80 bg-[#FFFFFF] p-4 hairline-border squircle-outer shadow-sm z-50 space-y-3 text-xs"
+                  className="fixed right-3 left-3 sm:absolute sm:left-auto sm:right-0 mt-2 sm:w-80 bg-[var(--bg-elevated)] p-4 border border-[var(--border-strong)] squircle-outer shadow-2xl z-50 space-y-3 text-xs"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-[#182220]">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-[var(--text-primary)]">
                       {healthStatus === "online" ? (
-                        <CheckCircle2 className="h-4 w-4 text-[#15803D]" aria-hidden="true" />
+                        <CheckCircle2 className="h-4 w-4 text-[var(--studio-mint)]" aria-hidden="true" />
                       ) : healthStatus === "waking" ? (
-                        <RefreshCw className="h-4 w-4 text-[#B45309] animate-spin" aria-hidden="true" />
+                        <RefreshCw className="h-4 w-4 text-[var(--studio-amber)] animate-spin" aria-hidden="true" />
                       ) : (
-                        <AlertCircle className="h-4 w-4 text-[#BE123C]" aria-hidden="true" />
+                        <AlertCircle className="h-4 w-4 text-[var(--studio-vermilion)]" aria-hidden="true" />
                       )}
                       DSP Engine Diagnostics
                     </span>
                     <button
                       type="button"
                       onClick={onRetryHealth}
-                      className="inline-flex items-center gap-1 bg-[#EBF3F1] px-2 py-1 text-[11px] font-medium text-[#3A7269] hover:bg-[#DFECE9] squircle-inner cursor-pointer"
+                      className="inline-flex items-center gap-1 bg-[var(--studio-mint-soft)] px-2 py-1 text-[11px] font-medium text-[var(--studio-mint)] hover:brightness-110 squircle-inner cursor-pointer"
                     >
                       <RefreshCw className="h-3 w-3" aria-hidden="true" />
                       Retry
                     </button>
                   </div>
 
-                  <div className="space-y-1.5 bg-[#F5F5F7] p-2.5 squircle-inner">
-                    <div className="text-[11px] text-[#52605D]">Configured API Endpoint</div>
-                    <div className="break-all font-mono text-[11px] text-[#182220]">
+                  <div className="space-y-1.5 bg-[var(--bg-inset)] p-2.5 squircle-inner">
+                    <div className="text-[11px] text-[var(--text-muted)]">Configured API Endpoint</div>
+                    <div className="break-all font-mono text-[11px] text-[var(--text-primary)]">
                       {configuredHealthEndpoint}
                     </div>
                   </div>
 
                   {healthStatus === "online" && healthData ? (
-                    <div className="space-y-1 text-[11px] text-[#52605D]">
+                    <div className="space-y-1 text-[11px] text-[var(--text-secondary)]">
                       <div className="flex justify-between">
                         <span>FFmpeg / ffprobe</span>
-                        <span className="font-medium text-[#15803D]">
+                        <span className="font-medium text-[var(--studio-mint)]">
                           {healthData.ffmpeg_available ? "Available" : "Missing"}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span>Gemini Mentor Model</span>
-                        <span className="font-medium text-[#182220]">
+                        <span className="font-medium text-[var(--text-primary)]">
                           {healthData.gemini_configured
                             ? `Configured (${healthData.gemini_model || "gemini-4-hydrogen"})`
                             : `Offline Fallback (${healthData.gemini_model || "gemini-4-hydrogen"})`}
@@ -465,26 +505,35 @@ export function StudioHeader({
                       </div>
                     </div>
                   ) : healthStatus === "waking" ? (
-                    <div className="space-y-1.5 text-[11px] text-[#52605D]">
-                      <p className="font-medium text-[#B45309]">
+                    <div className="space-y-1.5 text-[11px] text-[var(--text-secondary)]">
+                      <p className="font-medium text-[var(--studio-amber)]">
                         Cold-starting DSP container ({wakeAttempt > 0 ? `retry ${wakeAttempt}/${wakeMaxAttempts}` : "connecting…"}).
                       </p>
                       <p>
-                        Retrying <code className="text-[#182220]">/health</code> automatically every 5 seconds for up to {wakeMaxAttempts * 5} seconds while the backend boots.
+                        Retrying <code className="text-[var(--text-primary)]">/health</code> automatically every 5 seconds while local Web Audio DSP preview handles instant uploads.
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-1.5 text-[11px] text-[#52605D]">
-                      <p className="text-[#BE123C] font-medium">
+                    <div className="space-y-1.5 text-[11px] text-[var(--text-secondary)]">
+                      <p className="text-[var(--studio-vermilion)] font-medium">
                         {healthError || "Could not establish HTTP connection to DSP backend."}
                       </p>
                       <p>
-                        Ensure the Next.js server or Python backend is running and{" "}
-                        <code className="text-[#182220]">NEXT_PUBLIC_API_URL</code> /{" "}
-                        <code className="text-[#182220]">ALLOWED_ORIGINS</code> are configured. MixBench never substitutes fake metrics when offline.
+                        Uploads automatically fall back to deterministic Browser Web Audio DSP Preview until the server reconnects.
                       </p>
                     </div>
                   )}
+
+                  <div className="pt-1 border-t border-[var(--border-hairline)]">
+                    <Link
+                      href="/status"
+                      onClick={() => setPopoverOpen(false)}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-primary)] hover:border-[var(--studio-mint)]"
+                    >
+                      <Activity className="h-3.5 w-3.5 text-[var(--studio-mint)]" />
+                      Open System Status &amp; Contract Diagnostics
+                    </Link>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -497,20 +546,20 @@ export function StudioHeader({
                   type="button"
                   whileTap={TACTILE_TAP}
                   onClick={onOpenHistory}
-                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
-                  <History className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                  <History className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
                   <span className="hidden sm:inline">Saved Mixes</span>
-                  <span className="rounded-full bg-[#EBF3F1] px-1.5 py-0.2 text-[10px] font-semibold text-[#3A7269] tabular-telemetry">
+                  <span className="rounded-md bg-[var(--studio-mint-soft)] px-1.5 py-0.2 text-[10px] font-semibold text-[var(--studio-mint)] tabular-telemetry">
                     {savedCount}
                   </span>
                 </motion.button>
               )}
               <div
                 title={userEmail}
-                className="hidden items-center gap-1.5 bg-[#F5F5F7] px-2.5 py-1.5 text-xs text-[#52605D] hairline-border squircle-inner md:inline-flex"
+                className="hidden items-center gap-1.5 bg-[var(--bg-inset)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hairline-border squircle-inner md:inline-flex"
               >
-                <User className="h-3 w-3 text-[#3A7269]" aria-hidden="true" />
+                <User className="h-3 w-3 text-[var(--studio-mint)]" aria-hidden="true" />
                 <span className="max-w-[120px] truncate">{userEmail}</span>
               </div>
               {onSignOut && (
@@ -520,7 +569,7 @@ export function StudioHeader({
                   onClick={onSignOut}
                   aria-label="Sign out"
                   title="Sign out"
-                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#182220] hairline-border squircle-inner cursor-pointer transition-colors"
+                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
                   <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
                   <span className="hidden lg:inline">Sign Out</span>
@@ -535,9 +584,9 @@ export function StudioHeader({
                   whileTap={TACTILE_TAP}
                   onClick={onOpenSignedOutHistory}
                   title="Sign in to unlock Cloud Mix History & Audio Proxy playback"
-                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
-                  <History className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                  <History className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
                   <span className="hidden sm:inline">History</span>
                 </motion.button>
               )}
@@ -546,9 +595,9 @@ export function StudioHeader({
                   type="button"
                   whileTap={TACTILE_TAP}
                   onClick={onOpenAuth}
-                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
-                  <LogIn className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                  <LogIn className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
                   <span>Sign In</span>
                 </motion.button>
               )}
@@ -560,7 +609,7 @@ export function StudioHeader({
               type="button"
               whileTap={TACTILE_TAP}
               onClick={onClearSession}
-              className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#BE123C] hairline-border hover:border-[rgba(190,18,60,0.3)] squircle-inner cursor-pointer transition-colors"
+              className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--studio-vermilion)] hairline-border hover:border-[var(--studio-vermilion)]/40 squircle-inner cursor-pointer transition-colors"
               title="Delete ephemeral audio session immediately"
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

@@ -27,6 +27,7 @@ FindingCategory = Literal[
     "stems_overlap",
     "technical_validation",
 ]
+FindingClassification = Literal["objective_defect", "stylistic_choice"]
 
 
 class UserReportedContext(BaseModel):
@@ -107,6 +108,7 @@ class Finding(BaseModel):
     evidence_id: str
     category: FindingCategory
     severity: SeverityType
+    classification: FindingClassification = "stylistic_choice"
     confidence: ConfidenceType = "measured"
     band_name: BandName | None = None
     title: str

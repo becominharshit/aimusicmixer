@@ -12,8 +12,12 @@ import { StemsInspector } from "@/components/advanced/StemsInspector";
 import { MentorDrawer } from "@/components/privacy/MentorDrawer";
 import { MentorPrivacyPanel } from "@/components/privacy/MentorPrivacyPanel";
 import { SimpleView } from "@/components/simple/SimpleView";
+import { DspStepTracker } from "@/components/studio/DspStepTracker";
+import { SpinningDiscPlayer } from "@/components/studio/SpinningDiscPlayer";
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
 import { askMentor } from "@/lib/api";
+import { analyzePcmChannelsLocal } from "@/lib/clientWebAudioDsp";
+import { buildDawRepairSteps } from "@/lib/repairChecklist";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { computeTransientPunchDb } from "@/server/dsp/dynamics";
 import { computeStereoMetrics } from "@/server/dsp/stereo";
@@ -103,7 +107,7 @@ describe("MixBench UI & Privacy Contracts", () => {
       </MotionConfig>
     );
 
-    expect(screen.getByText("track_v1.wav")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "track_v1.wav" })).toBeInTheDocument();
     expect(screen.getByText("ev_low_buildup_01")).toBeInTheDocument();
     expect(screen.getByText("Low-End Buildup Around 60–250 Hz")).toBeInTheDocument();
     expect(screen.getByText(/What happened:/i)).toBeInTheDocument();
@@ -526,5 +530,116 @@ describe("MixBench UI & Privacy Contracts", () => {
         allow_audio_ai: false,
       })
     );
+  });
+
+  it("computes deterministic browser-native Web Audio DSP fallback metrics and marks analysis_source", () => {
+    const sr = 24000;
+    const seconds = 2;
+    const n = sr * seconds;
+    const chL = new Float32Array(n);
+    const chR = new Float32Array(n);
+    // Hot clipping sine + anti-phase sub so both true_peak and phase findings trigger deterministically
+    for (let i = 0; i < n; i += 1) {
+      const t = i / sr;
+      const tone = 0.995 * Math.sin(2 * Math.PI * 1000 * t);
+      const sub = 0.25 * Math.sin(2 * Math.PI * 55 * t);
+      chL[i] = Math.max(-1, Math.min(1, tone + sub));
+      chR[i] = Math.max(-1, Math.min(1, -tone - sub));
+    }
+
+    const localReport = analyzePcmChannelsLocal({
+      channels: [chL, chR],
+      sampleRate: sr,
+      filename: "fallback_test.wav",
+      genre: "electronic",
+      stage: "unmastered_mix",
+      artistVision: ["punchy"],
+      playbackUrl: "blob:local-test",
+    });
+
+    expect(localReport.analysis_source).toBe("local_web_audio_preview");
+    expect(localReport.spectral_bands).toHaveLength(6);
+    expect(localReport.global_metrics.true_peak_dbtp).toBeGreaterThan(-0.2);
+    expect(localReport.global_metrics.phase_correlation_avg).toBeLessThan(-0.8);
+    expect(localReport.findings.some((f) => f.classification === "objective_defect")).toBe(true);
+    expect(localReport.privacy_audit.raw_audio_sent_to_ai).toBe(false);
+  });
+
+  it("renders Objective Defect vs Stylistic Choice classification badges and interactive DAW repair checkboxes", () => {
+    const onToggleRepairStep = vi.fn();
+    const objectiveFinding: Finding = {
+      ...mockReport.findings[0],
+      evidence_id: "ev_clip_01",
+      category: "true_peak",
+      severity: "alert",
+      classification: "objective_defect",
+      title: "Inter-Sample Clipping Detected",
+    };
+
+    const steps = buildDawRepairSteps(objectiveFinding);
+    expect(steps).toHaveLength(3);
+
+    const { rerender } = render(
+      <FindingCard
+        finding={objectiveFinding}
+        index={0}
+        hasAudio={true}
+        completedRepairSteps={{ [steps[0].id]: true }}
+        onToggleRepairStep={onToggleRepairStep}
+        onAudition={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Objective Defect/i)).toBeInTheDocument();
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(3);
+    expect(checkboxes[0]).toBeChecked();
+    expect(checkboxes[1]).not.toBeChecked();
+
+    fireEvent.click(checkboxes[1]);
+    expect(onToggleRepairStep).toHaveBeenCalledWith(steps[1].id, true);
+
+    const stylisticFinding: Finding = {
+      ...mockReport.findings[0],
+      classification: "stylistic_choice",
+    };
+    rerender(
+      <FindingCard
+        finding={stylisticFinding}
+        index={0}
+        hasAudio={true}
+        onAudition={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/Stylistic Choice/i)).toBeInTheDocument();
+  });
+
+  it("renders DspStepTracker 5-stage telemetry and SpinningDiscPlayer turntable controls", () => {
+    const onCancel = vi.fn();
+    const onTogglePlay = vi.fn();
+    render(
+      <>
+        <DspStepTracker activeStageIndex={2} uploadPercent={74} onCancel={onCancel} />
+        <SpinningDiscPlayer
+          title="club_master.wav"
+          genre="electronic"
+          bpm={128}
+          lufs={-11.4}
+          truePeak={-0.9}
+          onTogglePlay={onTogglePlay}
+        />
+      </>
+    );
+
+    expect(screen.getByTestId("dsp-step-tracker")).toBeInTheDocument();
+    expect(screen.getByText(/Deterministic DSP Signal Chain/i)).toBeInTheDocument();
+    expect(screen.getByText("74%")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Cancel/i }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    expect(screen.getByTestId("spinning-disc-player")).toBeInTheDocument();
+    expect(screen.getByText("club_master.wav")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Play mix on turntable/i }));
+    expect(onTogglePlay).toHaveBeenCalledTimes(1);
   });
 });

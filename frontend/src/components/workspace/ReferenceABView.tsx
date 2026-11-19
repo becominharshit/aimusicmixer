@@ -79,56 +79,55 @@ export function ReferenceABView({
           label: "Integrated Loudness",
           mix: `${m.integrated_lufs.toFixed(1)} LUFS`,
           ref: `${rm.integrated_lufs.toFixed(1)} LUFS`,
-          delta: `${(m.integrated_lufs - rm.integrated_lufs) >= 0 ? "+" : ""}${(m.integrated_lufs - rm.integrated_lufs).toFixed(1)} LU`,
+          delta: `${m.integrated_lufs - rm.integrated_lufs >= 0 ? "+" : ""}${(m.integrated_lufs - rm.integrated_lufs).toFixed(1)} LU`,
         },
         {
           label: "4x True Peak",
           mix: `${m.true_peak_dbtp >= 0 ? "+" : ""}${m.true_peak_dbtp.toFixed(2)} dBTP`,
           ref: `${rm.true_peak_dbtp >= 0 ? "+" : ""}${rm.true_peak_dbtp.toFixed(2)} dBTP`,
-          delta: `${(m.true_peak_dbtp - rm.true_peak_dbtp) >= 0 ? "+" : ""}${(m.true_peak_dbtp - rm.true_peak_dbtp).toFixed(2)} dB`,
+          delta: `${m.true_peak_dbtp - rm.true_peak_dbtp >= 0 ? "+" : ""}${(m.true_peak_dbtp - rm.true_peak_dbtp).toFixed(2)} dB`,
         },
         {
           label: "PLR (Peak-to-Loudness)",
           mix: `${(m.plr_db ?? Math.max(0, m.true_peak_dbtp - m.integrated_lufs)).toFixed(1)} dB`,
           ref: `${(rm.plr_db ?? Math.max(0, rm.true_peak_dbtp - rm.integrated_lufs)).toFixed(1)} dB`,
-          delta: `${(((m.plr_db ?? Math.max(0, m.true_peak_dbtp - m.integrated_lufs)) - (rm.plr_db ?? Math.max(0, rm.true_peak_dbtp - rm.integrated_lufs))) >= 0 ? "+" : "")}${((m.plr_db ?? Math.max(0, m.true_peak_dbtp - m.integrated_lufs)) - (rm.plr_db ?? Math.max(0, rm.true_peak_dbtp - rm.integrated_lufs))).toFixed(1)} dB`,
+          delta: `${(m.plr_db ?? Math.max(0, m.true_peak_dbtp - m.integrated_lufs)) - (rm.plr_db ?? Math.max(0, rm.true_peak_dbtp - rm.integrated_lufs)) >= 0 ? "+" : ""}${((m.plr_db ?? Math.max(0, m.true_peak_dbtp - m.integrated_lufs)) - (rm.plr_db ?? Math.max(0, rm.true_peak_dbtp - rm.integrated_lufs))).toFixed(1)} dB`,
         },
         {
           label: "PSR (Short-Term Crest)",
           mix: `${m.psr_db.toFixed(1)} dB`,
           ref: `${rm.psr_db.toFixed(1)} dB`,
-          delta: `${(m.psr_db - rm.psr_db) >= 0 ? "+" : ""}${(m.psr_db - rm.psr_db).toFixed(1)} dB`,
+          delta: `${m.psr_db - rm.psr_db >= 0 ? "+" : ""}${(m.psr_db - rm.psr_db).toFixed(1)} dB`,
         },
         {
           label: "Loudness Range (LRA)",
           mix: `${m.loudness_range_lu.toFixed(1)} LU`,
           ref: `${rm.loudness_range_lu.toFixed(1)} LU`,
-          delta: `${(m.loudness_range_lu - rm.loudness_range_lu) >= 0 ? "+" : ""}${(m.loudness_range_lu - rm.loudness_range_lu).toFixed(1)} LU`,
+          delta: `${m.loudness_range_lu - rm.loudness_range_lu >= 0 ? "+" : ""}${(m.loudness_range_lu - rm.loudness_range_lu).toFixed(1)} LU`,
         },
         {
           label: "Phase Correlation",
           mix: `${m.phase_correlation_avg >= 0 ? "+" : ""}${m.phase_correlation_avg.toFixed(2)}`,
           ref: `${rm.phase_correlation_avg >= 0 ? "+" : ""}${rm.phase_correlation_avg.toFixed(2)}`,
-          delta: `${(m.phase_correlation_avg - rm.phase_correlation_avg) >= 0 ? "+" : ""}${(m.phase_correlation_avg - rm.phase_correlation_avg).toFixed(2)}`,
+          delta: `${m.phase_correlation_avg - rm.phase_correlation_avg >= 0 ? "+" : ""}${(m.phase_correlation_avg - rm.phase_correlation_avg).toFixed(2)}`,
         },
         {
           label: "Stereo Width Ratio",
           mix: m.stereo_width_ratio.toFixed(2),
           ref: rm.stereo_width_ratio.toFixed(2),
-          delta: `${(m.stereo_width_ratio - rm.stereo_width_ratio) >= 0 ? "+" : ""}${(m.stereo_width_ratio - rm.stereo_width_ratio).toFixed(2)}`,
+          delta: `${m.stereo_width_ratio - rm.stereo_width_ratio >= 0 ? "+" : ""}${(m.stereo_width_ratio - rm.stereo_width_ratio).toFixed(2)}`,
         },
       ]
     : [];
 
   return (
     <div className="mx-auto max-w-[1140px] py-4 space-y-5">
-      {/* Header & Upload Control */}
-      <div className="flex flex-wrap items-start justify-between gap-4 bg-[#FFFFFF] p-5 hairline-border squircle-outer">
+      <div className="flex flex-wrap items-start justify-between gap-4 bg-[var(--bg-elevated)] p-5 hairline-border squircle-outer">
         <div className="max-w-2xl space-y-1.5">
-          <h1 className="text-xl font-bold tracking-[-0.02em] text-[#182220]">
+          <h1 className="font-display text-xl font-bold tracking-[-0.02em] text-[var(--text-primary)]">
             Loudness-Matched Reference A/B
           </h1>
-          <p className="text-xs text-[#52605D] leading-relaxed">
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
             Compare your mix against a commercial reference track matched by integrated ITU-R BS.1770 LUFS so perceived volume never biases your tonal or dynamic judgment.
           </p>
         </div>
@@ -165,7 +164,7 @@ export function ReferenceABView({
               disabled={isUploadingRef}
               onClick={onLoadDemoReference}
             >
-              <Sparkles className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+              <Sparkles className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
               Load Balanced Demo Reference
             </Button>
           )}
@@ -173,21 +172,20 @@ export function ReferenceABView({
       </div>
 
       {!referenceMeta ? (
-        <div className="bg-[#F5F5F7] p-8 text-center hairline-border squircle-outer space-y-3">
-          <div className="mx-auto flex h-11 w-11 items-center justify-center bg-[#FFFFFF] text-[#3A7269] hairline-border squircle-inner">
+        <div className="bg-[var(--bg-surface)] p-8 text-center hairline-border squircle-outer space-y-3">
+          <div className="mx-auto flex h-11 w-11 items-center justify-center bg-[var(--bg-elevated)] text-[var(--studio-mint)] hairline-border squircle-inner">
             <Scale className="h-5 w-5" aria-hidden="true" />
           </div>
-          <h2 className="text-base font-semibold text-[#182220]">
+          <h2 className="text-base font-semibold text-[var(--text-primary)]">
             No reference track loaded yet
           </h2>
-          <p className="mx-auto max-w-md text-xs text-[#52605D] leading-relaxed">
+          <p className="mx-auto max-w-md text-xs text-[var(--text-secondary)] leading-relaxed">
             Upload any released track in {report.context.genre.replace("_", " ")} (or load our balanced demo reference) to auto-match LUFS and inspect side-by-side 6-band tonal &amp; dynamic deltas.
           </p>
         </div>
       ) : (
         <>
-          {/* Click-Free A/B Audition Bar + Matched Section Shortcuts */}
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-[#FFFFFF] p-4 hairline-border squircle-outer">
+          <div className="flex flex-wrap items-center justify-between gap-4 bg-[var(--bg-elevated)] p-4 hairline-border squircle-outer">
             <div className="flex flex-wrap items-center gap-2.5">
               <Button
                 type="button"
@@ -209,9 +207,9 @@ export function ReferenceABView({
               </Button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 bg-[#F5F5F7] px-3 py-1.5 text-xs hairline-border squircle-inner">
-              <span className="font-medium text-[#182220]">Integrated-LUFS Auto Match</span>
-              <span className="text-[#3A7269] tabular-telemetry">
+            <div className="flex flex-wrap items-center gap-3 bg-[var(--bg-inset)] px-3 py-1.5 text-xs hairline-border squircle-inner">
+              <span className="font-medium text-[var(--text-primary)]">Integrated-LUFS Auto Match</span>
+              <span className="text-[var(--studio-mint)] tabular-telemetry">
                 {matchLoudness
                   ? `Ref gain trim: ${loudnessOffsetDb >= 0 ? "+" : ""}${loudnessOffsetDb.toFixed(1)} dB`
                   : "Unmatched (0.0 dB)"}
@@ -224,10 +222,9 @@ export function ReferenceABView({
             </div>
           </div>
 
-          {/* Matched-Section Jump Pills */}
           {report.findings.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 bg-[#F5F5F7] px-4 py-3 hairline-border squircle-inner">
-              <span className="text-xs font-semibold text-[#182220]">
+            <div className="flex flex-wrap items-center gap-2 bg-[var(--bg-surface)] px-4 py-3 hairline-border squircle-inner">
+              <span className="text-xs font-semibold text-[var(--text-primary)]">
                 Audition Matched Sections:
               </span>
               {report.findings.slice(0, 4).map((f) => (
@@ -240,9 +237,9 @@ export function ReferenceABView({
                       Math.max(f.timestamp_start_sec + 4, f.timestamp_end_sec)
                     )
                   }
-                  className="bg-[#FFFFFF] px-2.5 py-1 text-xs text-[#182220] hover:border-[rgba(58,114,105,0.4)] hairline-border squircle-inner cursor-pointer"
+                  className="bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer"
                 >
-                  <span className="tabular-telemetry font-medium text-[#3A7269]">
+                  <span className="tabular-telemetry font-medium text-[var(--studio-mint)]">
                     {formatTimecode(f.timestamp_start_sec)}
                   </span>{" "}
                   · {f.title}
@@ -251,13 +248,12 @@ export function ReferenceABView({
             </div>
           )}
 
-          {/* Side-by-Side Tonal Chart & Dynamic Telemetry Table */}
           <div className="grid gap-4 lg:grid-cols-12">
-            <div className="min-w-0 bg-[#FFFFFF] p-5 hairline-border squircle-outer lg:col-span-6">
-              <h2 className="text-sm font-semibold text-[#182220]">
+            <div className="min-w-0 bg-[var(--bg-elevated)] p-5 hairline-border squircle-outer lg:col-span-6">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
                 6-Band Spectral Tilt: Your Mix vs. Reference B
               </h2>
-              <p className="mb-3 text-xs text-[#52605D]">
+              <p className="mb-3 text-xs text-[var(--text-secondary)]">
                 Gain-normalized dB relative to genre envelope
               </p>
               <div className="h-64 w-full min-w-0">
@@ -266,56 +262,47 @@ export function ReferenceABView({
                     data={spectralCompare}
                     margin={{ top: 8, right: 8, left: -14, bottom: 8 }}
                   >
-                    <CartesianGrid stroke="rgba(24,34,32,0.06)" vertical={false} />
+                    <CartesianGrid stroke="var(--border-hairline)" vertical={false} />
                     <XAxis
                       dataKey="label"
-                      tick={{ fill: "#52605D", fontSize: 10 }}
-                      axisLine={{ stroke: "rgba(24,34,32,0.08)" }}
+                      tick={{ fill: "var(--text-secondary)", fontSize: 10 }}
+                      axisLine={{ stroke: "var(--border-hairline)" }}
                       tickLine={false}
                     />
                     <YAxis
-                      tick={{ fill: "#52605D", fontSize: 11 }}
+                      tick={{ fill: "var(--text-secondary)", fontSize: 11 }}
                       axisLine={false}
                       tickLine={false}
                       unit=" dB"
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "#FFFFFF",
-                        border: "1px solid rgba(24,34,32,0.1)",
+                        backgroundColor: "var(--bg-elevated)",
+                        border: "1px solid var(--border-strong)",
+                        color: "var(--text-primary)",
                         borderRadius: "12px",
                         fontSize: "12px",
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: "11px" }} />
-                    <Bar
-                      dataKey="mixDelta"
-                      name="Your Mix A"
-                      fill="#3A7269"
-                      radius={[4, 4, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="refDelta"
-                      name="Reference B"
-                      fill="#9CA3AF"
-                      radius={[4, 4, 0, 0]}
-                    />
+                    <Bar dataKey="mixDelta" name="Your Mix A" fill="#00D9A3" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="refDelta" name="Reference B" fill="#2D6BFF" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            <div className="bg-[#FFFFFF] p-5 hairline-border squircle-outer lg:col-span-6">
-              <h2 className="text-sm font-semibold text-[#182220]">
+            <div className="bg-[var(--bg-elevated)] p-5 hairline-border squircle-outer lg:col-span-6">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
                 Side-by-Side Dynamic &amp; Stereo Deltas
               </h2>
-              <p className="mb-3 text-xs text-[#52605D]">
+              <p className="mb-3 text-xs text-[var(--text-secondary)]">
                 Objective telemetry comparison before master limiting adjustments
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="border-b border-[rgba(24,34,32,0.08)] text-[11px] text-[#52605D]">
+                    <tr className="border-b border-[var(--border-hairline)] text-[11px] text-[var(--text-secondary)]">
                       <th className="py-2 pr-2 font-medium">Metric</th>
                       <th className="py-2 px-2 font-medium">Your Mix A</th>
                       <th className="py-2 px-2 font-medium">Reference B</th>
@@ -326,12 +313,12 @@ export function ReferenceABView({
                     {rows.map((r) => (
                       <tr
                         key={r.label}
-                        className="border-b border-[rgba(24,34,32,0.05)] last:border-0"
+                        className="border-b border-[var(--border-hairline)] last:border-0"
                       >
-                        <td className="py-2 pr-2 font-medium text-[#182220]">{r.label}</td>
-                        <td className="py-2 px-2 text-[#182220] tabular-telemetry">{r.mix}</td>
-                        <td className="py-2 px-2 text-[#52605D] tabular-telemetry">{r.ref}</td>
-                        <td className="py-2 pl-2 font-medium text-[#3A7269] tabular-telemetry">
+                        <td className="py-2 pr-2 font-medium text-[var(--text-primary)]">{r.label}</td>
+                        <td className="py-2 px-2 text-[var(--text-primary)] tabular-telemetry">{r.mix}</td>
+                        <td className="py-2 px-2 text-[var(--text-secondary)] tabular-telemetry">{r.ref}</td>
+                        <td className="py-2 pl-2 font-medium text-[var(--studio-mint)] tabular-telemetry">
                           {r.delta}
                         </td>
                       </tr>

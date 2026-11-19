@@ -81,11 +81,23 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ""
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ""
         run: npm run build
-      - name: Run Playwright visual & layout QA suite
+      - name: Run Playwright visual & layout QA suite (1440x900 & 390x844)
         run: |
           npm run start &
           SERVER_PID=$!
           npx wait-on http://127.0.0.1:3000 --timeout 30000 || sleep 5
-          npx playwright test tests/e2e/visual-qa.spec.ts
+          npx playwright test tests/e2e/visual-qa.spec.ts --reporter=list
+          TEST_EXIT=$?
           kill $SERVER_PID || true
+          exit $TEST_EXIT
+      - name: Upload Playwright failure screenshots & traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-visual-qa-artifacts
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          retention-days: 7
+
 

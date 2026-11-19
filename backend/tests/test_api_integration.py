@@ -291,7 +291,7 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
         assert gemini_resp.privacy_audit.external_ai_enabled is True
         assert captured.get("model") == settings.gemini_model
         assert captured.get("config").thinking_config is not None
-        assert str(captured.get("config").thinking_config.thinking_level).lower().endswith("low")
+        assert str(captured.get("config").thinking_config.thinking_level).lower().endswith("minimal")
     finally:
         clear_session(report.session_id)
 
@@ -464,4 +464,155 @@ def test_proxy_aware_rate_limiter_uses_xff_and_auth_buckets() -> None:
     key, is_auth = _extract_client_rate_key(req_xff)  # type: ignore[arg-type]
     assert key == "ip:203.0.113.42"
     assert is_auth is False
+
+
+def test_gemini_minimal_thinking_level_retries_once_with_low(monkeypatch) -> None:
+    import google.genai as real_genai
+
+    mock_report = get_mock_report()
+    seen_levels: list[str] = []
+
+    class RetryModels:
+        def generate_content(self, **kwargs):
+            level = str(kwargs["config"].thinking_config.thinking_level).lower()
+            seen_levels.append(level)
+            if "minimal" in level:
+                raise ValueError("Invalid thinking_level enum value: minimal is not supported")
+            valid_eid = mock_report.findings[0].evidence_id
+            payload = json.dumps(
+                {
+                    "summary": "Retried cleanly with low thinking_level.",
+                    "vision_alignment_note": "Matches punchy vision.",
+                    "prioritized_actions": [
+                        {
+                            "evidence_id": valid_eid,
+                            "priority": 1,
+                            "headline": "Trim low-mid buildup",
+                            "coaching_note": "Retried cleanly.",
+                            "daw_experiment": "Cut 2 dB @ 300 Hz.",
+                            "verification_step": "Re-upload and check delta.",
+                        }
+                    ],
+                }
+            )
+            return SimpleNamespace(text=payload)
+
+    class RetryClient:
+        def __init__(self, api_key: str, http_options=None) -> None:
+            self.models = RetryModels()
+
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key-123")
+    monkeypatch.setattr(real_genai, "Client", RetryClient)
+
+    resp = _run_coro_sync(
+        standalone_ai_mentor(
+            MentorStandaloneRequest(
+                report=mock_report,
+                allow_metrics_ai=True,
+                allow_audio_ai=False,
+                allow_training_opt_in=False,
+                question="Check low-mid buildup",
+            )
+        )
+    )
+    assert resp.mode == "gemini_metrics_only"
+    assert len(seen_levels) == 2
+    assert "minimal" in seen_levels[0]
+    assert "low" in seen_levels[1]
+
+
+def test_magic_byte_validation_rejects_disguised_non_audio_with_415() -> None:
+    disguised_html = _MemUpload(b"<html><body><script>alert(1)</script></body></html>", "evil.wav")
+    with pytest.raises(HTTPException) as exc_info:
+        _run_coro_sync(
+            analyze_mix(
+                file=disguised_html,  # type: ignore[arg-type]
+                genre="electronic",
+                stage="unmastered_mix",
+                artist_vision="[]",
+                daw="",
+                bus_routing="",
+                plugin_notes="",
+            )
+        )
+    assert exc_info.value.status_code == 415
+
+
+def test_sha256_dedup_cache_and_finding_classifications() -> None:
+    demo_v1 = Path(__file__).resolve().parents[2] / "frontend" / "public" / "demo" / "demo-flawed-v1.wav"
+    raw_bytes = demo_v1.read_bytes()
+
+    r1 = _run_coro_sync(
+        analyze_mix(
+            file=_MemUpload(raw_bytes, "dup_check.wav"),  # type: ignore[arg-type]
+            genre="electronic",
+            stage="unmastered_mix",
+            artist_vision='["punchy"]',
+            daw="",
+            bus_routing="",
+            plugin_notes="",
+        )
+    )
+    r2 = _run_coro_sync(
+        analyze_mix(
+            file=_MemUpload(raw_bytes, "dup_check.wav"),  # type: ignore[arg-type]
+            genre="electronic",
+            stage="unmastered_mix",
+            artist_vision='["punchy"]',
+            daw="",
+            bus_routing="",
+            plugin_notes="",
+        )
+    )
+    try:
+        assert r1.session_id != r2.session_id
+        assert r1.global_metrics.integrated_lufs == r2.global_metrics.integrated_lufs
+        assert r1.global_metrics.true_peak_dbtp == r2.global_metrics.true_peak_dbtp
+        assert all(f.classification in {"objective_defect", "stylistic_choice"} for f in r1.findings)
+    finally:
+        clear_session(r1.session_id)
+        clear_session(r2.session_id)
+
+
+def test_session_ownership_enforces_403_across_users() -> None:
+    from app.api.v1.routes import _assert_session_owner
+
+    report = create_demo_session(
+        genre="electronic",
+        stage="unmastered_mix",
+        artist_vision='["punchy"]',
+    )
+    try:
+        rec = session_store.get_session(report.session_id)
+        assert rec is not None
+        rec.owner_user_id = "user-a-uuid"
+
+        # Same owner succeeds
+        _assert_session_owner(rec, "user-a-uuid")
+
+        # Different user or anonymous caller gets 403 Forbidden
+        with pytest.raises(HTTPException) as exc_other:
+            _assert_session_owner(rec, "user-b-uuid")
+        assert exc_other.value.status_code == 403
+
+        with pytest.raises(HTTPException) as exc_anon:
+            _assert_session_owner(rec, None)
+        assert exc_anon.value.status_code == 403
+    finally:
+        clear_session(report.session_id)
+
+
+def test_security_headers_middleware_attached() -> None:
+    from starlette.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    res = client.get("/health")
+    assert res.status_code == 200
+    assert res.headers.get("x-content-type-options") == "nosniff"
+    assert res.headers.get("x-frame-options") == "DENY"
+    assert res.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+    assert "permissions-policy" in res.headers
+    assert "content-security-policy" in res.headers
+
 

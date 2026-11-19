@@ -1,25 +1,97 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
+/* Daylight Studio Light Mode (Warm Architectural Paper) */
 :root {
-  --bg-canvas: #FAFAFA;
-  --bg-surface: #F5F5F7;
+  --bg-canvas: #F6F3EC;
+  --bg-surface: #EDE8DC;
   --bg-elevated: #FFFFFF;
-  --border-hairline: rgba(24, 34, 32, 0.08);
-  --border-active: rgba(58, 114, 105, 0.35);
-  --text-primary: #182220;
-  --text-secondary: #52605D;
-  --accent-primary: #3A7269;
-  --accent-soft: #EBF3F1;
-  --status-safe: #15803D;
-  --status-safe-soft: #ECFDF3;
-  --status-caution: #B45309;
-  --status-caution-soft: #FEF7EC;
-  --status-alert: #BE123C;
-  --status-alert-soft: #FFF1F3;
+  --bg-elevated-hover: #FAF8F3;
+  --bg-inset: #EAE4D7;
+  --border-hairline: rgba(17, 19, 24, 0.11);
+  --border-strong: rgba(17, 19, 24, 0.2);
+  --border-active: rgba(0, 153, 115, 0.45);
+  --text-primary: #111318;
+  --text-secondary: #4B5260;
+  --text-muted: #6C7484;
+
+  /* Hardware Studio Accents (Light-tuned for high WCAG contrast) */
+  --studio-vermilion: #E03828;
+  --studio-vermilion-soft: rgba(224, 56, 40, 0.11);
+  --studio-amber: #C47A08;
+  --studio-amber-soft: rgba(196, 122, 8, 0.12);
+  --studio-mint: #009973;
+  --studio-mint-soft: rgba(0, 153, 115, 0.12);
+  --studio-cobalt: #2057D6;
+  --studio-cobalt-soft: rgba(32, 87, 214, 0.12);
+
+  --accent-primary: #009973;
+  --accent-soft: rgba(0, 153, 115, 0.12);
+  --accent-vermilion: var(--studio-vermilion);
+  --accent-vermilion-soft: var(--studio-vermilion-soft);
+  --accent-amber: var(--studio-amber);
+  --accent-amber-soft: var(--studio-amber-soft);
+  --accent-mint: var(--studio-mint);
+  --accent-mint-soft: var(--studio-mint-soft);
+  --accent-cobalt: var(--studio-cobalt);
+  --accent-cobalt-soft: var(--studio-cobalt-soft);
+  --status-safe: #008A68;
+  --status-safe-soft: rgba(0, 153, 115, 0.12);
+  --status-caution: #B46906;
+  --status-caution-soft: rgba(245, 166, 35, 0.16);
+  --status-alert: #D93025;
+  --status-alert-soft: rgba(255, 77, 61, 0.13);
+
   --ease-studio: cubic-bezier(0.22, 1, 0.36, 1);
-  --font-heading: "Plus Jakarta Sans", sans-serif;
-  --font-sans: var(--font-geist-sans), "Geist", sans-serif;
-  --font-mono: var(--font-geist-mono), "Geist Mono", monospace;
+  --font-syne: "Syne";
+  --font-plus-jakarta: "Plus Jakarta Sans";
+  --font-jetbrains-mono: "JetBrains Mono";
+  --font-display: var(--font-syne), "Syne", sans-serif;
+  --font-heading: var(--font-syne), var(--font-plus-jakarta), sans-serif;
+  --font-sans: var(--font-plus-jakarta), "Plus Jakarta Sans", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", monospace;
+}
+
+/* Vinyl-Carbon Studio Dark Mode (Default) */
+.dark {
+  --bg-canvas: #0B0D11;
+  --bg-surface: #10131A;
+  --bg-elevated: #13161F;
+  --bg-elevated-hover: #191E2A;
+  --bg-inset: #0E1117;
+  --border-hairline: #232836;
+  --border-strong: #32394C;
+  --border-active: rgba(0, 217, 163, 0.45);
+  --text-primary: #F5F2EB;
+  --text-secondary: #A6ADBC;
+  --text-muted: #788094;
+
+  /* Hardware Studio Accents */
+  --studio-vermilion: #FF4D3D;
+  --studio-vermilion-soft: rgba(255, 77, 61, 0.14);
+  --studio-amber: #F5A623;
+  --studio-amber-soft: rgba(245, 166, 35, 0.15);
+  --studio-mint: #00D9A3;
+  --studio-mint-soft: rgba(0, 217, 163, 0.14);
+  --studio-cobalt: #2D6BFF;
+  --studio-cobalt-soft: rgba(45, 107, 255, 0.16);
+
+  --accent-primary: #00D9A3;
+  --accent-soft: rgba(0, 217, 163, 0.14);
+  --accent-vermilion: var(--studio-vermilion);
+  --accent-vermilion-soft: var(--studio-vermilion-soft);
+  --accent-amber: var(--studio-amber);
+  --accent-amber-soft: var(--studio-amber-soft);
+  --accent-mint: var(--studio-mint);
+  --accent-mint-soft: var(--studio-mint-soft);
+  --accent-cobalt: var(--studio-cobalt);
+  --accent-cobalt-soft: var(--studio-cobalt-soft);
+  --status-safe: #00D9A3;
+  --status-safe-soft: rgba(0, 217, 163, 0.14);
+  --status-caution: #F5A623;
+  --status-caution-soft: rgba(245, 166, 35, 0.15);
+  --status-alert: #FF4D3D;
+  --status-alert-soft: rgba(255, 77, 61, 0.14);
 }
 
 @layer base {
@@ -34,28 +106,27 @@
   body {
     background-color: var(--bg-canvas);
     color: var(--text-primary);
-    font-family: var(--font-sans), "Geist", "DM Sans", sans-serif;
+    font-family: var(--font-sans);
     line-height: 1.55;
     overflow-x: hidden;
   }
 
   h1, h2, h3, h4 {
-    font-family: var(--font-heading), "Plus Jakarta Sans", sans-serif;
-    letter-spacing: -0.02em;
+    font-family: var(--font-heading);
+    letter-spacing: -0.025em;
     color: var(--text-primary);
   }
 
   ::selection {
-    background-color: var(--accent-soft);
+    background-color: var(--studio-mint-soft);
     color: var(--text-primary);
   }
 
   :focus-visible {
-    outline: 2px solid var(--accent-primary);
+    outline: 2px solid var(--studio-mint);
     outline-offset: 2px;
   }
 
-  /* Subtle daylight scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -66,13 +137,17 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(24, 34, 32, 0.16);
+    background: var(--border-strong);
     border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(58, 114, 105, 0.45);
+    background: var(--studio-mint);
   }
+}
+
+.font-display {
+  font-family: var(--font-display);
 }
 
 .squircle-outer {
@@ -93,7 +168,7 @@
 }
 
 .tabular-telemetry {
-  font-family: var(--font-geist-mono), "Geist Mono", monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -105,6 +180,37 @@
   border: 1px solid var(--border-active);
 }
 
+.studio-card {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-hairline);
+}
+
+.studio-inset {
+  background-color: var(--bg-inset);
+  border: 1px solid var(--border-hairline);
+}
+
+@keyframes signal-beam-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+.signal-beam-active {
+  background: linear-gradient(90deg, var(--studio-mint), var(--studio-amber), var(--studio-vermilion), var(--studio-mint));
+  background-size: 200% 100%;
+  animation: signal-beam-flow 1.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-beam-active {
+    animation: none;
+  }
+}
+
 @media print {
   @page {
     size: auto;
@@ -114,7 +220,7 @@
   html,
   body {
     background: #ffffff !important;
-    color: #182220 !important;
+    color: #111318 !important;
     overflow: visible !important;
   }
 

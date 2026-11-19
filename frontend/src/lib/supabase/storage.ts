@@ -274,21 +274,98 @@ export async function enableAnalysisShareLink(
   return token;
 }
 
+export async function updateSavedAnalysisReportJson(
+  userId: string,
+  analysisId: string,
+  report: AnalysisReport
+): Promise<boolean> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase || !userId || !analysisId) return false;
+
+  const { error } = await supabase
+    .from("analyses")
+    .update({ report_json: report })
+    .eq("id", analysisId)
+    .eq("user_id", userId);
+
+  return !error;
+}
+
+export async function purgeUserAccountData(userId: string): Promise<{
+  deletedAnalyses: boolean;
+  deletedProxyCount: number;
+}> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase || !userId) {
+    return { deletedAnalyses: false, deletedProxyCount: 0 };
+  }
+
+  let deletedProxyCount = 0;
+  try {
+    const { data: objects } = await supabase.storage
+      .from(MIX_PROXIES_BUCKET)
+      .list(userId, { limit: 1000 });
+    if (objects && objects.length > 0) {
+      const paths = objects
+        .filter((o) => Boolean(o.name))
+        .map((o) => `${userId}/${o.name}`);
+      if (paths.length > 0) {
+        const { error: rmErr } = await supabase.storage
+          .from(MIX_PROXIES_BUCKET)
+          .remove(paths);
+        if (!rmErr) {
+          deletedProxyCount = paths.length;
+        }
+      }
+    }
+  } catch {
+    // Continue purging database rows even if storage bucket is empty or unavailable
+  }
+
+  const { error } = await supabase.from("analyses").delete().eq("user_id", userId);
+  return {
+    deletedAnalyses: !error,
+    deletedProxyCount,
+  };
+}
+
 export async function fetchSharedAnalysisByToken(
   token: string
 ): Promise<SavedAnalysisRecord | null> {
   const supabase = getSupabaseBrowserClient();
-  if (!supabase || !token) return null;
+  const cleanToken = token.trim();
+  if (!supabase || cleanToken.length < 16) return null;
 
+  // Prefer the exact-token SECURITY DEFINER RPC (prevents enumeration and redacts user_id)
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "get_shared_analysis_by_token",
+    { p_share_token: cleanToken }
+  );
+
+  if (!rpcError && rpcData) {
+    const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    if (row) {
+      return {
+        ...row,
+        user_id: "",
+      } as SavedAnalysisRecord;
+    }
+    return null;
+  }
+
+  // Fallback for older Supabase deployments that have not yet executed the updated RPC migration
   const { data, error } = await supabase
     .from("analyses")
     .select(
-      "id, user_id, track_name, genre, stage, artist_vision, version_label, parent_analysis_id, proxy_storage_path, share_token, is_public, report_json, created_at"
+      "id, track_name, genre, stage, artist_vision, version_label, share_token, is_public, report_json, created_at"
     )
-    .eq("share_token", token)
+    .eq("share_token", cleanToken)
     .eq("is_public", true)
     .maybeSingle();
 
   if (error || !data) return null;
-  return data as SavedAnalysisRecord;
+  return {
+    ...data,
+    user_id: "",
+  } as SavedAnalysisRecord;
 }

@@ -24,15 +24,14 @@ export function StereoVectorscope({
     let smoothedCorr = avgCorrelation;
     let rafId = 0;
 
-    const drawGrid = (ctx: CanvasRenderingContext2D, size: number) => {
+    const drawGrid = (ctx: CanvasRenderingContext2D, size: number, isDark: boolean) => {
       const cx = size / 2;
       const cy = size / 2;
       const r = size * 0.44;
 
-      ctx.strokeStyle = "rgba(24, 34, 32, 0.09)";
+      ctx.strokeStyle = isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(17, 19, 24, 0.11)";
       ctx.lineWidth = 1;
 
-      // Outer & inner concentric circles
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.stroke();
@@ -41,7 +40,6 @@ export function StereoVectorscope({
       ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
       ctx.stroke();
 
-      // M (vertical) and S (horizontal) axes
       ctx.beginPath();
       ctx.moveTo(cx, cy - r);
       ctx.lineTo(cx, cy + r);
@@ -49,9 +47,8 @@ export function StereoVectorscope({
       ctx.lineTo(cx + r, cy);
       ctx.stroke();
 
-      // L / R 45-degree rails
       const d = r * INV_SQRT2;
-      ctx.strokeStyle = "rgba(58, 114, 105, 0.2)";
+      ctx.strokeStyle = isDark ? "rgba(0, 217, 163, 0.25)" : "rgba(0, 153, 115, 0.25)";
       ctx.beginPath();
       ctx.moveTo(cx - d, cy - d);
       ctx.lineTo(cx + d, cy + d);
@@ -59,8 +56,7 @@ export function StereoVectorscope({
       ctx.lineTo(cx - d, cy + d);
       ctx.stroke();
 
-      // Axis labels
-      ctx.fillStyle = "#52605D";
+      ctx.fillStyle = isDark ? "#8A92A6" : "#4B5260";
       ctx.font = "600 9px ui-monospace, SFMono-Regular, Menlo, monospace";
       ctx.textAlign = "center";
       ctx.fillText("M (+)", cx, cy - r - 4);
@@ -72,6 +68,7 @@ export function StereoVectorscope({
     const renderFrame = () => {
       const canvas = canvasRef.current;
       if (canvas) {
+        const isDark = document.documentElement.classList.contains("dark");
         const dpr = window.devicePixelRatio || 1;
         const size = Math.max(150, Math.min(canvas.clientWidth || 190, canvas.clientHeight || 190));
         const targetW = Math.floor(size * dpr);
@@ -87,10 +84,9 @@ export function StereoVectorscope({
           const sample = studioAudioEngine.getVectorscopeSamples(leftBuf, rightBuf);
 
           if (sample.active) {
-            // Subtle phosphor decay while playing
-            ctx.fillStyle = "rgba(245, 245, 247, 0.28)";
+            ctx.fillStyle = isDark ? "rgba(13, 16, 23, 0.34)" : "rgba(239, 236, 227, 0.34)";
             ctx.fillRect(0, 0, size, size);
-            drawGrid(ctx, size);
+            drawGrid(ctx, size, isDark);
 
             const cx = size / 2;
             const cy = size / 2;
@@ -100,34 +96,29 @@ export function StereoVectorscope({
 
             ctx.beginPath();
             ctx.strokeStyle =
-              smoothedCorr < 0 ? "#BE123C" : smoothedCorr < 0.25 ? "#B45309" : "#3A7269";
-            ctx.lineWidth = 1.25;
-            ctx.globalAlpha = 0.86;
+              smoothedCorr < 0 ? "#FF4D3D" : smoothedCorr < 0.25 ? "#F5A623" : "#00D9A3";
+            ctx.lineWidth = 1.3;
+            ctx.globalAlpha = 0.88;
 
             for (let i = 0; i < leftBuf.length; i += 2) {
               const l = leftBuf[i];
               const r = rightBuf[i];
-              // Lissajous goniometer projection: X = (R - L)*0.707 (Side), Y = (L + R)*0.707 (Mid)
               const x = cx + (r - l) * INV_SQRT2 * radius;
               const y = cy - (l + r) * INV_SQRT2 * radius;
-              if (i === 0) {
-                ctx.moveTo(x, y);
-              } else {
-                ctx.lineTo(x, y);
-              }
+              if (i === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
             }
             ctx.stroke();
             ctx.globalAlpha = 1.0;
           } else {
-            ctx.fillStyle = "#F5F5F7";
+            ctx.fillStyle = isDark ? "#0D1017" : "#EFECE3";
             ctx.fillRect(0, 0, size, size);
-            drawGrid(ctx, size);
+            drawGrid(ctx, size, isDark);
 
-            // Calibrated static standby stereo ellipse reflecting average correlation
             const cx = size / 2;
             const cy = size / 2;
             const widthFactor = Math.max(0.08, Math.min(0.95, 1 - Math.max(0, avgCorrelation) * 0.78));
-            ctx.strokeStyle = "rgba(58, 114, 105, 0.42)";
+            ctx.strokeStyle = isDark ? "rgba(0, 217, 163, 0.55)" : "rgba(0, 153, 115, 0.55)";
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.ellipse(cx, cy, size * 0.34 * widthFactor, size * 0.34, 0, 0, Math.PI * 2);
@@ -156,22 +147,22 @@ export function StereoVectorscope({
   return (
     <div
       data-testid="stereo-vectorscope"
-      className="flex flex-col items-center justify-between gap-2.5 bg-[#FAFAFA] p-3.5 hairline-border squircle-inner"
+      className="flex flex-col items-center justify-between gap-2.5 bg-[var(--bg-inset)] p-3.5 hairline-border squircle-inner"
     >
       <div className="flex w-full items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold text-[#182220]">
+        <span className="text-[11px] font-semibold text-[var(--text-primary)]">
           Live Vectorscope (60 fps)
         </span>
         <span
           ref={liveCorrTextRef}
-          className="bg-[#FFFFFF] px-2 py-0.5 text-[11px] font-semibold text-[#3A7269] hairline-border tabular-telemetry squircle-inner"
+          className="bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-semibold text-[var(--studio-mint)] hairline-border tabular-telemetry squircle-inner"
         >
           {avgCorrelation >= 0 ? "+" : ""}
           {avgCorrelation.toFixed(2)}
         </span>
       </div>
 
-      <div className="relative flex aspect-square w-full max-w-[196px] items-center justify-center overflow-hidden bg-[#F5F5F7] hairline-border squircle-inner">
+      <div className="relative flex aspect-square w-full max-w-[196px] items-center justify-center overflow-hidden bg-[var(--bg-canvas)] hairline-border squircle-inner">
         <canvas
           ref={canvasRef}
           aria-label="Real-time stereo Lissajous vectorscope goniometer"
@@ -180,16 +171,16 @@ export function StereoVectorscope({
       </div>
 
       <div className="w-full space-y-1">
-        <div className="relative h-2 w-full overflow-hidden rounded-full bg-[#FFFFFF] hairline-border flex">
-          <div className="w-1/2 bg-[#FFF1F3]" />
-          <div className="w-1/2 bg-[#ECFDF3]" />
+        <div className="relative h-2 w-full overflow-hidden rounded-full bg-[var(--bg-elevated)] hairline-border flex">
+          <div className="w-1/2 bg-[var(--studio-vermilion-soft)]" />
+          <div className="w-1/2 bg-[var(--studio-mint-soft)]" />
           <div
             ref={liveBarRef}
             style={{ left: `${Math.max(0, Math.min(100, ((avgCorrelation + 1) / 2) * 100))}%` }}
-            className="absolute top-0 bottom-0 w-1.5 -translate-x-1/2 bg-[#182220]"
+            className="absolute top-0 bottom-0 w-1.5 -translate-x-1/2 bg-[var(--text-primary)]"
           />
         </div>
-        <div className="flex items-center justify-between text-[10px] text-[#52605D] tabular-telemetry">
+        <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] tabular-telemetry">
           <span>-1</span>
           <span>
             {typeof lowEndCorrelation === "number"

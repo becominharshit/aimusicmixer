@@ -26,6 +26,53 @@ export class AudioIngestionError extends Error {
   }
 }
 
+export class UnsupportedAudioMediaError extends AudioIngestionError {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnsupportedAudioMediaError";
+  }
+}
+
+export async function validateAudioMagicBytes(filePath: string): Promise<string> {
+  const fh = await fsp.open(filePath, "r");
+  const header = Buffer.alloc(32);
+  let bytesRead = 0;
+  try {
+    const res = await fh.read(header, 0, 32, 0);
+    bytesRead = res.bytesRead;
+  } finally {
+    await fh.close();
+  }
+
+  if (bytesRead < 4) {
+    throw new UnsupportedAudioMediaError(
+      "Unsupported or truncated media payload: missing valid audio file signature."
+    );
+  }
+
+  const head4 = header.subarray(0, 4).toString("ascii");
+  const mid4 = bytesRead >= 12 ? header.subarray(8, 12).toString("ascii") : "";
+  const ftyp = bytesRead >= 8 ? header.subarray(4, 8).toString("ascii") : "";
+
+  if (bytesRead >= 12 && (head4 === "RIFF" || head4 === "RF64") && mid4 === "WAVE") {
+    return "wav";
+  }
+  if (head4 === "fLaC") return "flac";
+  if (bytesRead >= 12 && head4 === "FORM" && (mid4 === "AIFF" || mid4 === "AIFC")) {
+    return "aiff";
+  }
+  if (head4 === "OggS") return "ogg";
+  if (bytesRead >= 8 && ftyp === "ftyp") return "m4a";
+  if (header.subarray(0, 3).toString("ascii") === "ID3") return "mp3";
+  if (header[0] === 0xff && (header[1] & 0xe0) === 0xe0 && header[1] !== 0xff) {
+    return "mp3_or_aac";
+  }
+
+  throw new UnsupportedAudioMediaError(
+    "Unsupported media type: file binary signature does not match WAV, FLAC, MP3, AIFF, OGG, M4A, or AAC."
+  );
+}
+
 export interface LoadedAudio {
   channelsData: Float64Array[];
   sampleRate: number;
@@ -148,6 +195,7 @@ export async function loadAudioFile(filePath: string, maxBytes?: number): Promis
     );
   }
 
+  await validateAudioMagicBytes(filePath);
   const probe = await runFfprobe(filePath);
   const outChannels = Math.min(2, probe.channels);
   const tmpRaw = path.join(os.tmpdir(), `mixbench_pcm_${crypto.randomUUID()}.f32`);

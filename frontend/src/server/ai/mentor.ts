@@ -13,7 +13,7 @@ import type {
 import { serverConfig } from "../config";
 import { extractAudioClip } from "../dsp/ingest";
 
-const GEMINI_TIMEOUT_MS = 20_000;
+const GEMINI_TIMEOUT_MS = 35_000;
 
 interface MentorLLMOutput {
   summary: string;
@@ -264,49 +264,82 @@ export async function generateMentorAdvice(
 
     let response;
     try {
-      const generatePromise = ai.models.generateContent({
-        model: serverConfig.geminiModel,
-        contents,
-        config: {
-          systemInstruction: systemRules,
-          responseMimeType: "application/json",
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.LOW,
-          },
-          abortSignal: controller.signal,
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              summary: { type: Type.STRING },
-              vision_alignment_note: { type: Type.STRING },
-              prioritized_actions: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    evidence_id: { type: Type.STRING },
-                    priority: { type: Type.INTEGER },
-                    headline: { type: Type.STRING },
-                    coaching_note: { type: Type.STRING },
-                    daw_experiment: { type: Type.STRING },
-                    verification_step: { type: Type.STRING },
-                  },
-                  required: [
-                    "evidence_id",
-                    "priority",
-                    "headline",
-                    "coaching_note",
-                    "daw_experiment",
-                    "verification_step",
-                  ],
-                },
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          summary: { type: Type.STRING },
+          vision_alignment_note: { type: Type.STRING },
+          prioritized_actions: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                evidence_id: { type: Type.STRING },
+                priority: { type: Type.INTEGER },
+                headline: { type: Type.STRING },
+                coaching_note: { type: Type.STRING },
+                daw_experiment: { type: Type.STRING },
+                verification_step: { type: Type.STRING },
               },
+              required: [
+                "evidence_id",
+                "priority",
+                "headline",
+                "coaching_note",
+                "daw_experiment",
+                "verification_step",
+              ],
             },
-            required: ["summary", "vision_alignment_note", "prioritized_actions"],
           },
         },
-      });
-      response = await Promise.race([generatePromise, timeoutPromise]);
+        required: ["summary", "vision_alignment_note", "prioritized_actions"],
+      };
+
+      const callGenerate = (level: ThinkingLevel) =>
+        ai.models.generateContent({
+          model: serverConfig.geminiModel,
+          contents,
+          config: {
+            systemInstruction: systemRules,
+            responseMimeType: "application/json",
+            thinkingConfig: {
+              thinkingLevel: level,
+            },
+            abortSignal: controller.signal,
+            responseSchema,
+          },
+        });
+
+      const isUnsupportedMinimalError = (err: unknown): boolean => {
+        const msg = `${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`.toLowerCase();
+        return (
+          msg.includes("thinking") ||
+          msg.includes("minimal") ||
+          msg.includes("invalid_argument") ||
+          msg.includes("unsupported") ||
+          msg.includes("400")
+        );
+      };
+
+      const generateWithFallback = async () => {
+        const minimalLevel = (ThinkingLevel as Record<string, ThinkingLevel>).MINIMAL;
+        if (!minimalLevel) {
+          return callGenerate(ThinkingLevel.LOW);
+        }
+        try {
+          return await callGenerate(minimalLevel);
+        } catch (minimalErr) {
+          if (controller.signal.aborted || !isUnsupportedMinimalError(minimalErr)) {
+            throw minimalErr;
+          }
+          console.info(
+            "[MixBench Mentor] thinkingLevel='minimal' rejected; retrying once with thinkingLevel='low'."
+          );
+          return callGenerate(ThinkingLevel.LOW);
+        }
+      };
+
+      response = await Promise.race([generateWithFallback(), timeoutPromise]);
     } finally {
       if (timerId !== null) clearTimeout(timerId);
     }
@@ -364,8 +397,7 @@ export async function generateMentorAdvice(
         ? err.name || "Error"
         : "Error";
     console.warn(
-      `[MixBench Mentor] Live Gemini request failed (${errName}); returning deterministic Offline Mentor fallback.`,
-      err instanceof Error ? err.message : err
+      `AI Mix Mentor fallback (${errName}): ${err instanceof Error ? err.message : String(err)}`
     );
     return buildDeterministicMentorResponse(
       report,

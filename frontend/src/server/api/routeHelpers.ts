@@ -16,14 +16,51 @@ import type {
 } from "@/types/report";
 import { serverConfig } from "../config";
 import { computeDynamicsMetrics } from "../dsp/dynamics";
-import { AudioIngestionError, createPlaybackProxy, loadAudioFile } from "../dsp/ingest";
+import {
+  AudioIngestionError,
+  UnsupportedAudioMediaError,
+  createPlaybackProxy,
+  loadAudioFile,
+} from "../dsp/ingest";
 import { computeLoudnessMetrics } from "../dsp/loudness";
 import { computePeakMetrics } from "../dsp/peaks";
 import { buildSpectralBandsFromEnergies, computeSpectralProfile } from "../dsp/spectrum";
 import { computeStereoMetrics } from "../dsp/stereo";
 import { computeStreamingEstimates, evaluateMixFindings } from "../rules/evaluator";
-import type { DemoMixCacheEntry, SessionRecord } from "../services/sessionStore";
+import type {
+  DemoMixCacheEntry,
+  SessionRecord,
+  Sha256CachedAnalysis,
+} from "../services/sessionStore";
 import { sessionStore } from "../services/sessionStore";
+
+export const DSP_CONCURRENCY_LIMIT = 2;
+
+class AsyncSemaphore {
+  private active = 0;
+  private queue: Array<() => void> = [];
+  constructor(private readonly maxConcurrent: number) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.active >= this.maxConcurrent) {
+      await new Promise<void>((resolve) => this.queue.push(resolve));
+    }
+    this.active += 1;
+    try {
+      return await fn();
+    } finally {
+      this.active -= 1;
+      const next = this.queue.shift();
+      if (next) next();
+    }
+  }
+}
+
+const dspSemaphore = new AsyncSemaphore(DSP_CONCURRENCY_LIMIT);
+
+export function withDspSemaphore<T>(fn: () => Promise<T>): Promise<T> {
+  return dspSemaphore.run(fn);
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -39,7 +76,7 @@ const VALID_GENRES = new Set<GenreType>([
 ]);
 const VALID_STAGES = new Set<StageType>(["unmastered_mix", "final_master"]);
 
-function extractAuthenticatedSubject(request: Request): string | null {
+export function extractVerifiedJwtSub(request: Request): string | null {
   const authHeader = (request.headers.get("authorization") ?? "").trim();
   if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
   const token = authHeader.slice(7).trim();
@@ -71,10 +108,24 @@ function extractAuthenticatedSubject(request: Request): string | null {
       }
     }
 
-    const digest = crypto.createHash("sha256").update(sub).digest("hex").slice(0, 16);
-    return `user:${digest}`;
+    return sub.trim();
   } catch {
     return null;
+  }
+}
+
+function extractAuthenticatedSubject(request: Request): string | null {
+  const sub = extractVerifiedJwtSub(request);
+  if (!sub) return null;
+  const digest = crypto.createHash("sha256").update(sub).digest("hex").slice(0, 16);
+  return `user:${digest}`;
+}
+
+export function assertSessionAccess(rec: SessionRecord, request: Request): void {
+  if (!rec.ownerUserId) return;
+  const callerSub = extractVerifiedJwtSub(request);
+  if (callerSub !== rec.ownerUserId) {
+    throw new HttpStatusError(403, "Forbidden: you do not have permission to access this session.");
   }
 }
 
@@ -148,11 +199,11 @@ export function tmpUploadPath(prefix: string, safeName: string): string {
   );
 }
 
-export async function saveUploadedFileBounded(
+export async function saveUploadedFileBoundedWithHash(
   file: File,
   targetPath: string,
   maxBytes: number
-): Promise<number> {
+): Promise<{ bytes: number; sha256: string }> {
   if (file.size > maxBytes) {
     throw new HttpStatusError(
       413,
@@ -167,8 +218,19 @@ export async function saveUploadedFileBounded(
       `File '${file.name || "upload"}' exceeds the ${Math.floor(maxBytes / (1024 * 1024))} MB limit.`
     );
   }
-  await fsp.writeFile(targetPath, Buffer.from(arrayBuf));
-  return arrayBuf.byteLength;
+  const buf = Buffer.from(arrayBuf);
+  const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
+  await fsp.writeFile(targetPath, buf);
+  return { bytes: buf.byteLength, sha256 };
+}
+
+export async function saveUploadedFileBounded(
+  file: File,
+  targetPath: string,
+  maxBytes: number
+): Promise<number> {
+  const { bytes } = await saveUploadedFileBoundedWithHash(file, targetPath, maxBytes);
+  return bytes;
 }
 
 export class HttpStatusError extends Error {
@@ -322,13 +384,90 @@ export async function instantiateReportFromCachedDemo(params: {
   return { report, proxyPath };
 }
 
+export async function instantiateReportFromSha256Cache(params: {
+  sessionId: string;
+  originalFilename: string;
+  proxyDir: string;
+  proxyName: string;
+  context: AnalysisContext;
+  cached: Sha256CachedAnalysis;
+}): Promise<{ report: AnalysisReport; proxyPath: string }> {
+  await fsp.mkdir(params.proxyDir, { recursive: true });
+  const actualProxyName = `${params.proxyName}${params.cached.proxyExt}`;
+  const proxyPath = path.join(params.proxyDir, actualProxyName);
+  await fsp.writeFile(proxyPath, params.cached.proxyBytes);
+
+  const updatedBands: SpectralBand[] = buildSpectralBandsFromEnergies(
+    params.cached.snapshot.bandEnergiesDb,
+    params.context.genre
+  );
+  const streamingEstimates = computeStreamingEstimates(params.cached.globalMetrics);
+  const findings = evaluateMixFindings(
+    params.context,
+    params.cached.snapshot.durationSec,
+    params.cached.snapshot.loudness,
+    params.cached.snapshot.peaks,
+    params.cached.snapshot.dynamics,
+    {
+      bands: updatedBands,
+      bandPeakWindows: params.cached.snapshot.spectral.bandPeakWindows,
+    },
+    params.cached.snapshot.stereo
+  );
+
+  const report: AnalysisReport = {
+    schema_version: "1.0.0",
+    session_id: params.sessionId,
+    report_id: `rep_${crypto.randomBytes(4).toString("hex")}`,
+    created_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+    context: params.context,
+    audio_metadata: {
+      filename: params.originalFilename,
+      duration_sec: params.cached.durationSec,
+      sample_rate_hz: params.cached.sampleRate,
+      channels: params.cached.channels,
+      bit_depth: params.cached.bitDepth,
+      playback_proxy_url: `/api/v1/sessions/${params.sessionId}/proxy/${actualProxyName}`,
+      waveform_peaks: params.cached.waveformPeaks.map((pair) => [...pair]),
+      clipping_timestamps_sec: [...params.cached.snapshot.peaks.clippingTimestampsSec],
+      bpm: params.cached.snapshot.bpm ?? null,
+      sections: params.cached.snapshot.sections ? [...params.cached.snapshot.sections] : [],
+    },
+    global_metrics: { ...params.cached.globalMetrics },
+    streaming_estimates: streamingEstimates,
+    spectral_bands: updatedBands,
+    time_series: {
+      step_sec: params.cached.timeSeries.step_sec,
+      short_term_lufs: [...params.cached.timeSeries.short_term_lufs],
+      phase_correlation: [...params.cached.timeSeries.phase_correlation],
+    },
+    findings,
+    stem_analysis: null,
+    revision_comparison: null,
+    privacy_audit: {
+      raw_audio_sent_to_ai: false,
+      external_ai_enabled: false,
+      training_opt_in: false,
+      retention_policy: "Zero raw audio transmitted to external AI by default.",
+    },
+  };
+
+  return { report, proxyPath };
+}
+
 export function handleRouteError(err: unknown): NextResponse {
   if (err instanceof HttpStatusError) {
     return NextResponse.json({ detail: err.message }, { status: err.status });
   }
+  if (err instanceof UnsupportedAudioMediaError) {
+    return NextResponse.json({ detail: err.message }, { status: 415 });
+  }
   if (err instanceof AudioIngestionError) {
     return NextResponse.json({ detail: err.message }, { status: 422 });
   }
-  const msg = err instanceof Error ? err.message : "Internal server error";
-  return NextResponse.json({ detail: msg }, { status: 500 });
+  console.error("[MixBench Route Error]", err);
+  return NextResponse.json(
+    { detail: "Internal server error. Please retry your request." },
+    { status: 500 }
+  );
 }

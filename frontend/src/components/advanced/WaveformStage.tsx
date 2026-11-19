@@ -29,9 +29,9 @@ interface MarkerCluster {
 }
 
 const PIN_COLOR = {
-  alert: "bg-[#BE123C] text-white border-white",
-  caution: "bg-[#B45309] text-white border-white",
-  safe: "bg-[#15803D] text-white border-white",
+  alert: "bg-[var(--studio-vermilion)] text-[#0B0D11] border-[var(--bg-elevated)]",
+  caution: "bg-[var(--studio-amber)] text-[#0B0D11] border-[var(--bg-elevated)]",
+  safe: "bg-[var(--studio-mint)] text-[#0B0D11] border-[var(--bg-elevated)]",
 } as const;
 
 const SEVERITY_RANK = { safe: 0, caution: 1, alert: 2 } as const;
@@ -58,6 +58,7 @@ export function WaveformStage({
   const drawWaveform = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const isDark = document.documentElement.classList.contains("dark");
     const dpr = window.devicePixelRatio || 1;
     const width = canvas.clientWidth || 760;
     const height = canvas.clientHeight || 156;
@@ -70,16 +71,15 @@ export function WaveformStage({
     ctx.clearRect(0, 0, width, height);
 
     const midY = height / 2;
-    ctx.strokeStyle = "rgba(24, 34, 32, 0.08)";
+    ctx.strokeStyle = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(17, 19, 24, 0.09)";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, midY);
     ctx.lineTo(width, midY);
     ctx.stroke();
 
-    // Subtle vertical section dividers
     if (durationSec > 0 && sections.length > 1) {
-      ctx.strokeStyle = "rgba(58, 114, 105, 0.2)";
+      ctx.strokeStyle = "rgba(0, 217, 163, 0.25)";
       ctx.setLineDash([3, 3]);
       for (let i = 1; i < sections.length; i += 1) {
         const sx = (sections[i].start_sec / durationSec) * width;
@@ -94,9 +94,9 @@ export function WaveformStage({
     if (loopEnabled && durationSec > 0 && loopEndSec > loopStartSec) {
       const lx = (loopStartSec / durationSec) * width;
       const lw = ((loopEndSec - loopStartSec) / durationSec) * width;
-      ctx.fillStyle = "rgba(58, 114, 105, 0.11)";
+      ctx.fillStyle = "rgba(0, 217, 163, 0.14)";
       ctx.fillRect(lx, 0, lw, height);
-      ctx.strokeStyle = "rgba(58, 114, 105, 0.45)";
+      ctx.strokeStyle = "rgba(0, 217, 163, 0.55)";
       ctx.strokeRect(lx, 0.5, lw, height - 1);
     }
 
@@ -105,7 +105,7 @@ export function WaveformStage({
     const barCount = peaks.length;
     const step = width / barCount;
     const barWidth = Math.max(1.5, step * 0.68);
-    ctx.fillStyle = "#3A7269";
+    ctx.fillStyle = isDark ? "#00D9A3" : "#008A68";
 
     for (let i = 0; i < barCount; i++) {
       const [minVal, maxVal] = peaks[i];
@@ -113,13 +113,12 @@ export function WaveformStage({
       const barH = Math.max(3, amp * (height * 0.84));
       const x = i * step + (step - barWidth) / 2;
       const y = midY - barH / 2;
-      ctx.globalAlpha = 0.78;
+      ctx.globalAlpha = 0.82;
       ctx.fillRect(x, y, barWidth, barH);
     }
     ctx.globalAlpha = 1.0;
   }, [peaks, durationSec, sections, loopEnabled, loopStartSec, loopEndSec]);
 
-  // Draw on metric/loop updates and attach ResizeObserver for crisp HiDPI redraw on viewport changes
   useEffect(() => {
     drawWaveform();
     const target = containerRef.current;
@@ -131,7 +130,6 @@ export function WaveformStage({
     return () => observer.disconnect();
   }, [drawWaveform]);
 
-  // 60fps requestAnimationFrame loop mutates DOM transform directly (zero React re-renders at 60Hz)
   useEffect(() => {
     let rafId = 0;
     const tick = () => {
@@ -152,7 +150,6 @@ export function WaveformStage({
     return () => window.cancelAnimationFrame(rafId);
   }, [durationSec]);
 
-  // Group dense findings within 2% horizontal distance into clickable cluster pills
   const clusters = useMemo<MarkerCluster[]>(() => {
     const items = findings
       .map((finding) => {
@@ -182,7 +179,6 @@ export function WaveformStage({
       }
     }
 
-    // Spread remaining separated pills slightly if needed so labels never overlap
     const placed: number[] = [];
     return grouped.map((c) => {
       let leftPct = c.anchorPct;
@@ -203,33 +199,32 @@ export function WaveformStage({
   };
 
   return (
-    <div className="bg-[#FFFFFF] p-5 hairline-border squircle-outer">
+    <div className="bg-[var(--bg-elevated)] p-5 hairline-border squircle-outer">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-[#182220]">
+          <span className="text-sm font-semibold text-[var(--text-primary)]">
             Waveform &amp; Issue Marker Timeline
           </span>
           {typeof bpm === "number" && bpm > 0 && (
             <span
               data-testid="waveform-bpm-badge"
-              className="bg-[#EBF3F1] px-2 py-0.5 text-[11px] font-semibold text-[#3A7269] tabular-telemetry squircle-inner"
+              className="bg-[var(--studio-mint-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--studio-mint)] tabular-telemetry squircle-inner"
             >
               {Math.round(bpm)} BPM
             </span>
           )}
-          <span className="text-xs text-[#52605D]">
+          <span className="text-xs text-[var(--text-secondary)]">
             Click anywhere to seek · Click pins or sections to jump
           </span>
         </div>
         <span
           ref={timecodeRef}
-          className="bg-[#F5F5F7] px-2.5 py-1 text-xs font-medium text-[#182220] tabular-telemetry squircle-inner"
+          className="bg-[var(--bg-inset)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)] tabular-telemetry squircle-inner"
         >
           00:00.0 / {formatTimecode(durationSec, true)}
         </span>
       </div>
 
-      {/* Deterministic Song Section Markers */}
       {sections.length > 0 && (
         <div
           data-testid="waveform-sections"
@@ -241,10 +236,10 @@ export function WaveformStage({
               type="button"
               onClick={() => onSeek(sec.start_sec)}
               title={`Seek to ${sec.label} (${formatTimecode(sec.start_sec)} – ${formatTimecode(sec.end_sec)})`}
-              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#F5F5F7] px-2.5 py-1 text-[11px] font-medium text-[#182220] hover:bg-[#EBF3F1] hover:text-[#3A7269] hairline-border squircle-inner cursor-pointer transition-colors"
+              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-inset)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-primary)] hover:bg-[var(--studio-mint-soft)] hover:text-[var(--studio-mint)] hairline-border squircle-inner cursor-pointer transition-colors"
             >
               <span>{sec.label}</span>
-              <span className="text-[10px] text-[#52605D] tabular-telemetry">
+              <span className="text-[10px] text-[var(--text-muted)] tabular-telemetry">
                 {formatTimecode(sec.start_sec)}
               </span>
             </button>
@@ -252,7 +247,6 @@ export function WaveformStage({
         </div>
       )}
 
-      {/* Issue Marker Pin Track (with 2% clustering) */}
       <div className="relative mb-2 h-7 w-full">
         {clusters.map((cluster) => {
           const single = cluster.findings.length === 1;
@@ -286,7 +280,7 @@ export function WaveformStage({
               }
               className={`absolute top-0 -translate-x-1/2 flex h-6 items-center gap-1 rounded-full border px-2 text-[10px] font-semibold shadow-2xs cursor-pointer ${
                 PIN_COLOR[cluster.worstSeverity]
-              } ${active ? "ring-2 ring-[#3A7269] ring-offset-1 z-10" : "opacity-95"}`}
+              } ${active ? "ring-2 ring-[var(--studio-mint)] ring-offset-1 z-10" : "opacity-95"}`}
             >
               <span className="tabular-telemetry">
                 {single
@@ -299,8 +293,8 @@ export function WaveformStage({
       </div>
 
       {expandedCluster && expandedCluster.findings.length > 1 && (
-        <div className="mb-2 flex flex-wrap items-center gap-1.5 bg-[#F5F5F7] px-3 py-2 text-[11px] hairline-border squircle-inner">
-          <span className="font-semibold text-[#182220]">Grouped pins:</span>
+        <div className="mb-2 flex flex-wrap items-center gap-1.5 bg-[var(--bg-inset)] px-3 py-2 text-[11px] hairline-border squircle-inner">
+          <span className="font-semibold text-[var(--text-primary)]">Grouped pins:</span>
           {expandedCluster.findings.map((f) => (
             <button
               key={f.evidence_id}
@@ -309,16 +303,15 @@ export function WaveformStage({
                 onSelectFinding(f);
                 setExpandedClusterId(null);
               }}
-              className="bg-[#FFFFFF] px-2 py-0.5 text-[#182220] hairline-border hover:border-[rgba(58,114,105,0.45)] squircle-inner cursor-pointer"
+              className="bg-[var(--bg-elevated)] px-2 py-0.5 text-[var(--text-primary)] hairline-border hover:border-[var(--border-active)] squircle-inner cursor-pointer"
             >
-              <span className="font-mono text-[#3A7269]">{formatTimecode(f.timestamp_start_sec)}</span>{" "}
+              <span className="font-mono text-[var(--studio-mint)]">{formatTimecode(f.timestamp_start_sec)}</span>{" "}
               · {f.title}
             </button>
           ))}
         </div>
       )}
 
-      {/* 60fps Canvas Waveform Stage */}
       <div
         ref={containerRef}
         role="slider"
@@ -333,16 +326,16 @@ export function WaveformStage({
           if (e.key === "ArrowRight") onSeek(Math.min(durationSec, cur + 2));
           if (e.key === "ArrowLeft") onSeek(Math.max(0, cur - 2));
         }}
-        className="relative h-36 w-full cursor-pointer overflow-hidden bg-[#F5F5F7] hairline-border squircle-inner"
+        className="relative h-36 w-full cursor-pointer overflow-hidden bg-[var(--bg-inset)] hairline-border squircle-inner"
       >
         <canvas ref={canvasRef} className="block h-full w-full" />
         <div
           ref={playheadRef}
           aria-hidden="true"
-          className="pointer-events-none absolute top-0 bottom-0 left-0 w-[2px] bg-[#182220]"
+          className="pointer-events-none absolute top-0 bottom-0 left-0 w-[2px] bg-[var(--text-primary)]"
           style={{ transform: "translate3d(0px, 0, 0)", willChange: "transform" }}
         >
-          <div className="h-2.5 w-2.5 -translate-x-[4px] rounded-full bg-[#3A7269]" />
+          <div className="h-2.5 w-2.5 -translate-x-[4px] rounded-full bg-[var(--studio-mint)]" />
         </div>
       </div>
     </div>

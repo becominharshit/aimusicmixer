@@ -2,9 +2,11 @@ from .dynamics import compute_dynamics_metrics
 from .ingest import (
     AudioIngestionError,
     LoadedAudio,
+    UnsupportedAudioMediaError,
     create_playback_proxy,
     extract_audio_clip,
     load_audio_file,
+    validate_audio_magic_bytes,
 )
 from .loudness import compute_loudness_metrics
 from .peaks import compute_peak_metrics
@@ -15,6 +17,7 @@ from .stereo import compute_stereo_metrics
 __all__ = [
     "AudioIngestionError",
     "LoadedAudio",
+    "UnsupportedAudioMediaError",
     "analyze_user_stems",
     "compute_dynamics_metrics",
     "compute_loudness_metrics",
@@ -25,4 +28,5 @@ __all__ = [
     "detect_band_peak_window",
     "extract_audio_clip",
     "load_audio_file",
+    "validate_audio_magic_bytes",
 ]

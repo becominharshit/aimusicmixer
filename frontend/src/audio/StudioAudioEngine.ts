@@ -80,10 +80,12 @@ export class StudioAudioEngine {
   private safetyLimiter: DynamicsCompressorNode | null = null;
   private masterGain: GainNode | null = null;
 
-  // Dual L/R post-limiter analysers for 60fps Stereo Vectorscope
+  // Dual L/R post-limiter analysers for 60fps Stereo Vectorscope + 2048-pt FFT spectrum analyser
   private vectorSplitter: ChannelSplitterNode | null = null;
   private analyserLeft: AnalyserNode | null = null;
   private analyserRight: AnalyserNode | null = null;
+  private analyserSpectrum: AnalyserNode | null = null;
+  private subBassScratch: Uint8Array<ArrayBuffer> | null = null;
 
   private listeners = new Set<() => void>();
   private loopMonitorId: number | null = null;
@@ -227,7 +229,7 @@ export class StudioAudioEngine {
       this.masterGain = ctx.createGain();
       this.masterGain.gain.value = 0.0001;
 
-      // Dual L/R AnalyserNodes tapped post-limiter for 60fps Stereo Vectorscope
+      // Dual L/R AnalyserNodes tapped post-limiter for 60fps Stereo Vectorscope + 2048-pt FFT spectrum
       this.vectorSplitter = ctx.createChannelSplitter(2);
       this.analyserLeft = ctx.createAnalyser();
       this.analyserRight = ctx.createAnalyser();
@@ -235,6 +237,13 @@ export class StudioAudioEngine {
       this.analyserRight.fftSize = 1024;
       this.analyserLeft.smoothingTimeConstant = 0.5;
       this.analyserRight.smoothingTimeConstant = 0.5;
+
+      this.analyserSpectrum = ctx.createAnalyser();
+      this.analyserSpectrum.fftSize = 2048;
+      this.analyserSpectrum.smoothingTimeConstant = 0.78;
+      this.analyserSpectrum.minDecibels = -92;
+      this.analyserSpectrum.maxDecibels = -6;
+      this.subBassScratch = new Uint8Array(new ArrayBuffer(this.analyserSpectrum.frequencyBinCount));
 
       this.merger.connect(this.correctiveEqFilter);
       this.correctiveEqFilter.connect(this.autoFixFilters[0]);
@@ -248,6 +257,7 @@ export class StudioAudioEngine {
       this.makeupGainNode.connect(this.safetyLimiter);
       this.safetyLimiter.connect(this.masterGain);
       this.safetyLimiter.connect(this.vectorSplitter);
+      this.safetyLimiter.connect(this.analyserSpectrum);
       this.vectorSplitter.connect(this.analyserLeft, 0);
       this.vectorSplitter.connect(this.analyserRight, 1);
       this.masterGain.connect(ctx.destination);
@@ -288,6 +298,60 @@ export class StudioAudioEngine {
     const denom = Math.sqrt(sumLL * sumRR);
     const correlation = denom > 1e-8 ? Math.max(-1, Math.min(1, sumLR / denom)) : 1.0;
     return { active: true, correlation };
+  }
+
+  /**
+   * Reads real-time post-limiter frequency magnitudes (0..255) for LiveSpectralGraph.
+   */
+  getFrequencyData(target: Uint8Array<ArrayBuffer>): { active: boolean; sampleRate: number } {
+    if (!this.isPlaying || !this.analyserSpectrum || !this.ctx) {
+      target.fill(0);
+      return { active: false, sampleRate: this.ctx?.sampleRate ?? 44100 };
+    }
+    this.analyserSpectrum.getByteFrequencyData(target);
+    return { active: true, sampleRate: this.ctx.sampleRate };
+  }
+
+  /**
+   * Computes normalized 0..1 sub-bass (20-120 Hz) energy for the vinyl disc reactive aura.
+   */
+  getSubBassEnergy(): number {
+    if (!this.isPlaying || !this.analyserSpectrum || !this.ctx || !this.subBassScratch) {
+      return 0;
+    }
+    this.analyserSpectrum.getByteFrequencyData(this.subBassScratch);
+    const binHz = this.ctx.sampleRate / this.analyserSpectrum.fftSize;
+    const minBin = Math.max(1, Math.floor(20 / binHz));
+    const maxBin = Math.min(this.subBassScratch.length - 1, Math.ceil(120 / binHz));
+    let sum = 0;
+    let count = 0;
+    for (let i = minBin; i <= maxBin; i += 1) {
+      sum += this.subBassScratch[i];
+      count += 1;
+    }
+    if (count === 0) return 0;
+    return Math.min(1, Math.max(0, sum / (count * 255)));
+  }
+
+  getSpectrumBinCount(): number {
+    return this.analyserSpectrum?.frequencyBinCount ?? 1024;
+  }
+
+  loadAudioBuffer(
+    slot: AudioSourceSlot,
+    buffer: AudioBuffer,
+    lufs: number | null,
+    sourceKey: string
+  ): void {
+    this.ensureGraph();
+    this.slots[slot].buffer = null;
+    this.slots[slot] = { buffer, lufs, url: sourceKey };
+    if (slot === "primary" && this.loopEndSec <= 0) {
+      this.loopStartSec = 0;
+      this.loopEndSec = buffer.duration;
+    }
+    this.applyLoudnessGain(false);
+    this.emit();
   }
 
   async loadSlot(slot: AudioSourceSlot, url: string, lufs: number | null): Promise<void> {

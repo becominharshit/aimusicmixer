@@ -26,6 +26,8 @@ export type FindingCategory =
   | "stems_overlap"
   | "technical_validation";
 
+export type FindingClassification = "objective_defect" | "stylistic_choice";
+
 export interface UserReportedContext {
   daw: string;
   bus_routing: string;
@@ -104,6 +106,7 @@ export interface Finding {
   evidence_id: string;
   category: FindingCategory;
   severity: SeverityType;
+  classification?: FindingClassification;
   confidence: ConfidenceType;
   band_name?: BandName | null;
   title: string;
@@ -216,6 +219,8 @@ export interface AnalysisReport {
   stem_analysis: StemAnalysis | null;
   revision_comparison: RevisionComparison | null;
   privacy_audit: PrivacyAudit;
+  analysis_source?: "server_precision_dsp" | "local_web_audio_preview";
+  completed_repair_steps?: Record<string, boolean>;
 }
 
 export interface ReferenceTrackMeta {
@@ -232,9 +237,12 @@ export interface ReferenceTrackMeta {
 export interface BackendHealth {
   status: string;
   version?: string;
+  contract_version?: string;
   ffmpeg_available: boolean;
   gemini_configured: boolean;
   gemini_model?: string;
+  dsp_concurrency_limit?: number;
+  sha256_cache_entries?: number;
 }
 
 export interface MentorAction {

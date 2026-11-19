@@ -49,7 +49,7 @@ create table if not exists public.analyses (
   updated_at timestamptz default now()
 );
 
--- Idempotent column upgrades for existing deployments
+-- Idempotent column upgrades & payload cap for existing deployments
 alter table public.analyses
   add column if not exists parent_analysis_id uuid references public.analyses(id) on delete set null;
 alter table public.analyses
@@ -60,6 +60,21 @@ alter table public.analyses
   add column if not exists is_public boolean default false not null;
 alter table public.analyses
   add column if not exists updated_at timestamptz default now();
+
+-- Database-level payload size cap (<= 512 KB) to prevent JSONB storage bloat / DoS
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'analyses_report_json_size_cap'
+      and conrelid = 'public.analyses'::regclass
+  ) then
+    alter table public.analyses
+      add constraint analyses_report_json_size_cap
+      check (pg_column_size(report_json) <= 524288);
+  end if;
+end $$;
 
 drop trigger if exists set_analyses_updated_at on public.analyses;
 create trigger set_analyses_updated_at
@@ -102,16 +117,15 @@ create policy "profiles_delete_own"
   on public.profiles for delete
   using (auth.uid() = id);
 
--- 5. RLS Policies for public.analyses (auth.uid() = user_id + explicit public read-only share links)
+-- 5. Strict Per-User RLS Policies for public.analyses (auth.uid() = user_id ONLY)
+-- Broad public SELECT policies are intentionally omitted so anon/other users can NEVER enumerate rows.
+-- Public read-only shared links are resolved strictly via exact cryptographic share_token RPC below.
 drop policy if exists "analyses_select_own" on public.analyses;
 create policy "analyses_select_own"
   on public.analyses for select
   using (auth.uid() = user_id);
 
 drop policy if exists "analyses_select_public_shared" on public.analyses;
-create policy "analyses_select_public_shared"
-  on public.analyses for select
-  using (is_public = true and share_token is not null);
 
 drop policy if exists "analyses_insert_own" on public.analyses;
 create policy "analyses_insert_own"
@@ -128,6 +142,46 @@ drop policy if exists "analyses_delete_own" on public.analyses;
 create policy "analyses_delete_own"
   on public.analyses for delete
   using (auth.uid() = user_id);
+
+-- Exact-token public share lookup (redacts user_id and proxy_storage_path; requires exact share_token >= 16 chars)
+create or replace function public.get_shared_analysis_by_token(p_share_token text)
+returns table (
+  id uuid,
+  track_name text,
+  genre text,
+  stage text,
+  artist_vision text,
+  version_label text,
+  share_token text,
+  is_public boolean,
+  report_json jsonb,
+  created_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    a.id,
+    a.track_name,
+    a.genre,
+    a.stage,
+    a.artist_vision,
+    a.version_label,
+    a.share_token,
+    a.is_public,
+    a.report_json,
+    a.created_at
+  from public.analyses a
+  where a.is_public = true
+    and a.share_token is not null
+    and length(trim(p_share_token)) >= 16
+    and a.share_token = trim(p_share_token)
+  limit 1;
+$$;
+
+revoke all on function public.get_shared_analysis_by_token(text) from public;
+grant execute on function public.get_shared_analysis_by_token(text) to anon, authenticated;
 
 -- 6. Automatically provision a privacy-first profile row when a user signs up
 create or replace function public.handle_new_user()
