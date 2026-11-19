@@ -14,6 +14,7 @@ import { computeLoudnessMetrics } from "../dsp/loudness";
 import { computePeakMetrics } from "../dsp/peaks";
 import { buildSpectralBandsFromEnergies, computeSpectralProfile } from "../dsp/spectrum";
 import { computeStereoMetrics } from "../dsp/stereo";
+import { analyzeSongStructure } from "../dsp/structure";
 import { computeStreamingEstimates, evaluateMixFindings } from "../rules/evaluator";
 import type { CachedDspSnapshot } from "./sessionStore";
 
@@ -37,7 +38,8 @@ export async function analyzeAudioToReport(params: {
     peaks.samplePeakDbfs,
     peaks.truePeakDbtp,
     loudness.shortTermMaxLufs,
-    loudness.integratedLufs
+    loudness.integratedLufs,
+    loaded.sampleRate
   );
   const spectral = computeSpectralProfile(
     loaded.channelsData,
@@ -45,6 +47,12 @@ export async function analyzeAudioToReport(params: {
     params.context.genre
   );
   const stereo = computeStereoMetrics(loaded.channelsData, loaded.sampleRate);
+  const structure = analyzeSongStructure(
+    loaded.channelsData,
+    loaded.sampleRate,
+    loaded.durationSec,
+    loudness.shortTermLufsSeries
+  );
 
   const globalMetrics: GlobalMetrics = {
     integrated_lufs: loudness.integratedLufs,
@@ -56,6 +64,7 @@ export async function analyzeAudioToReport(params: {
     crest_factor_db: dynamics.crestFactorDb,
     plr_db: dynamics.plrDb,
     psr_db: dynamics.psrDb,
+    transient_punch_db: dynamics.transientPunchDb,
     phase_correlation_avg: stereo.phaseCorrelationAvg,
     low_end_phase_correlation: stereo.lowEndPhaseCorrelation,
     stereo_width_ratio: stereo.stereoWidthRatio,
@@ -99,6 +108,8 @@ export async function analyzeAudioToReport(params: {
       playback_proxy_url: finalProxyUrl,
       waveform_peaks: loaded.waveformPeaks,
       clipping_timestamps_sec: peaks.clippingTimestampsSec,
+      bpm: structure.bpm,
+      sections: structure.sections,
     },
     global_metrics: globalMetrics,
     streaming_estimates: streamingEstimates,
@@ -131,6 +142,8 @@ export async function analyzeAudioToReport(params: {
     spectral,
     stereo,
     bandEnergiesDb,
+    bpm: structure.bpm,
+    sections: structure.sections,
   };
 
   return { report, loaded, snapshot, proxyPath };

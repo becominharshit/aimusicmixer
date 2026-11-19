@@ -42,8 +42,11 @@ create table if not exists public.analyses (
   artist_vision text,
   version_label text default 'v1',
   proxy_storage_path text,
+  share_token text unique,
+  is_public boolean default false not null,
   report_json jsonb not null,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
 );
 
 -- Idempotent column upgrades for existing deployments
@@ -51,12 +54,27 @@ alter table public.analyses
   add column if not exists parent_analysis_id uuid references public.analyses(id) on delete set null;
 alter table public.analyses
   add column if not exists proxy_storage_path text;
+alter table public.analyses
+  add column if not exists share_token text unique;
+alter table public.analyses
+  add column if not exists is_public boolean default false not null;
+alter table public.analyses
+  add column if not exists updated_at timestamptz default now();
+
+drop trigger if exists set_analyses_updated_at on public.analyses;
+create trigger set_analyses_updated_at
+  before update on public.analyses
+  for each row execute procedure public.set_updated_at();
 
 create index if not exists analyses_user_created_idx
   on public.analyses (user_id, created_at desc);
 
 create index if not exists analyses_parent_idx
   on public.analyses (parent_analysis_id);
+
+create unique index if not exists analyses_share_token_idx
+  on public.analyses (share_token)
+  where share_token is not null;
 
 -- 3. Enable Row-Level Security (RLS)
 alter table public.profiles enable row level security;
@@ -84,11 +102,16 @@ create policy "profiles_delete_own"
   on public.profiles for delete
   using (auth.uid() = id);
 
--- 5. RLS Policies for public.analyses (auth.uid() = user_id)
+-- 5. RLS Policies for public.analyses (auth.uid() = user_id + explicit public read-only share links)
 drop policy if exists "analyses_select_own" on public.analyses;
 create policy "analyses_select_own"
   on public.analyses for select
   using (auth.uid() = user_id);
+
+drop policy if exists "analyses_select_public_shared" on public.analyses;
+create policy "analyses_select_public_shared"
+  on public.analyses for select
+  using (is_public = true and share_token is not null);
 
 drop policy if exists "analyses_insert_own" on public.analyses;
 create policy "analyses_insert_own"

@@ -163,11 +163,11 @@ def compute_stereo_metrics(samples: np.ndarray, sample_rate: int) -> StereoResul
     width_ratio = float(side_energy / total_ms)
     avg_corr = (weighted_corr_sum / weight_sum) if weight_sum > 1e-12 else 1.0
 
-    # Dedicated sub-bass (< 120 Hz) L/R phase correlation via 4th-order Butterworth low-pass
+    # Dedicated sub-bass (20-120 Hz) L/R phase correlation via 4th-order Butterworth bandpass
     low_end_corr = avg_corr
     if sample_rate > 250 and n_samples >= 64:
         try:
-            sos = butter(4, 120.0, btype="lowpass", fs=sample_rate, output="sos")
+            sos = butter(4, [20.0, 120.0], btype="bandpass", fs=sample_rate, output="sos")
             low_l = sosfilt(sos, np.asarray(left, dtype=np.float64))
             low_r = sosfilt(sos, np.asarray(right, dtype=np.float64))
             low_end_corr = _pearson_corr_weighted(low_l, low_r, step)

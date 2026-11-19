@@ -18,6 +18,7 @@ import {
   YAxis,
 } from "recharts";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { StereoVectorscope } from "@/components/advanced/StereoVectorscope";
 import { formatTimecode } from "@/lib/utils";
 import type { AnalysisReport } from "@/types/report";
 
@@ -214,12 +215,12 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
         </div>
       </div>
 
-      {/* Dedicated Stereo Phase Correlation Meter + Rolling Trace */}
+      {/* Dedicated Stereo Phase Correlation Meter + 60fps Stereo Vectorscope */}
       <div className="bg-[#FFFFFF] p-5 hairline-border squircle-outer space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-sm font-semibold text-[#182220]">
-              Stereo Phase Correlation Meter
+              Stereo Phase Correlation &amp; Live Goniometer
             </h3>
             <p className="text-xs text-[#52605D]">
               Values near +1.0 sum cleanly in mono; values below 0.0 indicate phase cancellation risk
@@ -228,7 +229,7 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
           <div className="flex flex-wrap items-center gap-2 text-xs tabular-telemetry">
             {typeof report.global_metrics.low_end_phase_correlation === "number" && (
               <span className="bg-[#F5F5F7] px-2.5 py-1 text-[#52605D] hairline-border squircle-inner">
-                Sub &lt;120Hz:{" "}
+                Sub 20–120 Hz:{" "}
                 <strong
                   className={
                     report.global_metrics.low_end_phase_correlation < 0.3
@@ -258,80 +259,91 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
           </div>
         </div>
 
-        {/* Ballistic Horizontal Correlation Scale (-1 -> 0 -> +1) */}
-        <div className="space-y-1.5">
-          <div className="relative h-5 w-full overflow-hidden rounded-full bg-[#F5F5F7] hairline-border flex">
-            <div className="w-1/2 bg-[#FFF1F3]/90 border-r border-[rgba(24,34,32,0.18)]" />
-            <div className="w-[17.5%] bg-[#FEF7EC]/80 border-r border-[rgba(24,34,32,0.08)]" />
-            <div className="w-[32.5%] bg-[#ECFDF3]/85" />
-            {/* Lowest 1s peak dip marker */}
-            <div
-              title={`Lowest 1s correlation: ${minCorr.toFixed(2)}`}
-              style={{ left: `${minCorrPct}%` }}
-              className="absolute top-0 bottom-0 w-1 -translate-x-1/2 bg-[#B45309]/70"
-            />
-            {/* Average needle */}
-            <div
-              title={`Average phase correlation: ${avgCorr.toFixed(2)}`}
-              style={{ left: `${corrPct}%` }}
-              className="absolute top-0 bottom-0 w-1.5 -translate-x-1/2 bg-[#182220]"
-            />
-          </div>
-          <div className="flex justify-between text-[10px] text-[#52605D] tabular-telemetry">
-            <span>-1.0 (Out of Phase Cancel)</span>
-            <span>0.0 (Uncorrelated / Wide Limit)</span>
-            <span>+1.0 (Mono Safe)</span>
-          </div>
-        </div>
+        <div className="grid gap-4 md:grid-cols-12 items-start">
+          <div className="space-y-4 md:col-span-8 min-w-0">
+            {/* Ballistic Horizontal Correlation Scale (-1 -> 0 -> +1) */}
+            <div className="space-y-1.5">
+              <div className="relative h-5 w-full overflow-hidden rounded-full bg-[#F5F5F7] hairline-border flex">
+                <div className="w-1/2 bg-[#FFF1F3]/90 border-r border-[rgba(24,34,32,0.18)]" />
+                <div className="w-[17.5%] bg-[#FEF7EC]/80 border-r border-[rgba(24,34,32,0.08)]" />
+                <div className="w-[32.5%] bg-[#ECFDF3]/85" />
+                {/* Lowest 1s peak dip marker */}
+                <div
+                  title={`Lowest 1s correlation: ${minCorr.toFixed(2)}`}
+                  style={{ left: `${minCorrPct}%` }}
+                  className="absolute top-0 bottom-0 w-1 -translate-x-1/2 bg-[#B45309]/70"
+                />
+                {/* Average needle */}
+                <div
+                  title={`Average phase correlation: ${avgCorr.toFixed(2)}`}
+                  style={{ left: `${corrPct}%` }}
+                  className="absolute top-0 bottom-0 w-1.5 -translate-x-1/2 bg-[#182220]"
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-[#52605D] tabular-telemetry">
+                <span>-1.0 (Out of Phase Cancel)</span>
+                <span>0.0 (Wide Limit)</span>
+                <span>+1.0 (Mono Safe)</span>
+              </div>
+            </div>
 
-        {/* 1-Second Rolling Phase Correlation Trace */}
-        <div className="h-36 w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-            <LineChart
-              data={timelineData}
-              margin={{ top: 6, right: 12, left: -16, bottom: 2 }}
-              onClick={(state) => {
-                const sec = state?.activePayload?.[0]?.payload?.sec;
-                if (typeof sec === "number") onSeek(sec);
-              }}
-            >
-              <CartesianGrid stroke="rgba(24,34,32,0.06)" vertical={false} />
-              <ReferenceArea y1={-1} y2={0} fill="#BE123C" fillOpacity={0.05} />
-              <XAxis
-                dataKey="timeLabel"
-                tick={{ fill: "#52605D", fontSize: 10 }}
-                axisLine={{ stroke: "rgba(24,34,32,0.08)" }}
-                tickLine={false}
-              />
-              <YAxis
-                domain={[-1, 1]}
-                ticks={[-1, 0, 1]}
-                tick={{ fill: "#52605D", fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <ReferenceLine y={0} stroke="rgba(190,18,60,0.4)" strokeDasharray="3 3" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#FFFFFF",
-                  border: "1px solid rgba(24,34,32,0.1)",
-                  borderRadius: "12px",
-                  fontSize: "12px",
-                }}
-                formatter={(value: number) => [
-                  `${value >= 0 ? "+" : ""}${value.toFixed(2)}`,
-                  "Phase Correlation",
-                ]}
-              />
-              <Line
-                type="monotone"
-                dataKey="correlation"
-                stroke="#3A7269"
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+            {/* 1-Second Rolling Phase Correlation Trace */}
+            <div className="h-40 w-full min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <LineChart
+                  data={timelineData}
+                  margin={{ top: 6, right: 12, left: -16, bottom: 2 }}
+                  onClick={(state) => {
+                    const sec = state?.activePayload?.[0]?.payload?.sec;
+                    if (typeof sec === "number") onSeek(sec);
+                  }}
+                >
+                  <CartesianGrid stroke="rgba(24,34,32,0.06)" vertical={false} />
+                  <ReferenceArea y1={-1} y2={0} fill="#BE123C" fillOpacity={0.05} />
+                  <XAxis
+                    dataKey="timeLabel"
+                    tick={{ fill: "#52605D", fontSize: 10 }}
+                    axisLine={{ stroke: "rgba(24,34,32,0.08)" }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    domain={[-1, 1]}
+                    ticks={[-1, 0, 1]}
+                    tick={{ fill: "#52605D", fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <ReferenceLine y={0} stroke="rgba(190,18,60,0.4)" strokeDasharray="3 3" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#FFFFFF",
+                      border: "1px solid rgba(24,34,32,0.1)",
+                      borderRadius: "12px",
+                      fontSize: "12px",
+                    }}
+                    formatter={(value: number) => [
+                      `${value >= 0 ? "+" : ""}${value.toFixed(2)}`,
+                      "Phase Correlation",
+                    ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="correlation"
+                    stroke="#3A7269"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="md:col-span-4 min-w-0">
+            <StereoVectorscope
+              avgCorrelation={avgCorr}
+              lowEndCorrelation={report.global_metrics.low_end_phase_correlation}
+            />
+          </div>
         </div>
       </div>
 

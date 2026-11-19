@@ -35,6 +35,8 @@ export interface SavedAnalysisRecord {
   version_label: string;
   parent_analysis_id?: string | null;
   proxy_storage_path?: string | null;
+  share_token?: string | null;
+  is_public?: boolean;
   report_json: AnalysisReport;
   created_at: string;
 }
@@ -121,7 +123,7 @@ export async function fetchSavedAnalyses(
   const { data, error } = await supabase
     .from("analyses")
     .select(
-      "id, user_id, track_name, genre, stage, artist_vision, version_label, parent_analysis_id, proxy_storage_path, report_json, created_at"
+      "id, user_id, track_name, genre, stage, artist_vision, version_label, parent_analysis_id, proxy_storage_path, share_token, is_public, report_json, created_at"
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -212,7 +214,7 @@ export async function saveUserAnalysis(params: {
       report_json: report,
     })
     .select(
-      "id, user_id, track_name, genre, stage, artist_vision, version_label, parent_analysis_id, proxy_storage_path, report_json, created_at"
+      "id, user_id, track_name, genre, stage, artist_vision, version_label, parent_analysis_id, proxy_storage_path, share_token, is_public, report_json, created_at"
     )
     .single();
 
@@ -243,4 +245,50 @@ export async function deleteSavedAnalysis(
     .eq("user_id", userId);
 
   return !error;
+}
+
+export async function enableAnalysisShareLink(
+  userId: string,
+  analysisId: string,
+  existingToken?: string | null
+): Promise<string | null> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return null;
+
+  const token =
+    existingToken ||
+    (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID().replace(/-/g, "").slice(0, 18)
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`);
+
+  const { error } = await supabase
+    .from("analyses")
+    .update({
+      share_token: token,
+      is_public: true,
+    })
+    .eq("id", analysisId)
+    .eq("user_id", userId);
+
+  if (error) return null;
+  return token;
+}
+
+export async function fetchSharedAnalysisByToken(
+  token: string
+): Promise<SavedAnalysisRecord | null> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase || !token) return null;
+
+  const { data, error } = await supabase
+    .from("analyses")
+    .select(
+      "id, user_id, track_name, genre, stage, artist_vision, version_label, parent_analysis_id, proxy_storage_path, share_token, is_public, report_json, created_at"
+    )
+    .eq("share_token", token)
+    .eq("is_public", true)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as SavedAnalysisRecord;
 }

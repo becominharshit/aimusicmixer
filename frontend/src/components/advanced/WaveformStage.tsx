@@ -5,11 +5,13 @@ import { motion } from "motion/react";
 import { studioAudioEngine } from "@/audio/StudioAudioEngine";
 import { TACTILE_TAP } from "@/lib/motion";
 import { formatTimecode } from "@/lib/utils";
-import type { Finding } from "@/types/report";
+import type { Finding, SongSection } from "@/types/report";
 
 interface WaveformStageProps {
   peaks: number[][];
   durationSec: number;
+  bpm?: number | null;
+  sections?: SongSection[];
   findings: Finding[];
   activeFindingId: string | null;
   loopEnabled: boolean;
@@ -37,6 +39,8 @@ const SEVERITY_RANK = { safe: 0, caution: 1, alert: 2 } as const;
 export function WaveformStage({
   peaks,
   durationSec,
+  bpm = null,
+  sections = [],
   findings,
   activeFindingId,
   loopEnabled,
@@ -73,6 +77,20 @@ export function WaveformStage({
     ctx.lineTo(width, midY);
     ctx.stroke();
 
+    // Subtle vertical section dividers
+    if (durationSec > 0 && sections.length > 1) {
+      ctx.strokeStyle = "rgba(58, 114, 105, 0.2)";
+      ctx.setLineDash([3, 3]);
+      for (let i = 1; i < sections.length; i += 1) {
+        const sx = (sections[i].start_sec / durationSec) * width;
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, height);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
     if (loopEnabled && durationSec > 0 && loopEndSec > loopStartSec) {
       const lx = (loopStartSec / durationSec) * width;
       const lw = ((loopEndSec - loopStartSec) / durationSec) * width;
@@ -99,7 +117,7 @@ export function WaveformStage({
       ctx.fillRect(x, y, barWidth, barH);
     }
     ctx.globalAlpha = 1.0;
-  }, [peaks, durationSec, loopEnabled, loopStartSec, loopEndSec]);
+  }, [peaks, durationSec, sections, loopEnabled, loopStartSec, loopEndSec]);
 
   // Draw on metric/loop updates and attach ResizeObserver for crisp HiDPI redraw on viewport changes
   useEffect(() => {
@@ -191,8 +209,16 @@ export function WaveformStage({
           <span className="text-sm font-semibold text-[#182220]">
             Waveform &amp; Issue Marker Timeline
           </span>
+          {typeof bpm === "number" && bpm > 0 && (
+            <span
+              data-testid="waveform-bpm-badge"
+              className="bg-[#EBF3F1] px-2 py-0.5 text-[11px] font-semibold text-[#3A7269] tabular-telemetry squircle-inner"
+            >
+              {Math.round(bpm)} BPM
+            </span>
+          )}
           <span className="text-xs text-[#52605D]">
-            Click anywhere to seek · Click pins to jump &amp; loop
+            Click anywhere to seek · Click pins or sections to jump
           </span>
         </div>
         <span
@@ -202,6 +228,29 @@ export function WaveformStage({
           00:00.0 / {formatTimecode(durationSec, true)}
         </span>
       </div>
+
+      {/* Deterministic Song Section Markers */}
+      {sections.length > 0 && (
+        <div
+          data-testid="waveform-sections"
+          className="mb-2.5 flex flex-wrap items-center gap-1.5"
+        >
+          {sections.map((sec, idx) => (
+            <button
+              key={`${sec.label}-${sec.start_sec}-${idx}`}
+              type="button"
+              onClick={() => onSeek(sec.start_sec)}
+              title={`Seek to ${sec.label} (${formatTimecode(sec.start_sec)} – ${formatTimecode(sec.end_sec)})`}
+              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#F5F5F7] px-2.5 py-1 text-[11px] font-medium text-[#182220] hover:bg-[#EBF3F1] hover:text-[#3A7269] hairline-border squircle-inner cursor-pointer transition-colors"
+            >
+              <span>{sec.label}</span>
+              <span className="text-[10px] text-[#52605D] tabular-telemetry">
+                {formatTimecode(sec.start_sec)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Issue Marker Pin Track (with 2% clustering) */}
       <div className="relative mb-2 h-7 w-full">

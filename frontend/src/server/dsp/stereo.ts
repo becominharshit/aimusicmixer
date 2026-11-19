@@ -27,6 +27,19 @@ function makeButterworthLowpass2nd(cutoffHz: number, q: number, sampleRate: numb
   };
 }
 
+function makeButterworthHighpass2nd(cutoffHz: number, q: number, sampleRate: number): Biquad {
+  const k = Math.tan((Math.PI * cutoffHz) / sampleRate);
+  const k2 = k * k;
+  const a0 = 1 + k / q + k2;
+  return {
+    b0: 1 / a0,
+    b1: -2 / a0,
+    b2: 1 / a0,
+    a1: (2 * (k2 - 1)) / a0,
+    a2: (1 - k / q + k2) / a0,
+  };
+}
+
 function applyBiquadCopy(input: Float64Array, bq: Biquad): Float64Array {
   const out = new Float64Array(input.length);
   let x1 = 0;
@@ -46,12 +59,20 @@ function applyBiquadCopy(input: Float64Array, bq: Biquad): Float64Array {
 }
 
 /**
- * 4th-order Butterworth low-pass at 120 Hz (cascade of 2 second-order sections with Q=0.541196, Q=1.306563).
+ * 4th-order Butterworth 20-120 Hz bandpass filter (4th-order 20 Hz HPF cascaded with 4th-order 120 Hz LPF)
+ * so sub-20 Hz DC offset and infrasonic rumble cannot corrupt low-end phase correlation.
  */
-function butterworth4Lowpass120Hz(signal: Float64Array, sampleRate: number): Float64Array {
-  const s1 = makeButterworthLowpass2nd(120.0, 0.541196100146197, sampleRate);
-  const s2 = makeButterworthLowpass2nd(120.0, 1.3065629648763766, sampleRate);
-  return applyBiquadCopy(applyBiquadCopy(signal, s1), s2);
+function butterworth4Bandpass20To120Hz(signal: Float64Array, sampleRate: number): Float64Array {
+  const q1 = 0.541196100146197;
+  const q2 = 1.3065629648763766;
+  const hp1 = makeButterworthHighpass2nd(20.0, q1, sampleRate);
+  const hp2 = makeButterworthHighpass2nd(20.0, q2, sampleRate);
+  const lp1 = makeButterworthLowpass2nd(120.0, q1, sampleRate);
+  const lp2 = makeButterworthLowpass2nd(120.0, q2, sampleRate);
+  return applyBiquadCopy(
+    applyBiquadCopy(applyBiquadCopy(applyBiquadCopy(signal, hp1), hp2), lp1),
+    lp2
+  );
 }
 
 function weightedPearsonCorr(left: Float64Array, right: Float64Array, step: number): number {
@@ -263,8 +284,8 @@ export function computeStereoMetrics(
 
   let lowEndCorr = avgCorr;
   if (sampleRate > 250 && nSamples >= 64) {
-    const lowL = butterworth4Lowpass120Hz(left, sampleRate);
-    const lowR = butterworth4Lowpass120Hz(right, sampleRate);
+    const lowL = butterworth4Bandpass20To120Hz(left, sampleRate);
+    const lowR = butterworth4Bandpass20To120Hz(right, sampleRate);
     lowEndCorr = Math.max(-1.0, Math.min(1.0, weightedPearsonCorr(lowL, lowR, step)));
   }
 

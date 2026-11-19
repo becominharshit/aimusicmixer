@@ -276,14 +276,14 @@ def evaluate_mix_findings(
                 title=f"Wide / Uncentered Sub-Bass Below 120 Hz ({stereo.low_end_phase_correlation:+.2f})",
                 timestamp_start_sec=p_start,
                 timestamp_end_sec=p_end,
-                measured_value=f"Sub-120 Hz correlation {stereo.low_end_phase_correlation:+.2f} (recommended >= +0.70)",
+                measured_value=f"20-120 Hz correlation {stereo.low_end_phase_correlation:+.2f} (recommended >= +0.70)",
                 what_happened=(
-                    f"4th-order Butterworth 120 Hz low-pass correlation measures {stereo.low_end_phase_correlation:+.2f}, indicating significant Side energy in the low end."
+                    f"4th-order Butterworth 20-120 Hz bandpass correlation measures {stereo.low_end_phase_correlation:+.2f}, indicating significant Side energy in the low end."
                 ),
                 why_it_matters="Stereo sub-bass suffers heavy cancellation in mono playback (club PAs, phone speakers) and wastes headroom on vinyl or streaming masters.",
                 listen_prompt=f"Switch Stereo Mode to Mono Fold around {_fmt_time(p_start)} and listen to kick/sub weight drop or hollow out.",
                 what_to_try="Insert a Mid/Side EQ on your master or bass bus and high-pass the Side channel at 100–130 Hz so sub frequencies sum cleanly in mono.",
-                recheck_target="Confirm <120 Hz phase correlation climbs above +0.70.",
+                recheck_target="Confirm 20-120 Hz phase correlation climbs above +0.70.",
             )
         )
 
@@ -421,6 +421,28 @@ def evaluate_mix_findings(
                 listen_prompt=f"Level-match a reference track at {_fmt_time(loud_start)} and listen specifically to snare attack and vocal breath.",
                 what_to_try="Back off master limiter threshold by 1-2 dB or lengthen drum bus compressor attack (15-30 ms) so transients punch through.",
                 recheck_target="Re-export and aim for PSR >= 7.0 dB and Crest Factor >= 8.5 dB.",
+            )
+        )
+
+    if 0.0 < dynamics.transient_punch_db < 4.5 and (dynamics.psr_db < 8.5 or dynamics.crest_factor_db < 10.0):
+        punch_sev = "alert" if dynamics.transient_punch_db < 3.0 else "caution"
+        findings.append(
+            Finding(
+                evidence_id="ev_transient_crush_01",
+                category="dynamics",
+                severity=punch_sev,
+                confidence="measured",
+                title=f"Over-Limited / Crushed Transients ({dynamics.transient_punch_db:.1f} dB punch)",
+                timestamp_start_sec=loud_start,
+                timestamp_end_sec=loud_end,
+                measured_value=f"Transient punch {dynamics.transient_punch_db:.1f} dB (10 ms attack vs 200 ms body RMS)",
+                what_happened=(
+                    f"Short-term 10 ms attack energy sits only {dynamics.transient_punch_db:.1f} dB above the 200 ms body RMS near {_fmt_time(loud_start)}, indicating heavy transient shaving."
+                ),
+                why_it_matters="Over-limiting shaves kick and snare impact, causing listener fatigue and making the mix sound smaller than punchier releases once streaming loudness-matches playback.",
+                listen_prompt=f"Audition {_fmt_time(loud_start)} and compare drum snap against a loudness-matched reference track.",
+                what_to_try="Pull back final limiter input drive by 1.5–2.5 dB, slow drum bus compressor attack to 20–30 ms, or use a gentle soft clipper before limiting.",
+                recheck_target="Re-export and verify Transient Punch climbs above 5.0 dB without sacrificing perceived impact.",
             )
         )
 

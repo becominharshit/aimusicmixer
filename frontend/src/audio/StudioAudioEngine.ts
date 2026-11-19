@@ -7,6 +7,7 @@ export interface CorrectiveEqConfig {
   freqHz: number;
   q: number;
   gainDb: number;
+  filterType?: "peaking" | "highpass";
 }
 
 interface SlotState {
@@ -19,9 +20,11 @@ interface SlotState {
  * Persistent Web Audio API Studio Engine.
  * - Lives outside React component trees so Simple <-> Advanced switching never glitches audio.
  * - Unlocks suspended AudioContext synchronously on user gestures (Safari / iOS WebKit safe).
- * - Uses 15ms exponential GainNode ramps (`setTargetAtTime`) on every play/pause, A/B, mono, and EQ toggle.
+ * - Uses 15ms exponential GainNode ramps (`setTargetAtTime`) on every play/pause, A/B, mono, EQ, and Auto-Fix toggle.
  * - Uses calibrated 0.5L + 0.5R mono summing into a -0.3 dBFS brickwall safety limiter to prevent digital clipping.
- * - Includes a bypassable Corrective EQ peaking filter (`correctiveEqFilter`) for tonal finding auditioning.
+ * - Includes a bypassable Corrective EQ filter (`correctiveEqFilter`) and a 1-click non-destructive
+ *   Auto-Fix Preview chain (3-band corrective EQ + <100 Hz M/S Side high-pass mono-maker).
+ * - Taps dual L/R post-limiter AnalyserNodes for a real-time 60fps Stereo Vectorscope.
  */
 export class StudioAudioEngine {
   private ctx: AudioContext | null = null;
@@ -37,6 +40,8 @@ export class StudioAudioEngine {
   private deviceProfile: DeviceProfile = "full";
   private matchLoudness = true;
   private correctiveEq: CorrectiveEqConfig | null = null;
+  private autoFixEnabled = false;
+  private autoFixBands: CorrectiveEqConfig[] = [];
 
   private isPlaying = false;
   private startCtxTime = 0;
@@ -56,8 +61,16 @@ export class StudioAudioEngine {
   private rlGain: GainNode | null = null;
   private rrGain: GainNode | null = null;
 
-  // Bypassable corrective EQ node
+  // Bypassable corrective EQ node (single finding audition)
   private correctiveEqFilter: BiquadFilterNode | null = null;
+
+  // 1-Click Auto-Fix Preview chain: 3 peaking EQ bands + <100 Hz M/S Side HPF mono-maker
+  private autoFixFilters: BiquadFilterNode[] = [];
+  private msEncodeSplitter: ChannelSplitterNode | null = null;
+  private msDecodeMerger: ChannelMergerNode | null = null;
+  private sideHpFilter: BiquadFilterNode | null = null;
+  private sideBypassGain: GainNode | null = null;
+  private sideWetGain: GainNode | null = null;
 
   // Device Translation Lab filter chain + speaker makeup gain + brickwall safety limiter
   private hpFilter: BiquadFilterNode | null = null;
@@ -66,6 +79,11 @@ export class StudioAudioEngine {
   private makeupGainNode: GainNode | null = null;
   private safetyLimiter: DynamicsCompressorNode | null = null;
   private masterGain: GainNode | null = null;
+
+  // Dual L/R post-limiter analysers for 60fps Stereo Vectorscope
+  private vectorSplitter: ChannelSplitterNode | null = null;
+  private analyserLeft: AnalyserNode | null = null;
+  private analyserRight: AnalyserNode | null = null;
 
   private listeners = new Set<() => void>();
   private loopMonitorId: number | null = null;
@@ -125,6 +143,73 @@ export class StudioAudioEngine {
       this.correctiveEqFilter.Q.value = 1.4;
       this.correctiveEqFilter.gain.value = 0;
 
+      // 3-band Auto-Fix EQ cascade
+      this.autoFixFilters = [0, 1, 2].map(() => {
+        const f = ctx.createBiquadFilter();
+        f.type = "peaking";
+        f.frequency.value = 250;
+        f.Q.value = 1.2;
+        f.gain.value = 0;
+        return f;
+      });
+
+      // Phase-neutral M/S Side <100 Hz mono-maker (unity bypass when Auto-Fix is OFF)
+      this.msEncodeSplitter = ctx.createChannelSplitter(2);
+      this.msDecodeMerger = ctx.createChannelMerger(2);
+
+      const midFromL = ctx.createGain();
+      const midFromR = ctx.createGain();
+      midFromL.gain.value = 0.5;
+      midFromR.gain.value = 0.5;
+      const midSum = ctx.createGain();
+      midSum.gain.value = 1.0;
+
+      const sideFromL = ctx.createGain();
+      const sideFromR = ctx.createGain();
+      sideFromL.gain.value = 0.5;
+      sideFromR.gain.value = -0.5;
+      const sideSum = ctx.createGain();
+      sideSum.gain.value = 1.0;
+
+      this.sideHpFilter = ctx.createBiquadFilter();
+      this.sideHpFilter.type = "highpass";
+      this.sideHpFilter.frequency.value = 100;
+      this.sideHpFilter.Q.value = 0.707;
+
+      this.sideBypassGain = ctx.createGain();
+      this.sideBypassGain.gain.value = 1.0;
+      this.sideWetGain = ctx.createGain();
+      this.sideWetGain.gain.value = 0.0;
+
+      const sideOut = ctx.createGain();
+      sideOut.gain.value = 1.0;
+      const sideInvert = ctx.createGain();
+      sideInvert.gain.value = -1.0;
+
+      this.msEncodeSplitter.connect(midFromL, 0);
+      this.msEncodeSplitter.connect(midFromR, 1);
+      midFromL.connect(midSum);
+      midFromR.connect(midSum);
+
+      this.msEncodeSplitter.connect(sideFromL, 0);
+      this.msEncodeSplitter.connect(sideFromR, 1);
+      sideFromL.connect(sideSum);
+      sideFromR.connect(sideSum);
+
+      sideSum.connect(this.sideBypassGain);
+      sideSum.connect(this.sideHpFilter);
+      this.sideHpFilter.connect(this.sideWetGain);
+
+      this.sideBypassGain.connect(sideOut);
+      this.sideWetGain.connect(sideOut);
+      sideOut.connect(sideInvert);
+
+      // Decode: L = M + S, R = M - S
+      midSum.connect(this.msDecodeMerger, 0, 0);
+      sideOut.connect(this.msDecodeMerger, 0, 0);
+      midSum.connect(this.msDecodeMerger, 0, 1);
+      sideInvert.connect(this.msDecodeMerger, 0, 1);
+
       this.hpFilter = ctx.createBiquadFilter();
       this.midPresenceFilter = ctx.createBiquadFilter();
       this.lpFilter = ctx.createBiquadFilter();
@@ -142,20 +227,67 @@ export class StudioAudioEngine {
       this.masterGain = ctx.createGain();
       this.masterGain.gain.value = 0.0001;
 
+      // Dual L/R AnalyserNodes tapped post-limiter for 60fps Stereo Vectorscope
+      this.vectorSplitter = ctx.createChannelSplitter(2);
+      this.analyserLeft = ctx.createAnalyser();
+      this.analyserRight = ctx.createAnalyser();
+      this.analyserLeft.fftSize = 1024;
+      this.analyserRight.fftSize = 1024;
+      this.analyserLeft.smoothingTimeConstant = 0.5;
+      this.analyserRight.smoothingTimeConstant = 0.5;
+
       this.merger.connect(this.correctiveEqFilter);
-      this.correctiveEqFilter.connect(this.hpFilter);
+      this.correctiveEqFilter.connect(this.autoFixFilters[0]);
+      this.autoFixFilters[0].connect(this.autoFixFilters[1]);
+      this.autoFixFilters[1].connect(this.autoFixFilters[2]);
+      this.autoFixFilters[2].connect(this.msEncodeSplitter);
+      this.msDecodeMerger.connect(this.hpFilter);
       this.hpFilter.connect(this.midPresenceFilter);
       this.midPresenceFilter.connect(this.lpFilter);
       this.lpFilter.connect(this.makeupGainNode);
       this.makeupGainNode.connect(this.safetyLimiter);
       this.safetyLimiter.connect(this.masterGain);
+      this.safetyLimiter.connect(this.vectorSplitter);
+      this.vectorSplitter.connect(this.analyserLeft, 0);
+      this.vectorSplitter.connect(this.analyserRight, 1);
       this.masterGain.connect(ctx.destination);
 
       this.applyMatrixAndFilters(true);
       this.applyCorrectiveEq(true);
+      this.applyAutoFix(true);
       this.applyLoudnessGain(true);
     }
     return this.ctx;
+  }
+
+  /**
+   * Reads real-time L/R time-domain samples from post-limiter AnalyserNodes
+   * for the 60fps Stereo Vectorscope & live correlation readout.
+   */
+  getVectorscopeSamples(
+    leftOut: Float32Array<ArrayBuffer>,
+    rightOut: Float32Array<ArrayBuffer>
+  ): { active: boolean; correlation: number } {
+    if (!this.isPlaying || !this.analyserLeft || !this.analyserRight) {
+      return { active: false, correlation: 1.0 };
+    }
+    this.analyserLeft.getFloatTimeDomainData(leftOut);
+    this.analyserRight.getFloatTimeDomainData(rightOut);
+
+    const len = Math.min(leftOut.length, rightOut.length);
+    let sumLR = 0;
+    let sumLL = 0;
+    let sumRR = 0;
+    for (let i = 0; i < len; i += 1) {
+      const l = leftOut[i];
+      const r = rightOut[i];
+      sumLR += l * r;
+      sumLL += l * l;
+      sumRR += r * r;
+    }
+    const denom = Math.sqrt(sumLL * sumRR);
+    const correlation = denom > 1e-8 ? Math.max(-1, Math.min(1, sumLR / denom)) : 1.0;
+    return { active: true, correlation };
   }
 
   async loadSlot(slot: AudioSourceSlot, url: string, lufs: number | null): Promise<void> {
@@ -229,6 +361,7 @@ export class StudioAudioEngine {
       deviceProfile: this.deviceProfile,
       matchLoudness: this.matchLoudness,
       activeCorrectiveEqId: this.correctiveEq?.id ?? null,
+      autoFixEnabled: this.autoFixEnabled,
       isPlaying: this.isPlaying,
       loopEnabled: this.loopEnabled,
       loopStartSec: this.loopStartSec,
@@ -268,6 +401,8 @@ export class StudioAudioEngine {
     if (!this.ctx || !this.correctiveEqFilter) return;
     const now = this.ctx.currentTime;
     const tau = 0.015;
+    const filterType = this.correctiveEq?.filterType ?? "peaking";
+    this.correctiveEqFilter.type = filterType;
     const freq = this.correctiveEq ? Math.max(20, Math.min(20000, this.correctiveEq.freqHz)) : 250;
     const q = this.correctiveEq ? Math.max(0.2, Math.min(10, this.correctiveEq.q)) : 1.4;
     const gain = this.correctiveEq ? Math.max(-12, Math.min(12, this.correctiveEq.gainDb)) : 0;
@@ -280,6 +415,42 @@ export class StudioAudioEngine {
       this.correctiveEqFilter.frequency.setTargetAtTime(freq, now, tau);
       this.correctiveEqFilter.Q.setTargetAtTime(q, now, tau);
       this.correctiveEqFilter.gain.setTargetAtTime(gain, now, tau);
+    }
+  }
+
+  private applyAutoFix(immediate: boolean): void {
+    if (!this.ctx || this.autoFixFilters.length === 0 || !this.sideBypassGain || !this.sideWetGain) {
+      return;
+    }
+    const now = this.ctx.currentTime;
+    const tau = 0.015;
+
+    for (let i = 0; i < this.autoFixFilters.length; i += 1) {
+      const node = this.autoFixFilters[i];
+      const band = this.autoFixEnabled ? this.autoFixBands[i] : undefined;
+      node.type = band?.filterType ?? "peaking";
+      const freq = band ? Math.max(20, Math.min(20000, band.freqHz)) : 250;
+      const q = band ? Math.max(0.2, Math.min(10, band.q)) : 1.2;
+      const gain = band ? Math.max(-8, Math.min(8, band.gainDb)) : 0;
+      if (immediate) {
+        node.frequency.setValueAtTime(freq, now);
+        node.Q.setValueAtTime(q, now);
+        node.gain.setValueAtTime(gain, now);
+      } else {
+        node.frequency.setTargetAtTime(freq, now, tau);
+        node.Q.setTargetAtTime(q, now, tau);
+        node.gain.setTargetAtTime(gain, now, tau);
+      }
+    }
+
+    const dryVal = this.autoFixEnabled ? 0.0 : 1.0;
+    const wetVal = this.autoFixEnabled ? 1.0 : 0.0;
+    if (immediate) {
+      this.sideBypassGain.gain.setValueAtTime(dryVal, now);
+      this.sideWetGain.gain.setValueAtTime(wetVal, now);
+    } else {
+      this.sideBypassGain.gain.setTargetAtTime(dryVal, now, tau);
+      this.sideWetGain.gain.setTargetAtTime(wetVal, now, tau);
     }
   }
 
@@ -487,8 +658,10 @@ export class StudioAudioEngine {
     const ctx = this.ensureGraph();
     this.unlockContextSync(ctx);
     const dur = this.getDurationSec();
-    const s = Math.max(0, Math.min(startSec, Math.max(0, dur - 0.5)));
-    const e = Math.max(s + 1.0, Math.min(endSec, dur));
+    const minWindow = Math.min(1.0, Math.max(0.1, dur * 0.5));
+    const s = Math.max(0, Math.min(startSec, Math.max(0, dur - minWindow)));
+    const rawEnd = Math.min(endSec, dur);
+    const e = dur > 0 ? Math.min(dur, Math.max(s + Math.min(1.0, Math.max(0.1, dur - s)), rawEnd)) : Math.max(s + 0.1, endSec);
     this.loopStartSec = s;
     this.loopEndSec = e;
     this.loopEnabled = true;
@@ -496,13 +669,29 @@ export class StudioAudioEngine {
   }
 
   setLoop(enabled: boolean, startSec?: number, endSec?: number): void {
+    const dur = this.getDurationSec();
     this.loopEnabled = enabled;
-    if (typeof startSec === "number") this.loopStartSec = Math.max(0, startSec);
-    if (typeof endSec === "number") this.loopEndSec = Math.max(this.loopStartSec + 0.5, endSec);
+    if (typeof startSec === "number") {
+      this.loopStartSec = Math.max(0, dur > 0 ? Math.min(startSec, Math.max(0, dur - 0.1)) : startSec);
+    }
+    if (typeof endSec === "number") {
+      const targetEnd = Math.max(this.loopStartSec + 0.1, endSec);
+      this.loopEndSec = dur > 0 ? Math.min(dur, targetEnd) : targetEnd;
+    }
     if (this.isPlaying) {
-      const cur = this.getCurrentTimeSec();
+      let cur = this.getCurrentTimeSec();
+      if (enabled && this.loopEndSec > this.loopStartSec + 0.1) {
+        if (cur >= this.loopEndSec || cur < this.loopStartSec) {
+          cur = this.loopStartSec;
+        }
+      }
       this.startPlaybackAt(cur);
     } else {
+      if (enabled && this.loopEndSec > this.loopStartSec + 0.1) {
+        if (this.offsetSec >= this.loopEndSec || this.offsetSec < this.loopStartSec) {
+          this.offsetSec = this.loopStartSec;
+        }
+      }
       this.emit();
     }
   }
@@ -555,6 +744,14 @@ export class StudioAudioEngine {
     this.emit();
   }
 
+  setAutoFixPreview(enabled: boolean, bands: CorrectiveEqConfig[]): void {
+    if (this.ctx) this.unlockContextSync(this.ctx);
+    this.autoFixEnabled = enabled;
+    this.autoFixBands = bands.slice(0, 3);
+    this.applyAutoFix(false);
+    this.emit();
+  }
+
   reset(): void {
     this.stopCurrentSourceNode();
     this.isPlaying = false;
@@ -563,6 +760,8 @@ export class StudioAudioEngine {
     this.stereoMode = "stereo";
     this.deviceProfile = "full";
     this.correctiveEq = null;
+    this.autoFixEnabled = false;
+    this.autoFixBands = [];
     this.loopEnabled = false;
     this.loopStartSec = 0;
     this.loopEndSec = 0;
@@ -573,6 +772,7 @@ export class StudioAudioEngine {
     };
     this.applyMatrixAndFilters(true);
     this.applyCorrectiveEq(true);
+    this.applyAutoFix(true);
     this.applyLoudnessGain(true);
     this.emit();
   }

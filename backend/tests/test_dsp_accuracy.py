@@ -233,3 +233,47 @@ def test_low_end_sub_phase_correlation_detected() -> None:
     res = compute_stereo_metrics(stereo, sr)
     assert res.low_end_phase_correlation <= -0.90
 
+
+def test_20_120hz_bandpass_rejects_infrasonic_rumble() -> None:
+    sr = 48000
+    t = np.arange(sr * 4, dtype=np.float64) / sr
+    rumble_10hz = 0.5 * np.sin(2.0 * np.pi * 10.0 * t)
+    sub_60hz = 0.35 * np.sin(2.0 * np.pi * 60.0 * t)
+    # 10 Hz rumble is anti-phase, 60 Hz musical sub-bass is mono in-phase
+    stereo = np.column_stack([sub_60hz + rumble_10hz, sub_60hz - rumble_10hz])
+
+    res = compute_stereo_metrics(stereo, sr)
+    assert res.low_end_phase_correlation >= 0.70
+
+
+def test_transient_punch_and_song_structure_detection() -> None:
+    from app.dsp.dynamics import compute_transient_punch_db
+    from app.dsp.structure import analyze_song_structure
+
+    sr = 48000
+    n = sr * 6
+    t = np.arange(n, dtype=np.float64) / sr
+    steady = np.column_stack([0.35 * np.sin(2.0 * np.pi * 220.0 * t)] * 2)
+
+    # 120 BPM kick pulse train (0.5 s period)
+    beat_samples = sr // 2
+    idx = np.arange(n) % beat_samples
+    env = np.exp(-idx / (sr * 0.015))
+    kicks = 0.85 * env * np.sin(2.0 * np.pi * 90.0 * (idx / sr))
+    punchy = np.column_stack([kicks, kicks])
+
+    punch_kicks = compute_transient_punch_db(punchy, sr)
+    punch_steady = compute_transient_punch_db(steady, sr)
+    assert punch_kicks > punch_steady + 4.0
+
+    structure = analyze_song_structure(
+        punchy,
+        sr,
+        20.0,
+        [-22.0, -21.0, -18.0, -16.0, -15.0, -14.0, -10.0, -9.0, -9.0, -10.0, -14.0, -15.0, -10.0, -9.0, -9.0, -10.0, -18.0, -20.0, -22.0, -23.0],
+    )
+    assert structure.bpm is not None
+    assert abs(structure.bpm - 120.0) <= 4.0
+    assert len(structure.sections) >= 3
+
+

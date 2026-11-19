@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MotionConfig } from "motion/react";
 import { StudioAudioEngine } from "@/audio/StudioAudioEngine";
 import { BottomTransportDock } from "@/components/BottomTransportDock";
-import { FindingCard } from "@/components/FindingCard";
+import { FindingCard, deriveAutoFixEqBands, deriveSuggestedEq } from "@/components/FindingCard";
 import { StudioHeader } from "@/components/StudioHeader";
 import { MAX_SINGLE_FILE_BYTES, UploadStage } from "@/components/UploadStage";
 import { RevisionInspector } from "@/components/advanced/RevisionInspector";
@@ -13,7 +13,10 @@ import { MentorPrivacyPanel } from "@/components/privacy/MentorPrivacyPanel";
 import { SimpleView } from "@/components/simple/SimpleView";
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
-import type { AnalysisReport } from "@/types/report";
+import { computeTransientPunchDb } from "@/server/dsp/dynamics";
+import { computeStereoMetrics } from "@/server/dsp/stereo";
+import { analyzeSongStructure } from "@/server/dsp/structure";
+import type { AnalysisReport, Finding } from "@/types/report";
 
 const mockReport: AnalysisReport = {
   schema_version: "1.0.0",
@@ -153,6 +156,7 @@ describe("MixBench UI & Privacy Contracts", () => {
       allow_audio_ai: false,
       allow_training_opt_in: false,
       question: "",
+      conversation_history: [],
     });
   });
 
@@ -365,5 +369,93 @@ describe("MixBench UI & Privacy Contracts", () => {
 
     expect(isSupabaseConfigured()).toBe(false);
     expect(getSupabaseBrowserClient()).toBeNull();
+  });
+
+  it("derives corrective EQ and Auto-Fix bands for tonal and sub-phase findings while skipping safe findings", () => {
+    const lowMud = mockReport.findings[0];
+    const eq = deriveSuggestedEq(lowMud);
+    expect(eq).not.toBeNull();
+    expect(eq?.gainDb).toBeLessThan(0);
+
+    const subPhaseFinding: Finding = {
+      ...lowMud,
+      evidence_id: "ev_phase_01",
+      category: "stereo_phase",
+      severity: "alert",
+      band_name: "sub",
+      title: "Wide Out-of-Phase Sub-Bass",
+    };
+    const subEq = deriveSuggestedEq(subPhaseFinding);
+    expect(subEq).not.toBeNull();
+    expect(subEq?.freqHz).toBe(85);
+    expect(subEq?.gainDb).toBeLessThan(0);
+
+    const safeFinding: Finding = {
+      ...lowMud,
+      evidence_id: "ev_safe_01",
+      severity: "safe",
+    };
+    expect(deriveSuggestedEq(safeFinding)).toBeNull();
+
+    const autoBands = deriveAutoFixEqBands([lowMud, subPhaseFinding, safeFinding]);
+    expect(autoBands.length).toBeGreaterThanOrEqual(2);
+    expect(autoBands.length).toBeLessThanOrEqual(3);
+  });
+
+  it("computes 20-120 Hz bandpass low-end phase correlation, transient punch, and 120 BPM song structure", () => {
+    const sr = 24000;
+    const seconds = 6;
+    const n = sr * seconds;
+    const left = new Float64Array(n);
+    const right = new Float64Array(n);
+
+    // 10 Hz anti-phase rumble + 60 Hz in-phase sub-bass -> 20-120 Hz bandpass must reject 10 Hz and read positive
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      const rumble10 = 0.45 * Math.sin(2 * Math.PI * 10 * t);
+      const sub60 = 0.35 * Math.sin(2 * Math.PI * 60 * t);
+      left[i] = sub60 + rumble10;
+      right[i] = sub60 - rumble10;
+    }
+    const stereoRumbleTest = computeStereoMetrics([left, right], sr);
+    expect(stereoRumbleTest.lowEndPhaseCorrelation).toBeGreaterThan(0.7);
+
+    // 60 Hz anti-phase sub-bass must read strongly negative
+    const invLeft = new Float64Array(n);
+    const invRight = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      const sub60 = 0.4 * Math.sin(2 * Math.PI * 60 * t);
+      invLeft[i] = sub60;
+      invRight[i] = -sub60;
+    }
+    const stereoInvTest = computeStereoMetrics([invLeft, invRight], sr);
+    expect(stereoInvTest.lowEndPhaseCorrelation).toBeLessThan(-0.9);
+
+    // Transient punch: 120 BPM sharp kick bursts > steady sustained sine
+    const kickMono = new Float64Array(n);
+    const sineMono = new Float64Array(n);
+    const beatSamples = Math.round(sr * 0.5); // 120 BPM = 0.5 s per beat
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      sineMono[i] = 0.35 * Math.sin(2 * Math.PI * 220 * t);
+      const phaseInBeat = i % beatSamples;
+      const env = Math.exp(-phaseInBeat / (sr * 0.015));
+      kickMono[i] = 0.85 * env * Math.sin(2 * Math.PI * 90 * (phaseInBeat / sr));
+    }
+    const kickPunch = computeTransientPunchDb([kickMono, kickMono], sr);
+    const sinePunch = computeTransientPunchDb([sineMono, sineMono], sr);
+    expect(kickPunch).toBeGreaterThan(sinePunch + 4.0);
+
+    // Structure: 120 BPM detection & multi-section contour
+    const structure = analyzeSongStructure(
+      [kickMono, kickMono],
+      sr,
+      20,
+      [-22, -21, -18, -16, -15, -14, -10, -9, -9, -10, -14, -15, -10, -9, -9, -10, -18, -20, -22, -23]
+    );
+    expect(structure.bpm).not.toBeNull();
+    expect(Math.abs((structure.bpm ?? 0) - 120)).toBeLessThanOrEqual(4);
+    expect(structure.sections.length).toBeGreaterThanOrEqual(3);
   });
 });

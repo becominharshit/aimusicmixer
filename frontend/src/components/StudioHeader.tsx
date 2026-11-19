@@ -4,18 +4,22 @@ import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
   Download,
   History,
+  Link2,
   LogIn,
   LogOut,
   Printer,
   RefreshCw,
   ShieldCheck,
+  Sliders,
   Sparkles,
   Trash2,
   User,
 } from "lucide-react";
+import { deriveAutoFixEqBands } from "@/components/FindingCard";
 import { API_BASE_URL } from "@/lib/api";
 import { STUDIO_EASE, STUDIO_SPRING, TACTILE_TAP } from "@/lib/motion";
 import { formatTimecode } from "@/lib/utils";
@@ -41,6 +45,8 @@ interface StudioHeaderProps {
   onOpenAuth?: () => void;
   onSignOut?: () => void;
   onOpenHistory?: () => void;
+  onOpenSignedOutHistory?: () => void;
+  onShareReviewLink?: () => Promise<boolean>;
 }
 
 export function StudioHeader({
@@ -60,8 +66,12 @@ export function StudioHeader({
   onOpenAuth,
   onSignOut,
   onOpenHistory,
+  onOpenSignedOutHistory,
+  onShareReviewLink,
 }: StudioHeaderProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -98,6 +108,67 @@ export function StudioHeader({
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  };
+
+  const handleExportEqPreset = () => {
+    if (!report) return;
+    const bands = deriveAutoFixEqBands(report.findings);
+    const safeName = report.audio_metadata.filename
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_");
+    const presetPayload = {
+      schema: "mixbench.daw_eq_preset.v1",
+      generated_at: new Date().toISOString(),
+      track: report.audio_metadata.filename,
+      genre: report.context.genre,
+      stage: report.context.stage,
+      bpm: report.audio_metadata.bpm ?? null,
+      notes:
+        "Starting-point corrective EQ & M/S sub-bass mono-maker settings derived strictly from deterministic DSP measurements. Apply subtly and A/B level-matched in your DAW.",
+      parametric_eq_bands: bands.map((b, idx) => ({
+        band_index: idx + 1,
+        evidence_id: b.id,
+        type: b.filterType ?? "peaking",
+        frequency_hz: b.freqHz,
+        q: b.q,
+        gain_db: b.gainDb,
+      })),
+      mid_side_sub_mono_maker: {
+        enabled: (report.global_metrics.low_end_phase_correlation ?? 1) < 0.45,
+        side_highpass_hz: 100,
+        slope_db_per_oct: 12,
+        measured_sub_20_120hz_corr: report.global_metrics.low_end_phase_correlation ?? null,
+      },
+      true_peak_limiter_target: {
+        ceiling_dbtp: report.context.stage === "unmastered_mix" ? -3.0 : -1.0,
+        measured_true_peak_dbtp: report.global_metrics.true_peak_dbtp,
+      },
+    };
+    const blob = new Blob([JSON.stringify(presetPayload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `MixBench_EQ_Preset_${safeName || "session"}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleShareClick = async () => {
+    if (!onShareReviewLink || isSharing) return;
+    setIsSharing(true);
+    try {
+      const copied = await onShareReviewLink();
+      if (copied) {
+        setShareCopied(true);
+        window.setTimeout(() => setShareCopied(false), 2600);
+      }
+    } finally {
+      setIsSharing(false);
+    }
   };
 
   const handlePrintPdf = () => {
@@ -169,10 +240,10 @@ export function StudioHeader({
           </div>
         </div>
 
-        {/* Simple <-> Advanced Mode Switcher (wraps cleanly on 375px viewports) */}
+        {/* Simple <-> Advanced Mode Switcher */}
         <nav
           aria-label="Workspace mode"
-          className="no-print relative inline-flex max-w-full min-h-[38px] items-center bg-[#F5F5F7] p-1 hairline-border squircle-inner"
+          className="no-print relative inline-flex max-w-full min-h-[38px] shrink-0 flex-nowrap items-center gap-1 overflow-x-auto bg-[#F5F5F7] p-1 hairline-border squircle-inner"
         >
           {(
             [
@@ -187,7 +258,7 @@ export function StudioHeader({
                 type="button"
                 whileTap={TACTILE_TAP}
                 onClick={() => onModeChange(item.id)}
-                className={`relative z-10 px-2.5 py-1.5 text-xs font-medium transition-colors duration-150 sm:px-3.5 sm:text-sm cursor-pointer squircle-inner ${
+                className={`relative z-10 shrink-0 whitespace-nowrap px-2.5 py-1.5 text-xs font-medium transition-colors duration-150 sm:px-3.5 sm:text-sm cursor-pointer squircle-inner ${
                   active ? "text-[#182220]" : "text-[#52605D] hover:text-[#182220]"
                 }`}
                 aria-pressed={active}
@@ -196,7 +267,7 @@ export function StudioHeader({
                   <motion.span
                     layoutId="workspace-mode-pill"
                     transition={STUDIO_SPRING}
-                    className="absolute inset-0 -z-10 bg-[#FFFFFF] hairline-border squircle-inner shadow-2xs"
+                    className="pointer-events-none absolute inset-0 -z-10 bg-[#FFFFFF] hairline-border squircle-inner shadow-2xs"
                   />
                 )}
                 <span className="hidden sm:inline">{item.label}</span>
@@ -209,7 +280,7 @@ export function StudioHeader({
         <div className="no-print flex flex-wrap items-center gap-1.5 sm:gap-2">
           {report && (
             <div className="hidden items-center gap-2 bg-[#FFFFFF] px-3 py-1.5 text-xs hairline-border squircle-inner xl:flex">
-              <span className="max-w-[160px] truncate font-medium text-[#182220]">
+              <span className="max-w-[150px] truncate font-medium text-[#182220]">
                 {report.audio_metadata.filename}
               </span>
               <span className="text-[#52605D] tabular-telemetry">
@@ -223,7 +294,7 @@ export function StudioHeader({
           {/* Privacy Mode Indicator */}
           {report && (
             <div
-              className={`hidden items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium squircle-inner md:inline-flex ${
+              className={`hidden items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium squircle-inner 2xl:inline-flex ${
                 report.privacy_audit.raw_audio_sent_to_ai
                   ? "bg-[#FEF7EC] text-[#B45309] border border-[rgba(180,83,9,0.25)]"
                   : report.privacy_audit.external_ai_enabled
@@ -240,30 +311,64 @@ export function StudioHeader({
             </div>
           )}
 
-          {/* Export Studio Report (JSON + Print PDF) */}
+          {/* Export Studio Report (EQ Preset + JSON + Share + Print PDF) */}
           {report && (
             <div className="inline-flex items-center gap-1">
+              <motion.button
+                type="button"
+                whileTap={TACTILE_TAP}
+                onClick={handleExportEqPreset}
+                title="Download DAW-ready EQ & M/S Sub Preset JSON"
+                aria-label="Download EQ Preset"
+                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+              >
+                <Sliders className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                <span className="hidden lg:inline">EQ Preset</span>
+              </motion.button>
               <motion.button
                 type="button"
                 whileTap={TACTILE_TAP}
                 onClick={handleExportJson}
                 title="Download AnalysisReport v1.0 JSON"
                 aria-label="Export JSON report"
-                className="inline-flex min-h-[32px] items-center gap-1 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
               >
                 <Download className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-                <span className="hidden lg:inline">Export JSON</span>
+                <span className="hidden xl:inline">JSON</span>
               </motion.button>
+              {onShareReviewLink && (
+                <motion.button
+                  type="button"
+                  whileTap={TACTILE_TAP}
+                  disabled={isSharing}
+                  onClick={() => void handleShareClick()}
+                  title="Copy read-only Client Review Link"
+                  aria-label="Share Review Link"
+                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                >
+                  {shareCopied ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-[#15803D]" aria-hidden="true" />
+                      <span className="hidden lg:inline text-[#15803D]">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Link2 className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                      <span className="hidden lg:inline">Share</span>
+                    </>
+                  )}
+                </motion.button>
+              )}
               <motion.button
                 type="button"
                 whileTap={TACTILE_TAP}
                 onClick={handlePrintPdf}
                 title="Print clean studio PDF report"
                 aria-label="Print PDF report"
-                className="inline-flex min-h-[32px] items-center gap-1 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
               >
                 <Printer className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-                <span className="hidden lg:inline">Print PDF</span>
+                <span className="hidden xl:inline">PDF</span>
               </motion.button>
             </div>
           )}
@@ -277,7 +382,7 @@ export function StudioHeader({
               aria-expanded={popoverOpen}
               aria-label={statusText}
               title={`${statusText} (${configuredHealthEndpoint})`}
-              className={`inline-flex min-h-[32px] items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-medium squircle-inner cursor-pointer transition-colors ${
+              className={`inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-medium squircle-inner cursor-pointer transition-colors ${
                 healthStatus === "online"
                   ? "bg-[#FFFFFF] text-[#182220] hairline-border hover:border-[rgba(58,114,105,0.35)]"
                   : healthStatus === "waking"
@@ -351,11 +456,11 @@ export function StudioHeader({
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Gemini Mentor Key</span>
+                        <span>Gemini Mentor Model</span>
                         <span className="font-medium text-[#182220]">
                           {healthData.gemini_configured
-                            ? `Configured (${healthData.gemini_model || "gemini-2.5-flash"})`
-                            : "Offline Fallback Mode"}
+                            ? `Configured (${healthData.gemini_model || "gemini-4-hydrogen"})`
+                            : `Offline Fallback (${healthData.gemini_model || "gemini-4-hydrogen"})`}
                         </span>
                       </div>
                     </div>
@@ -392,7 +497,7 @@ export function StudioHeader({
                   type="button"
                   whileTap={TACTILE_TAP}
                   onClick={onOpenHistory}
-                  className="inline-flex min-h-[32px] items-center gap-1.5 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
                   <History className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
                   <span className="hidden sm:inline">Saved Mixes</span>
@@ -415,31 +520,47 @@ export function StudioHeader({
                   onClick={onSignOut}
                   aria-label="Sign out"
                   title="Sign out"
-                  className="inline-flex min-h-[32px] items-center gap-1 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#182220] hairline-border squircle-inner cursor-pointer transition-colors"
+                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#182220] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
                   <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
                   <span className="hidden lg:inline">Sign Out</span>
                 </motion.button>
               )}
             </div>
-          ) : supabaseConfigured && onOpenAuth ? (
-            <motion.button
-              type="button"
-              whileTap={TACTILE_TAP}
-              onClick={onOpenAuth}
-              className="inline-flex min-h-[32px] items-center gap-1.5 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
-            >
-              <LogIn className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
-              <span>Sign In</span>
-            </motion.button>
-          ) : null}
+          ) : (
+            <div className="flex items-center gap-1.5">
+              {onOpenSignedOutHistory && (
+                <motion.button
+                  type="button"
+                  whileTap={TACTILE_TAP}
+                  onClick={onOpenSignedOutHistory}
+                  title="Sign in to unlock Cloud Mix History & Audio Proxy playback"
+                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                >
+                  <History className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                  <span className="hidden sm:inline">History</span>
+                </motion.button>
+              )}
+              {supabaseConfigured && onOpenAuth && (
+                <motion.button
+                  type="button"
+                  whileTap={TACTILE_TAP}
+                  onClick={onOpenAuth}
+                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#182220] hover:border-[rgba(58,114,105,0.35)] hairline-border squircle-inner cursor-pointer transition-colors"
+                >
+                  <LogIn className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+                  <span>Sign In</span>
+                </motion.button>
+              )}
+            </div>
+          )}
 
           {report && (
             <motion.button
               type="button"
               whileTap={TACTILE_TAP}
               onClick={onClearSession}
-              className="inline-flex min-h-[32px] items-center gap-1.5 bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#BE123C] hairline-border hover:border-[rgba(190,18,60,0.3)] squircle-inner cursor-pointer transition-colors"
+              className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#FFFFFF] px-2.5 py-1.5 text-xs font-medium text-[#52605D] hover:text-[#BE123C] hairline-border hover:border-[rgba(190,18,60,0.3)] squircle-inner cursor-pointer transition-colors"
               title="Delete ephemeral audio session immediately"
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

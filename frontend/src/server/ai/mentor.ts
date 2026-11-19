@@ -3,7 +3,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import type {
   AnalysisReport,
   MentorAction,
@@ -188,7 +188,20 @@ export async function generateMentorAdvice(
     "5. Respect `context.artist_vision` creatively while NEVER suppressing Alert-level clipping (> -0.1 dBTP) or negative phase correlation.\n" +
     "6. Follow the learn-by-doing loop: What happened -> Why it matters -> Listen -> Experiment in DAW -> Recheck.\n";
 
+  let historyBlock = "";
+  if (request.conversation_history && request.conversation_history.length > 0) {
+    const formatted = request.conversation_history
+      .slice(-8)
+      .filter((t) => t.content.trim().length > 0)
+      .map((t) => `${t.role === "user" ? "Artist" : "Mentor"}: ${t.content.trim()}`)
+      .join("\n");
+    if (formatted) {
+      historyBlock = `Previous Coaching Thread:\n${formatted}\n\n`;
+    }
+  }
+
   const userPrompt =
+    `${historyBlock}` +
     `Artist Question: ${request.question.trim() || "Give me the highest-leverage next steps to improve this mix."}\n\n` +
     `Structured DSP Report JSON:\n${sanitizedJson}`;
 
@@ -199,12 +212,15 @@ export async function generateMentorAdvice(
         ? fallbackProxyPath
         : null;
   const useAudio = Boolean(request.allow_audio_ai && clipSource !== null);
-  let tmpClipPath: string | null = null;
+  const tmpPaths: string[] = [];
 
   try {
     const ai = new GoogleGenAI({
       apiKey,
-      httpOptions: { timeout: GEMINI_TIMEOUT_MS },
+      httpOptions: {
+        timeout: GEMINI_TIMEOUT_MS,
+        headers: { "User-Agent": "aistudio-build" },
+      },
     });
 
     let contents: string | Array<string | { inlineData: { data: string; mimeType: string } }> =
@@ -213,9 +229,13 @@ export async function generateMentorAdvice(
     if (useAudio && clipSource) {
       const clipStartSec = selectAudioClipStartSec(report, 25.0);
       const rawClipTarget = path.join(os.tmpdir(), `mixbench_clip_${crypto.randomUUID()}.mp3`);
-      tmpClipPath = await extractAudioClip(clipSource, rawClipTarget, clipStartSec, 25.0);
-      const audioBytes = await fsp.readFile(tmpClipPath);
-      const mimeType = tmpClipPath.toLowerCase().endsWith(".mp3") ? "audio/mp3" : "audio/aac";
+      tmpPaths.push(rawClipTarget);
+      const actualClipPath = await extractAudioClip(clipSource, rawClipTarget, clipStartSec, 25.0);
+      if (actualClipPath !== rawClipTarget) {
+        tmpPaths.push(actualClipPath);
+      }
+      const audioBytes = await fsp.readFile(actualClipPath);
+      const mimeType = actualClipPath.toLowerCase().endsWith(".mp3") ? "audio/mp3" : "audio/aac";
       contents = [
         `${userPrompt}\n\nAttached is an explicitly consented 25-second snippet starting at ${clipStartSec.toFixed(1)}s.`,
         {
@@ -233,7 +253,9 @@ export async function generateMentorAdvice(
       config: {
         systemInstruction: systemRules,
         responseMimeType: "application/json",
-        temperature: 0.2,
+        thinkingConfig: {
+          thinkingLevel: useAudio ? ThinkingLevel.MEDIUM : ThinkingLevel.LOW,
+        },
         abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
         responseSchema: {
           type: Type.OBJECT,
@@ -320,8 +342,8 @@ export async function generateMentorAdvice(
       `Offline Mentor fallback (${errName})`
     );
   } finally {
-    if (tmpClipPath) {
-      await fsp.rm(tmpClipPath, { force: true }).catch(() => undefined);
+    for (const p of tmpPaths) {
+      await fsp.rm(p, { force: true }).catch(() => undefined);
     }
   }
 }

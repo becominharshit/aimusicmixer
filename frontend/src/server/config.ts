@@ -26,6 +26,7 @@ export const serverConfig = {
   sessionTtlMinutes: parsePositiveInt(process.env.SESSION_TTL_MINUTES, 60),
   maxDiskSessions: parsePositiveInt(process.env.MAX_DISK_SESSIONS, 15),
   rateLimitMaxRequests: parsePositiveInt(process.env.RATE_LIMIT_MAX_REQUESTS, 30),
+  rateLimitAuthMaxRequests: parsePositiveInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS, 90),
   rateLimitWindowSeconds: parsePositiveInt(process.env.RATE_LIMIT_WINDOW_SECONDS, 60),
   get maxSingleFileBytes(): number {
     return this.maxSingleFileMb * 1024 * 1024;
@@ -40,6 +41,13 @@ export const serverConfig = {
     return (process.env.GEMINI_API_KEY ?? "").trim();
   },
   get geminiModel(): string {
-    return (process.env.GEMINI_MODEL ?? "").trim() || "gemini-2.5-flash";
+    const raw = (process.env.GEMINI_MODEL ?? "").trim();
+    if (!raw || raw === "gemini-2.5-flash") {
+      return "gemini-4-hydrogen";
+    }
+    return raw;
+  },
+  get supabaseJwtSecret(): string {
+    return (process.env.SUPABASE_JWT_SECRET ?? "").trim();
   },
 };

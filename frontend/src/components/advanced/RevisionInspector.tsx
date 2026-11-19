@@ -22,6 +22,7 @@ interface RevisionInspectorProps {
   activeSource?: AudioSourceSlot;
   matchLoudness?: boolean;
   loudnessOffsetDb?: number;
+  hasBaselineAudio?: boolean;
   hasRevisedAudio?: boolean;
   isUploading: boolean;
   errorMessage: string | null;
@@ -39,6 +40,7 @@ export function RevisionInspector({
   activeSource = "primary",
   matchLoudness = true,
   loudnessOffsetDb = 0,
+  hasBaselineAudio = true,
   hasRevisedAudio = false,
   isUploading,
   errorMessage,
@@ -156,6 +158,12 @@ export function RevisionInspector({
                   type="button"
                   variant={activeSource === "primary" ? "primary" : "secondary"}
                   size="sm"
+                  disabled={!hasBaselineAudio}
+                  title={
+                    hasBaselineAudio
+                      ? `Audition Baseline v1 (${comp.baseline_filename})`
+                      : "Baseline v1 audio proxy unavailable for archived telemetry comparison"
+                  }
                   onClick={onAuditionBaseline}
                 >
                   <Headphones className="h-3.5 w-3.5" aria-hidden="true" />

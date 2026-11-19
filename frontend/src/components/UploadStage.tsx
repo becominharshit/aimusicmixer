@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -278,121 +278,117 @@ export function UploadStage({
           onChange={(e) => handleFiles(e.target.files)}
         />
 
-        <AnimatePresence mode="wait">
-          {isAnalyzing ? (
-            <motion.div
-              key="analyzing"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.22, ease: STUDIO_EASE }}
-              className="w-full max-w-md space-y-3 text-left"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-[#182220]">
-                  {uploadingPct !== null && uploadingPct < 100
-                    ? `Uploading Audio (${uploadingPct}%)`
-                    : "Running Deterministic DSP Pipeline"}
+        {isAnalyzing ? (
+          <motion.div
+            key="analyzing"
+            initial={false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.16, ease: STUDIO_EASE }}
+            className="w-full max-w-md space-y-3 text-left"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-[#182220]">
+                {uploadingPct !== null && uploadingPct < 100
+                  ? `Uploading Audio (${uploadingPct}%)`
+                  : "Running Deterministic DSP Pipeline"}
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#3A7269] tabular-telemetry">
+                  Step {Math.min(activeStepIndex + 1, ANALYSIS_STEPS.length)} / {ANALYSIS_STEPS.length}
                 </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#3A7269] tabular-telemetry">
-                    Step {Math.min(activeStepIndex + 1, ANALYSIS_STEPS.length)} / {ANALYSIS_STEPS.length}
-                  </span>
-                  {onCancelUpload && (
-                    <button
-                      type="button"
-                      onClick={onCancelUpload}
-                      className="inline-flex items-center gap-1 bg-[#F5F5F7] px-2 py-1 text-[11px] font-medium text-[#52605D] hover:text-[#BE123C] hairline-border squircle-inner cursor-pointer"
-                    >
-                      <X className="h-3 w-3" aria-hidden="true" />
-                      Cancel
-                    </button>
-                  )}
-                </div>
+                {onCancelUpload && (
+                  <button
+                    type="button"
+                    onClick={onCancelUpload}
+                    className="inline-flex items-center gap-1 bg-[#F5F5F7] px-2 py-1 text-[11px] font-medium text-[#52605D] hover:text-[#BE123C] hairline-border squircle-inner cursor-pointer"
+                  >
+                    <X className="h-3 w-3" aria-hidden="true" />
+                    Cancel
+                  </button>
+                )}
               </div>
+            </div>
 
-              {uploadingPct !== null && (
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#F5F5F7]">
+            {uploadingPct !== null && (
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#F5F5F7]">
+                <div
+                  className="h-full bg-[#3A7269] transition-all duration-150"
+                  style={{ width: `${uploadingPct}%` }}
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {ANALYSIS_STEPS.map((label, idx) => {
+                const done = idx < activeStepIndex;
+                const current = idx === activeStepIndex;
+                return (
                   <div
-                    className="h-full bg-[#3A7269] transition-all duration-150"
-                    style={{ width: `${uploadingPct}%` }}
-                  />
-                </div>
-              )}
-
-              <div className="space-y-2">
-                {ANALYSIS_STEPS.map((label, idx) => {
-                  const done = idx < activeStepIndex;
-                  const current = idx === activeStepIndex;
-                  return (
-                    <div
-                      key={label}
-                      className={`flex items-center gap-2.5 px-3 py-2 text-xs squircle-inner transition-colors ${
-                        current
-                          ? "bg-[#EBF3F1] text-[#182220] active-hairline-border font-medium"
-                          : done
-                            ? "bg-[#F5F5F7] text-[#15803D]"
-                            : "bg-[#FAFAFA] text-[#52605D]"
+                    key={label}
+                    className={`flex items-center gap-2.5 px-3 py-2 text-xs squircle-inner transition-colors ${
+                      current
+                        ? "bg-[#EBF3F1] text-[#182220] active-hairline-border font-medium"
+                        : done
+                          ? "bg-[#F5F5F7] text-[#15803D]"
+                          : "bg-[#FAFAFA] text-[#52605D]"
+                    }`}
+                  >
+                    <CheckCircle2
+                      className={`h-3.5 w-3.5 shrink-0 ${
+                        done ? "text-[#15803D]" : current ? "text-[#3A7269]" : "text-[#52605D]/40"
                       }`}
-                    >
-                      <CheckCircle2
-                        className={`h-3.5 w-3.5 shrink-0 ${
-                          done ? "text-[#15803D]" : current ? "text-[#3A7269]" : "text-[#52605D]/40"
-                        }`}
-                        aria-hidden="true"
-                      />
-                      <span>{label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="idle"
-              initial={false}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.18, ease: STUDIO_EASE }}
-              className="flex flex-col items-center"
-            >
-              <div className="mb-4 flex h-12 w-12 items-center justify-center bg-[#EBF3F1] text-[#3A7269] squircle-inner">
-                <UploadCloud className="h-6 w-6" aria-hidden="true" />
-              </div>
-              <p className="text-base font-semibold text-[#182220]">
-                Drop your mixdown here or browse files
-              </p>
-              <p className="mt-1 text-xs text-[#52605D]">
-                WAV · FLAC · AIFF · MP3 · OGG · M4A · Native sample rates preserved (44.1 / 48 / 96 kHz)
-              </p>
+                      aria-hidden="true"
+                    />
+                    <span>{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="idle"
+            initial={false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.16, ease: STUDIO_EASE }}
+            className="flex flex-col items-center"
+          >
+            <div className="mb-4 flex h-12 w-12 items-center justify-center bg-[#EBF3F1] text-[#3A7269] squircle-inner">
+              <UploadCloud className="h-6 w-6" aria-hidden="true" />
+            </div>
+            <p className="text-base font-semibold text-[#182220]">
+              Drop your mixdown here or browse files
+            </p>
+            <p className="mt-1 text-xs text-[#52605D]">
+              WAV · FLAC · AIFF · MP3 · OGG · M4A · Native sample rates preserved (44.1 / 48 / 96 kHz)
+            </p>
 
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={() => inputRef.current?.click()}
-                >
-                  Choose Mix File
-                </Button>
-                <Button
-                  type="button"
-                  variant="soft"
-                  onClick={() => {
-                    setClientSizeError(null);
-                    onLoadDemo();
-                  }}
-                >
-                  <PlayCircle className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
-                  Try Sample Flawed Mix
-                </Button>
-              </div>
-              <p className="mt-3 max-w-md text-[11px] text-[#52605D]">
-                &ldquo;Try Sample Flawed Mix&rdquo; loads a 12s 44.1 kHz stereo track with hot clipping peaks (~0.0 dBTP),
-                250 Hz low-mid buildup, and partial sub phase inversion so you can test A/B &amp; v1 &rarr; v2 right away.
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => inputRef.current?.click()}
+              >
+                Choose Mix File
+              </Button>
+              <Button
+                type="button"
+                variant="soft"
+                onClick={() => {
+                  setClientSizeError(null);
+                  onLoadDemo();
+                }}
+              >
+                <PlayCircle className="h-4 w-4 text-[#3A7269]" aria-hidden="true" />
+                Try Sample Flawed Mix
+              </Button>
+            </div>
+            <p className="mt-3 max-w-md text-[11px] text-[#52605D]">
+              &ldquo;Try Sample Flawed Mix&rdquo; loads a 12s 44.1 kHz stereo track with hot clipping peaks (~0.0 dBTP),
+              250 Hz low-mid buildup, and partial sub phase inversion so you can test A/B &amp; v1 &rarr; v2 right away.
+            </p>
+          </motion.div>
+        )}
 
         {healthStatus === "waking" && !displayedError && (
           <div

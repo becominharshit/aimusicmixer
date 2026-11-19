@@ -14,7 +14,7 @@ from app.dsp.loudness import LoudnessResult
 from app.dsp.peaks import PeakResult
 from app.dsp.spectrum import SpectralAnalysisResult
 from app.dsp.stereo import StereoResult
-from app.schemas.report import AnalysisReport, BandName
+from app.schemas.report import AnalysisReport, BandName, SongSection
 
 
 @dataclass
@@ -28,6 +28,8 @@ class CachedDspSnapshot:
     spectral: SpectralAnalysisResult
     stereo: StereoResult
     band_energies_db: dict[BandName, float]
+    bpm: float | None = None
+    sections: list[SongSection] = field(default_factory=list)
 
 
 @dataclass

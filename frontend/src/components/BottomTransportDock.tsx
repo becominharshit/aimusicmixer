@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { motion } from "motion/react";
-import { Laptop, Pause, Play, Repeat, Scale, Smartphone, Speaker } from "lucide-react";
+import { Laptop, Pause, Play, Repeat, Scale, Smartphone, Speaker, Wand2 } from "lucide-react";
 import {
   studioAudioEngine,
   type AudioSourceSlot,
@@ -23,11 +23,14 @@ interface BottomTransportDockProps {
   matchLoudness: boolean;
   loudnessOffsetDb: number;
   loopEnabled: boolean;
+  autoFixEnabled?: boolean;
+  canAutoFix?: boolean;
   hasPrimary?: boolean;
   hasReference: boolean;
   hasRevised: boolean;
   onTogglePlay: () => void;
   onToggleLoop: () => void;
+  onToggleAutoFix?: () => void;
   onSeek: (timeSec: number) => void;
   onChangeSource: (slot: AudioSourceSlot) => void;
   onChangeStereo: (mode: StereoMode) => void;
@@ -44,11 +47,14 @@ export function BottomTransportDock({
   matchLoudness,
   loudnessOffsetDb,
   loopEnabled,
+  autoFixEnabled = false,
+  canAutoFix = false,
   hasPrimary = true,
   hasReference,
   hasRevised,
   onTogglePlay,
   onToggleLoop,
+  onToggleAutoFix,
   onSeek,
   onChangeSource,
   onChangeStereo,
@@ -133,6 +139,7 @@ export function BottomTransportDock({
   return (
     <div
       role="region"
+      data-testid="bottom-transport-dock"
       aria-label="Persistent MixBench Transport and Mix Translation Lab"
       className="no-print sticky bottom-0 left-0 right-0 z-30 border-t border-[rgba(24,34,32,0.08)] bg-[#FFFFFF]/95 backdrop-blur-md"
     >
@@ -159,8 +166,8 @@ export function BottomTransportDock({
       </div>
 
       <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-6 sm:py-2.5">
-        {/* Left: Transport + Timecode + Loop Problem Window */}
-        <div className="flex items-center gap-2">
+        {/* Left: Transport + Timecode + Loop Problem Window + Auto-Fix Preview */}
+        <div className="flex max-w-full flex-wrap items-center gap-1.5">
           <Button
             type="button"
             variant="primary"
@@ -168,22 +175,23 @@ export function BottomTransportDock({
             disabled={!hasPrimary}
             title="Spacebar to play / pause"
             onClick={onTogglePlay}
+            className="shrink-0 whitespace-nowrap"
           >
             {isPlaying ? (
               <>
-                <Pause className="h-3.5 w-3.5" aria-hidden="true" />
+                <Pause className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 Pause
               </>
             ) : (
               <>
-                <Play className="h-3.5 w-3.5" aria-hidden="true" />
+                <Play className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 Play
               </>
             )}
           </Button>
           <span
             ref={timecodeRef}
-            className="min-w-[106px] bg-[#F5F5F7] px-2.5 py-1 text-center text-xs font-medium text-[#182220] tabular-telemetry squircle-inner"
+            className="min-w-[96px] shrink-0 whitespace-nowrap bg-[#F5F5F7] px-2 py-1 text-center text-[11px] font-medium text-[#182220] tabular-telemetry squircle-inner sm:min-w-[106px] sm:px-2.5 sm:text-xs"
           >
             00:00.0 / {formatTimecode(durationSec, true)}
           </span>
@@ -195,15 +203,41 @@ export function BottomTransportDock({
             onClick={onToggleLoop}
             aria-pressed={loopEnabled}
             title="Loop selected problem window"
+            className="shrink-0 whitespace-nowrap sm:min-w-[128px] justify-center"
           >
-            <Repeat className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+            <Repeat className="h-3.5 w-3.5 shrink-0 text-[#3A7269]" aria-hidden="true" />
             <span className="hidden sm:inline">{loopEnabled ? "Looping Window" : "Loop Window"}</span>
           </Button>
+          {onToggleAutoFix && (
+            <Button
+              type="button"
+              data-testid="dock-autofix-btn"
+              variant={autoFixEnabled ? "primary" : "secondary"}
+              size="sm"
+              disabled={!hasPrimary || !canAutoFix}
+              onClick={onToggleAutoFix}
+              aria-pressed={autoFixEnabled}
+              title="Non-destructive preview: engages corrective EQ bands + <100 Hz M/S mono-maker into -0.3 dBFS safety limiter"
+              className="shrink-0 whitespace-nowrap"
+            >
+              <Wand2
+                className={`h-3.5 w-3.5 shrink-0 ${autoFixEnabled ? "text-white" : "text-[#3A7269]"}`}
+                aria-hidden="true"
+              />
+              <span className="sm:hidden">{autoFixEnabled ? "Fix On" : "Auto-Fix"}</span>
+              <span className="hidden sm:inline">
+                {autoFixEnabled ? "Auto-Fix On" : "Auto-Fix Preview"}
+              </span>
+            </Button>
+          )}
         </div>
 
         {/* Center: Click-Free A/B Source + LUFS Match + Mono Fold */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative inline-flex items-center bg-[#F5F5F7] p-0.5 hairline-border squircle-inner">
+        <div className="flex max-w-full flex-wrap items-center gap-2">
+          <div
+            data-testid="dock-source-group"
+            className="relative inline-flex max-w-full shrink-0 flex-nowrap items-center gap-1 overflow-x-auto bg-[#F5F5F7] p-0.5 hairline-border squircle-inner"
+          >
             {sources.map((src) => {
               const active = activeSource === src.id;
               return (
@@ -213,7 +247,7 @@ export function BottomTransportDock({
                   disabled={!src.enabled}
                   whileTap={src.enabled ? TACTILE_TAP : undefined}
                   onClick={() => onChangeSource(src.id)}
-                  className={`relative z-10 px-2.5 py-1 text-[11px] font-medium squircle-inner ${
+                  className={`relative z-10 shrink-0 whitespace-nowrap px-2.5 py-1 text-[11px] font-medium squircle-inner ${
                     !src.enabled
                       ? "cursor-not-allowed text-[#52605D]/40"
                       : active
@@ -225,7 +259,7 @@ export function BottomTransportDock({
                     <motion.span
                       layoutId="dock-source-pill"
                       transition={STUDIO_SPRING}
-                      className="absolute inset-0 -z-10 bg-[#FFFFFF] hairline-border squircle-inner"
+                      className="pointer-events-none absolute inset-0 -z-10 bg-[#FFFFFF] hairline-border squircle-inner"
                     />
                   )}
                   {src.label}
@@ -235,9 +269,9 @@ export function BottomTransportDock({
           </div>
 
           {(hasReference || hasRevised) && (
-            <div className="inline-flex items-center gap-1.5 bg-[#F5F5F7] px-2.5 py-1 text-[11px] hairline-border squircle-inner">
-              <Scale className="h-3 w-3 text-[#3A7269]" aria-hidden="true" />
-              <span className="text-[#182220] font-medium">Match LUFS</span>
+            <div className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap bg-[#F5F5F7] px-2.5 py-1 text-[11px] hairline-border squircle-inner">
+              <Scale className="h-3 w-3 shrink-0 text-[#3A7269]" aria-hidden="true" />
+              <span className="font-medium text-[#182220]">Match LUFS</span>
               <span className="text-[#52605D] tabular-telemetry">
                 {loudnessOffsetDb >= 0 ? "+" : ""}
                 {loudnessOffsetDb.toFixed(1)} dB
@@ -251,7 +285,10 @@ export function BottomTransportDock({
           )}
 
           {/* Stereo <-> Mono Fold (Keyboard shortcut: M) */}
-          <div className="relative inline-flex items-center bg-[#F5F5F7] p-0.5 hairline-border squircle-inner">
+          <div
+            data-testid="dock-stereo-group"
+            className="relative inline-flex max-w-full shrink-0 flex-nowrap items-center gap-1 overflow-x-auto bg-[#F5F5F7] p-0.5 hairline-border squircle-inner"
+          >
             {(
               [
                 { id: "stereo", label: "Stereo" },
@@ -266,7 +303,7 @@ export function BottomTransportDock({
                   whileTap={TACTILE_TAP}
                   title="Keyboard shortcut: M"
                   onClick={() => onChangeStereo(opt.id)}
-                  className={`relative z-10 px-2.5 py-1 text-[11px] font-medium squircle-inner cursor-pointer ${
+                  className={`relative z-10 shrink-0 whitespace-nowrap px-2.5 py-1 text-[11px] font-medium squircle-inner cursor-pointer ${
                     active ? "text-[#182220]" : "text-[#52605D] hover:text-[#182220]"
                   }`}
                 >
@@ -274,7 +311,7 @@ export function BottomTransportDock({
                     <motion.span
                       layoutId="dock-stereo-pill"
                       transition={STUDIO_SPRING}
-                      className="absolute inset-0 -z-10 bg-[#FFFFFF] hairline-border squircle-inner"
+                      className="pointer-events-none absolute inset-0 -z-10 bg-[#FFFFFF] hairline-border squircle-inner"
                     />
                   )}
                   {opt.label}
@@ -285,8 +322,11 @@ export function BottomTransportDock({
         </div>
 
         {/* Right: Approximate Generic Mix Translation Lab */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative inline-flex items-center bg-[#F5F5F7] p-0.5 hairline-border squircle-inner">
+        <div className="flex max-w-full flex-wrap items-center gap-2">
+          <div
+            data-testid="dock-device-group"
+            className="relative inline-flex max-w-full shrink-0 flex-nowrap items-center gap-1 overflow-x-auto bg-[#F5F5F7] p-0.5 hairline-border squircle-inner"
+          >
             {devices.map((dev) => {
               const active = deviceProfile === dev.id;
               const DevIcon = dev.icon;
@@ -297,7 +337,7 @@ export function BottomTransportDock({
                   whileTap={TACTILE_TAP}
                   onClick={() => onChangeDevice(dev.id)}
                   title={`${dev.label} (${dev.sub}) — Approximate generic translation check`}
-                  className={`relative z-10 inline-flex items-center gap-1.5 px-2.5 py-1 text-left squircle-inner cursor-pointer ${
+                  className={`relative z-10 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-left squircle-inner cursor-pointer ${
                     active ? "text-[#182220]" : "text-[#52605D] hover:text-[#182220]"
                   }`}
                 >
@@ -305,7 +345,7 @@ export function BottomTransportDock({
                     <motion.span
                       layoutId="dock-device-pill"
                       transition={STUDIO_SPRING}
-                      className="absolute inset-0 -z-10 bg-[#FFFFFF] hairline-border squircle-inner"
+                      className="pointer-events-none absolute inset-0 -z-10 bg-[#FFFFFF] hairline-border squircle-inner"
                     />
                   )}
                   <DevIcon className="h-3 w-3 shrink-0 text-[#3A7269]" aria-hidden="true" />

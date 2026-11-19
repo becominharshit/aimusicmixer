@@ -14,12 +14,16 @@ import {
   parseGenre,
   parseStage,
   proxyFilenameInDir,
+  rateLimitErrorResponse,
 } from "@/server/api/routeHelpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const limited = rateLimitErrorResponse(request, "demo");
+  if (limited) return limited;
+
   let sessionIdForCleanup = "";
   try {
     const demoSrc = path.join(serverConfig.sampleAssetsDir, "unmastered_mix_v1.wav");

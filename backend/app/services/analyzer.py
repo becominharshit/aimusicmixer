@@ -15,6 +15,7 @@ from app.dsp import (
     load_audio_file,
 )
 from app.dsp.spectrum import build_spectral_bands_from_energies
+from app.dsp.structure import analyze_song_structure
 from app.rules import compute_streaming_estimates, evaluate_mix_findings
 from app.schemas.report import (
     AnalysisContext,
@@ -22,6 +23,7 @@ from app.schemas.report import (
     AudioMetadata,
     GlobalMetrics,
     PrivacyAudit,
+    SongSection,
     TimeSeries,
 )
 from app.services.session_store import CachedDspSnapshot
@@ -50,9 +52,25 @@ def analyze_audio_to_report(
         true_peak_dbtp=peaks.true_peak_dbtp,
         short_term_max_lufs=loudness.short_term_max_lufs,
         integrated_lufs=loudness.integrated_lufs,
+        sample_rate=loaded.sample_rate,
     )
     spectral = compute_spectral_profile(loaded.samples, loaded.sample_rate, genre=context.genre)
     stereo = compute_stereo_metrics(loaded.samples, loaded.sample_rate)
+    structure = analyze_song_structure(
+        loaded.samples,
+        loaded.sample_rate,
+        loaded.duration_sec,
+        loudness.short_term_lufs_series,
+    )
+    section_models = [
+        SongSection(
+            label=sec.label,
+            start_sec=sec.start_sec,
+            end_sec=sec.end_sec,
+            avg_lufs=sec.avg_lufs,
+        )
+        for sec in structure.sections
+    ]
 
     global_metrics = GlobalMetrics(
         integrated_lufs=loudness.integrated_lufs,
@@ -64,6 +82,7 @@ def analyze_audio_to_report(
         crest_factor_db=dynamics.crest_factor_db,
         plr_db=dynamics.plr_db,
         psr_db=dynamics.psr_db,
+        transient_punch_db=dynamics.transient_punch_db,
         phase_correlation_avg=stereo.phase_correlation_avg,
         low_end_phase_correlation=stereo.low_end_phase_correlation,
         stereo_width_ratio=stereo.stereo_width_ratio,
@@ -103,6 +122,8 @@ def analyze_audio_to_report(
             playback_proxy_url=proxy_url,
             waveform_peaks=loaded.waveform_peaks,
             clipping_timestamps_sec=peaks.clipping_timestamps_sec,
+            bpm=structure.bpm,
+            sections=section_models,
         ),
         global_metrics=global_metrics,
         streaming_estimates=streaming_estimates,
@@ -127,6 +148,8 @@ def analyze_audio_to_report(
             spectral=spectral,
             stereo=stereo,
             band_energies_db={b.band: b.energy_db for b in spectral.bands},
+            bpm=structure.bpm,
+            sections=section_models,
         )
         return report, loaded, snapshot
     return report, loaded

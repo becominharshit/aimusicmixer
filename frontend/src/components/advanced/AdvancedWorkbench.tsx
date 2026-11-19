@@ -93,6 +93,9 @@ export function AdvancedWorkbench({
           </div>
           <div className="mt-1 text-[11px] text-[#52605D] tabular-telemetry">
             PSR {m.psr_db.toFixed(1)} dB · Crest {m.crest_factor_db.toFixed(1)} dB
+            {typeof m.transient_punch_db === "number" && m.transient_punch_db > 0
+              ? ` · Punch ${m.transient_punch_db.toFixed(1)} dB`
+              : ""}
           </div>
         </div>
 
@@ -121,7 +124,7 @@ export function AdvancedWorkbench({
             )}
           </div>
           <div className="mt-1 text-[11px] text-[#52605D] tabular-telemetry">
-            M/S width {m.stereo_width_ratio.toFixed(2)} · &lt;120 Hz mono check
+            M/S width {m.stereo_width_ratio.toFixed(2)} · 20–120 Hz bandpass
           </div>
         </div>
 
@@ -163,6 +166,8 @@ export function AdvancedWorkbench({
           <WaveformStage
             peaks={report.audio_metadata.waveform_peaks}
             durationSec={report.audio_metadata.duration_sec}
+            bpm={report.audio_metadata.bpm}
+            sections={report.audio_metadata.sections}
             findings={report.findings}
             activeFindingId={activeFindingId}
             loopEnabled={loopEnabled}

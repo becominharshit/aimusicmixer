@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import type { User } from "@supabase/supabase-js";
 import { AlertCircle, BookmarkPlus, CheckCircle2, SlidersHorizontal } from "lucide-react";
@@ -12,6 +13,7 @@ import {
   type StereoMode,
 } from "@/audio/StudioAudioEngine";
 import { BottomTransportDock } from "@/components/BottomTransportDock";
+import { deriveAutoFixEqBands } from "@/components/FindingCard";
 import { StudioHeader, type HealthStatus, type WorkspaceMode } from "@/components/StudioHeader";
 import { UploadStage } from "@/components/UploadStage";
 import { AdvancedWorkbench } from "@/components/advanced/AdvancedWorkbench";
@@ -50,6 +52,7 @@ import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/c
 import {
   DEFAULT_PRIVACY_PREFERENCES,
   deleteSavedAnalysis,
+  enableAnalysisShareLink,
   fetchOrCreateUserProfile,
   fetchSavedAnalyses,
   getSignedMixProxyUrl,
@@ -88,6 +91,8 @@ export default function MixBenchPage() {
   const [subTab, setSubTab] = useState<WorkspaceSubTab>("diagnosis");
   const [mentorOpen, setMentorOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [authInitialError, setAuthInitialError] = useState<string | null>(null);
+  const [authPromptReason, setAuthPromptReason] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
@@ -143,13 +148,22 @@ export default function MixBenchPage() {
 
   const reattachInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Sync ?tab= query param on mount and when subTab changes
+  // Sync ?tab= and ?auth_error= query params on mount
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const initialTab = params.get("tab") as WorkspaceSubTab | null;
     if (initialTab && VALID_SUBTABS.has(initialTab)) {
       setSubTab(initialTab);
+    }
+    const authErrorParam = params.get("auth_error");
+    if (authErrorParam) {
+      setAuthInitialError(authErrorParam);
+      setAuthPromptReason(null);
+      setAuthOpen(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("auth_error");
+      window.history.replaceState({}, "", url.toString());
     }
   }, []);
 
@@ -161,6 +175,18 @@ export default function MixBenchPage() {
       window.history.replaceState({}, "", url.toString());
     }
   }, []);
+
+  const handleRecheckFinding = useCallback(() => {
+    handleChangeSubTab("revisions");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [handleChangeSubTab]);
+
+  const autoFixBands = useMemo(
+    () => (report ? deriveAutoFixEqBands(report.findings) : []),
+    [report]
+  );
 
   const clearWakeTimer = useCallback(() => {
     if (wakeTimerRef.current !== null) {
@@ -446,6 +472,7 @@ export default function MixBenchPage() {
     } else {
       studioAudioEngine.reset();
     }
+    studioAudioEngine.setAutoFixPreview(false, []);
 
     setReport(nextReport);
     setGenre(nextReport.context.genre);
@@ -812,6 +839,58 @@ export default function MixBenchPage() {
     }
   };
 
+  const handleOpenSignedOutHistory = () => {
+    setAuthInitialError(null);
+    setAuthPromptReason(
+      "Sign in to unlock persistent Cloud Mix History, cross-session v1 → v2 comparisons, and private Audio Proxy playback."
+    );
+    setAuthOpen(true);
+  };
+
+  const handleShareReviewLink = async (): Promise<boolean> => {
+    if (!report) return false;
+    if (!supabaseUser) {
+      setAuthInitialError(null);
+      setAuthPromptReason(
+        "Sign in to generate and copy a read-only Client Review Link for this deterministic mix report."
+      );
+      setAuthOpen(true);
+      return false;
+    }
+
+    let targetId = activeSavedId;
+    if (!targetId) {
+      const saved = await persistReportToSupabase(report, "v1");
+      if (!saved) return false;
+      targetId = saved.id;
+      setActiveSavedId(saved.id);
+    }
+
+    const existing = savedAnalyses.find((item) => item.id === targetId);
+    const token = await enableAnalysisShareLink(
+      supabaseUser.id,
+      targetId,
+      existing?.share_token ?? null
+    );
+    if (!token) return false;
+
+    setSavedAnalyses((prev) =>
+      prev.map((item) =>
+        item.id === targetId ? { ...item, share_token: token, is_public: true } : item
+      )
+    );
+
+    if (typeof window !== "undefined") {
+      const shareUrl = `${window.location.origin}/share/${token}`;
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+      } catch {
+        // Clipboard permission unavailable in headless or restricted context
+      }
+    }
+    return true;
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-[#FAFAFA]">
       <StudioHeader
@@ -831,9 +910,15 @@ export default function MixBenchPage() {
         supabaseConfigured={supabaseConfigured}
         userEmail={supabaseUser?.email ?? null}
         savedCount={savedAnalyses.length}
-        onOpenAuth={() => setAuthOpen(true)}
+        onOpenAuth={() => {
+          setAuthInitialError(null);
+          setAuthPromptReason(null);
+          setAuthOpen(true);
+        }}
         onSignOut={() => void handleSignOut()}
         onOpenHistory={() => setHistoryOpen(true)}
+        onOpenSignedOutHistory={handleOpenSignedOutHistory}
+        onShareReviewLink={handleShareReviewLink}
       />
 
       {report && (
@@ -1010,7 +1095,7 @@ export default function MixBenchPage() {
                   onTogglePlay={() => void studioAudioEngine.togglePlay()}
                   onAuditionFinding={(f) => void handleAuditionFinding(f)}
                   onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
-                  onRecheckFinding={() => handleChangeSubTab("revisions")}
+                  onRecheckFinding={handleRecheckFinding}
                   onToggleCorrectiveEq={(eq: CorrectiveEqConfig) =>
                     studioAudioEngine.setCorrectiveEq(eq)
                   }
@@ -1037,7 +1122,7 @@ export default function MixBenchPage() {
                   onSeek={(sec) => void studioAudioEngine.seek(sec)}
                   onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
                   onAuditionFinding={(f) => void handleAuditionFinding(f)}
-                  onRecheckFinding={() => handleChangeSubTab("revisions")}
+                  onRecheckFinding={handleRecheckFinding}
                   onToggleCorrectiveEq={(eq: CorrectiveEqConfig) =>
                     studioAudioEngine.setCorrectiveEq(eq)
                   }
@@ -1098,6 +1183,7 @@ export default function MixBenchPage() {
                 activeSource={audioState.activeSource}
                 matchLoudness={audioState.matchLoudness}
                 loudnessOffsetDb={audioState.loudnessOffsetDb}
+                hasBaselineAudio={audioState.hasPrimary}
                 hasRevisedAudio={audioState.hasRevised}
                 isUploading={isUploadingRevision || isComparingSaved}
                 errorMessage={revisionError}
@@ -1135,11 +1221,16 @@ export default function MixBenchPage() {
             matchLoudness={audioState.matchLoudness}
             loudnessOffsetDb={audioState.loudnessOffsetDb}
             loopEnabled={audioState.loopEnabled}
+            autoFixEnabled={audioState.autoFixEnabled}
+            canAutoFix={autoFixBands.length > 0}
             hasPrimary={audioState.hasPrimary}
             hasReference={audioState.hasReference}
             hasRevised={audioState.hasRevised}
             onTogglePlay={() => void studioAudioEngine.togglePlay()}
             onToggleLoop={() => studioAudioEngine.setLoop(!audioState.loopEnabled)}
+            onToggleAutoFix={() =>
+              studioAudioEngine.setAutoFixPreview(!audioState.autoFixEnabled, autoFixBands)
+            }
             onSeek={(sec) => void studioAudioEngine.seek(sec)}
             onChangeSource={(slot: AudioSourceSlot) =>
               void studioAudioEngine.setActiveSource(slot)
@@ -1168,7 +1259,28 @@ export default function MixBenchPage() {
         </>
       )}
 
-      <AuthModal open={authOpen} onOpenChange={setAuthOpen} />
+      <footer className="no-print border-t border-[rgba(24,34,32,0.06)] bg-[#FAFAFA] py-4 text-[11px] text-[#7D8C88]">
+        <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-3 px-4 sm:px-6">
+          <span>
+            MixBench Studio · Deterministic DSP Truth · Zero-Audio-by-Default · Ephemeral 60-min processing
+          </span>
+          <nav aria-label="Legal and privacy links" className="flex items-center gap-4">
+            <Link href="/privacy" className="font-medium text-[#52605D] hover:text-[#182220]">
+              Privacy Policy
+            </Link>
+            <Link href="/terms" className="font-medium text-[#52605D] hover:text-[#182220]">
+              Terms of Use
+            </Link>
+          </nav>
+        </div>
+      </footer>
+
+      <AuthModal
+        open={authOpen}
+        onOpenChange={setAuthOpen}
+        initialError={authInitialError}
+        promptReason={authPromptReason}
+      />
       <SavedMixHistoryDrawer
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}

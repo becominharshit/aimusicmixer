@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -9,15 +10,31 @@ import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/c
 interface AuthModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialError?: string | null;
+  promptReason?: string | null;
 }
 
-export function AuthModal({ open, onOpenChange }: AuthModalProps) {
+export function AuthModal({
+  open,
+  onOpenChange,
+  initialError = null,
+  promptReason = null,
+}: AuthModalProps) {
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(initialError);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open && initialError) {
+      setErrorMsg(initialError);
+    } else if (!open) {
+      setErrorMsg(null);
+      setInfoMsg(null);
+    }
+  }, [open, initialError]);
 
   const configured = isSupabaseConfigured();
 
@@ -97,7 +114,8 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
             {authMode === "signin" ? "Sign in to MixBench" : "Create MixBench Account"}
           </DialogTitle>
           <p id="auth-modal-desc" className="text-xs leading-relaxed text-[#52605D]">
-            Optional cloud sync for saving Mix Analysis History across sessions and persisting your privacy toggles. Anonymous mixing &amp; DSP diagnostics remain unlocked without an account.
+            {promptReason ||
+              "Optional cloud sync for saving Mix Analysis History across sessions, audio proxy playback, and persisting your privacy toggles. Anonymous mixing & DSP diagnostics remain unlocked without an account."}
           </p>
         </div>
 
@@ -108,6 +126,14 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
               Set <code className="text-[#182220]">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
               <code className="text-[#182220]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to enable sign-in and cross-session mix history.
             </p>
+            {errorMsg && (
+              <div
+                role="alert"
+                className="mt-2 bg-[#FFF1F3] px-3 py-2 text-xs text-[#BE123C] border border-[rgba(190,18,60,0.22)] squircle-inner"
+              >
+                {errorMsg}
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -224,6 +250,18 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
             </div>
           </>
         )}
+
+        <div className="border-t border-[rgba(24,34,32,0.06)] pt-2 text-center text-[11px] text-[#52605D]">
+          By using MixBench, you acknowledge our{" "}
+          <Link href="/privacy" className="font-medium text-[#3A7269] hover:underline">
+            Privacy Policy
+          </Link>{" "}
+          and{" "}
+          <Link href="/terms" className="font-medium text-[#3A7269] hover:underline">
+            Terms of Use
+          </Link>
+          .
+        </div>
       </DialogContent>
     </Dialog>
   );

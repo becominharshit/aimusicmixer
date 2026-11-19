@@ -105,7 +105,7 @@ Copy the example env files or configure variables cleanly:
 - **Backend (`backend/.env`):**
   - `ALLOWED_ORIGINS`: Comma-separated allowed browser origins (e.g., `http://localhost:3000,https://your-app.vercel.app`, or `*`).
   - `GEMINI_API_KEY`: Optional Google Gemini API key. Leave blank to operate strictly with the built-in Offline Deterministic Mentor fallback.
-  - `GEMINI_MODEL`: Defaults to `gemini-2.5-flash` (overridable via env var).
+  - `GEMINI_MODEL`: Defaults to `gemini-4-hydrogen` (overridable via env var).
 - **Frontend (`frontend/.env.local`):**
   - `NEXT_PUBLIC_API_URL`: HTTPS/HTTP origin of your FastAPI server (defaults to `http://localhost:8000`; trailing slashes are stripped automatically).
   - `NEXT_PUBLIC_SUPABASE_URL` & `NEXT_PUBLIC_SUPABASE_ANON_KEY` *(optional)*: Enable Supabase Auth, per-user privacy preference sync (`public.profiles`), and cross-session Saved Mix History (`public.analyses`). Leave blank for 100% anonymous local usage.
@@ -160,7 +160,7 @@ Open `http://localhost:3000` and click **Try Sample Flawed Mix** right below the
     - `ALLOWED_ORIGINS` = `https://<your-vercel-domain>.vercel.app` (or `*` for public testing with `allow_credentials=False`)
     - `MAX_SINGLE_FILE_MB` = `50` / `MAX_STEM_TOTAL_MB` = `150`
     - `GEMINI_API_KEY` = *(optional)*
-    - `GEMINI_MODEL` = `gemini-2.5-flash`
+    - `GEMINI_MODEL` = `gemini-4-hydrogen`
 
 ### Database & Auth (Supabase — Optional)
 1. Create a Supabase project and open **SQL Editor**.

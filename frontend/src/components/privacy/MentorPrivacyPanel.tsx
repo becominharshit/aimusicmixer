@@ -1,14 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
-import { AlertCircle, CheckCircle2, ShieldCheck, Sliders, Sparkles } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { AlertCircle, CheckCircle2, MessageSquare, RotateCcw, ShieldCheck, Sliders, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
   DEFAULT_PRIVACY_PREFERENCES,
   type PrivacyPreferences,
 } from "@/lib/supabase/storage";
-import type { AnalysisReport, MentorRequest, MentorResponse } from "@/types/report";
+import type { AnalysisReport, MentorChatTurn, MentorRequest, MentorResponse } from "@/types/report";
+
+const QUICK_DAW_PROMPTS = [
+  "How do I apply these fixes with FL Studio stock plugins?",
+  "Give me an Ableton Live 12 EQ Eight & Glue Compressor chain.",
+  "How should I clean this up using Logic Pro Channel EQ & Multipressor?",
+  "How do I tighten the <120 Hz sub phase without losing punch?",
+];
 
 interface MentorPrivacyPanelProps {
   report: AnalysisReport;
@@ -54,6 +61,29 @@ export function MentorPrivacyPanel({
   };
 
   const [question, setQuestion] = useState("");
+  const [conversationHistory, setConversationHistory] = useState<MentorChatTurn[]>([]);
+  const lastAdviceRef = useRef<MentorResponse | null>(null);
+  const lastReportIdRef = useRef<string>(report.report_id);
+
+  // Reset multi-turn coaching thread when switching to a different report
+  useEffect(() => {
+    if (lastReportIdRef.current !== report.report_id) {
+      lastReportIdRef.current = report.report_id;
+      setConversationHistory([]);
+      lastAdviceRef.current = null;
+    }
+  }, [report.report_id]);
+
+  // Append newly received mentor response into conversation history
+  useEffect(() => {
+    if (mentorAdvice && mentorAdvice !== lastAdviceRef.current) {
+      lastAdviceRef.current = mentorAdvice;
+      setConversationHistory((prev) => [
+        ...prev.slice(-9),
+        { role: "assistant", content: mentorAdvice.summary },
+      ]);
+    }
+  }, [mentorAdvice]);
 
   const [daw, setDaw] = useState(report.context.user_reported_context?.daw || "");
   const [busRouting, setBusRouting] = useState(
@@ -72,11 +102,31 @@ export function MentorPrivacyPanel({
     });
   };
 
+  const submitQuestion = (overrideQuestion?: string) => {
+    const activeQuestion = (overrideQuestion ?? question).trim();
+    const nextHistory = activeQuestion
+      ? [...conversationHistory.slice(-9), { role: "user" as const, content: activeQuestion }]
+      : conversationHistory;
+
+    if (activeQuestion) {
+      setConversationHistory(nextHistory);
+      setQuestion("");
+    }
+
+    onAskMentor({
+      allow_metrics_ai: allowMetricsAi,
+      allow_audio_ai: allowAudioAi,
+      allow_training_opt_in: allowTrainingOptIn,
+      question: activeQuestion,
+      conversation_history: conversationHistory.slice(-8),
+    });
+  };
+
   const modeAttribution =
     mentorAdvice?.mode === "gemini_multimodal_audio"
-      ? "Live Gemini Audio + Metrics"
+      ? "Live Gemini 4 Audio + Metrics"
       : mentorAdvice?.mode === "gemini_metrics_only"
-        ? "Live Gemini Metrics Only"
+        ? "Live Gemini 4 Metrics Only"
         : "Offline Deterministic";
 
   return (
@@ -171,43 +221,95 @@ export function MentorPrivacyPanel({
         </div>
 
         <div className="space-y-2 pt-1">
-          <label htmlFor="mentor-question" className="block text-[11px] font-medium text-[#52605D]">
-            Ask your Mix Mentor (optional)
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="mentor-question" className="block text-[11px] font-medium text-[#52605D]">
+              {conversationHistory.length > 0
+                ? "Ask a follow-up question (grounded in DSP JSON & clip)"
+                : "Ask your Mix Mentor (optional)"}
+            </label>
+            {conversationHistory.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setConversationHistory([])}
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-[#52605D] hover:text-[#182220] cursor-pointer"
+              >
+                <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                Reset thread
+              </button>
+            )}
+          </div>
           <textarea
             id="mentor-question"
             rows={2}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="e.g., How should I address the 250 Hz low-mid buildup without losing punch?"
+            placeholder="e.g., How should I address the 250 Hz low-mid buildup in FL Studio or Ableton without losing punch?"
             className="w-full resize-none bg-[#FAFAFA] px-3 py-2 text-xs text-[#182220] hairline-border squircle-inner focus:border-[#3A7269] focus:outline-none"
           />
+
+          {/* Quick DAW Follow-Up Chips */}
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_DAW_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                disabled={isAskingMentor}
+                onClick={() => submitQuestion(prompt)}
+                className="bg-[#F5F5F7] px-2 py-1 text-left text-[10px] font-medium text-[#52605D] hover:bg-[#EBF3F1] hover:text-[#182220] hairline-border squircle-inner cursor-pointer transition-colors"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+
           <Button
             type="button"
             variant="primary"
             size="sm"
             className="w-full"
             disabled={isAskingMentor}
-            onClick={() =>
-              onAskMentor({
-                allow_metrics_ai: allowMetricsAi,
-                allow_audio_ai: allowAudioAi,
-                allow_training_opt_in: allowTrainingOptIn,
-                question,
-              })
-            }
+            onClick={() => submitQuestion()}
           >
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
             {isAskingMentor
               ? "Generating Coaching..."
               : allowMetricsAi
                 ? allowAudioAi
-                  ? "Ask Gemini Mentor (Metrics + 25s Audio)"
-                  : "Ask Gemini Mentor (Metrics JSON Only)"
+                  ? "Ask Gemini 4 Mentor (Metrics + 25s Audio)"
+                  : "Ask Gemini 4 Mentor (Metrics JSON Only)"
                 : "Run Offline Deterministic Mentor"}
           </Button>
         </div>
       </div>
+
+      {/* Multi-Turn Coaching Thread */}
+      {conversationHistory.length > 1 && (
+        <div className="min-w-0 bg-[#FFFFFF] p-4 hairline-border squircle-inner space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#182220]">
+              <MessageSquare className="h-3.5 w-3.5 text-[#3A7269]" aria-hidden="true" />
+              Follow-Up Thread ({Math.ceil(conversationHistory.length / 2)} turns)
+            </span>
+          </div>
+          <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+            {conversationHistory.map((turn, idx) => (
+              <div
+                key={`${turn.role}-${idx}`}
+                className={`p-2.5 text-[11px] leading-relaxed squircle-inner break-words ${
+                  turn.role === "user"
+                    ? "bg-[#EBF3F1] text-[#182220] ml-4"
+                    : "bg-[#F5F5F7] text-[#52605D] mr-4"
+                }`}
+              >
+                <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#3A7269]">
+                  {turn.role === "user" ? "You" : "Mix Mentor"}
+                </div>
+                {turn.content}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Mentor Advice Output */}
       {mentorAdvice && (

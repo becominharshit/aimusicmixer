@@ -47,7 +47,7 @@ def test_health_and_mock_schema_contract() -> None:
     health = health_check()
     assert health["status"] == "ok"
     assert health["ffmpeg_available"] is True
-    assert health["gemini_model"] == "gemini-2.5-flash"
+    assert health["gemini_model"] == "gemini-4-hydrogen"
     assert settings.max_single_file_mb == 50
     assert settings.max_stem_total_mb == 150
 
@@ -284,7 +284,7 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
         assert gemini_resp.privacy_audit.raw_audio_sent_to_ai is False
         assert gemini_resp.privacy_audit.external_ai_enabled is True
         assert captured.get("model") == settings.gemini_model
-        assert captured.get("config").temperature == 0.2
+        assert captured.get("config").thinking_config is not None
     finally:
         clear_session(report.session_id)
 
@@ -382,3 +382,39 @@ def test_cors_and_memory_cap_configuration() -> None:
     opts = cors_layers[0].kwargs
     if "*" in opts.get("allow_origins", []):
         assert opts.get("allow_credentials") is False
+
+
+def test_demo_session_cache_hit_populates_downstream_state() -> None:
+    first = create_demo_session(genre="electronic", stage="unmastered_mix", artist_vision='["punchy"]')
+    second = create_demo_session(genre="electronic", stage="unmastered_mix", artist_vision='["punchy"]')
+    try:
+        assert first.session_id != second.session_id
+        rec_second = session_store.get_session(second.session_id)
+        assert rec_second is not None
+        assert rec_second.primary_report is not None
+        assert rec_second.primary_snapshot is not None
+        assert rec_second.primary_audio_path is not None and rec_second.primary_audio_path.exists()
+        assert len(rec_second.proxy_files) >= 1
+
+        # Downstream proxy stream and reference A/B work on cached demo session
+        proxy_name = second.audio_metadata.playback_proxy_url.rsplit("/", 1)[-1]
+        proxy_resp = stream_playback_proxy(second.session_id, proxy_name)
+        assert proxy_resp.path.exists()
+        ref_meta = load_demo_reference_track(second.session_id)
+        assert ref_meta["reference_filename"] == "reference_track.wav"
+    finally:
+        clear_session(first.session_id)
+        clear_session(second.session_id)
+
+
+def test_proxy_aware_rate_limiter_uses_xff_and_auth_buckets() -> None:
+    from app.api.v1.routes import _extract_client_rate_key
+
+    req_xff = SimpleNamespace(
+        headers={"x-forwarded-for": "203.0.113.42, 10.0.0.1"},
+        client=SimpleNamespace(host="127.0.0.1"),
+    )
+    key, is_auth = _extract_client_rate_key(req_xff)  # type: ignore[arg-type]
+    assert key == "ip:203.0.113.42"
+    assert is_auth is False
+

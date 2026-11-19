@@ -45,6 +45,13 @@ class AnalysisContext(BaseModel):
     user_reported_context: UserReportedContext | None = None
 
 
+class SongSection(BaseModel):
+    label: str
+    start_sec: float
+    end_sec: float
+    avg_lufs: float
+
+
 class AudioMetadata(BaseModel):
     filename: str
     duration_sec: float
@@ -54,6 +61,8 @@ class AudioMetadata(BaseModel):
     playback_proxy_url: str
     waveform_peaks: list[list[float]] = Field(default_factory=list)
     clipping_timestamps_sec: list[float] = Field(default_factory=list)
+    bpm: float | None = None
+    sections: list[SongSection] = Field(default_factory=list)
 
 
 class GlobalMetrics(BaseModel):
@@ -66,6 +75,7 @@ class GlobalMetrics(BaseModel):
     crest_factor_db: float
     plr_db: float = 0.0
     psr_db: float
+    transient_punch_db: float | None = None
     phase_correlation_avg: float
     low_end_phase_correlation: float = 1.0
     stereo_width_ratio: float
@@ -222,11 +232,17 @@ class MentorAction(BaseModel):
     verification_step: str
 
 
+class MentorChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=2000)
+
+
 class MentorRequest(BaseModel):
     allow_metrics_ai: bool = False
     allow_audio_ai: bool = False
     allow_training_opt_in: bool = False
     question: str = ""
+    conversation_history: list[MentorChatTurn] = Field(default_factory=list)
 
 
 class MentorResponse(BaseModel):

@@ -187,7 +187,19 @@ def generate_mentor_advice(
         "5. Respect `context.artist_vision` creatively while NEVER suppressing Alert-level clipping (> -0.1 dBTP) or negative phase correlation.\n"
         "6. Follow the learn-by-doing loop: What happened -> Why it matters -> Listen -> Experiment in DAW -> Recheck.\n"
     )
+    history_block = ""
+    if request.conversation_history:
+        recent_turns = request.conversation_history[-8:]
+        formatted = "\n".join(
+            f"{'Artist' if turn.role == 'user' else 'Mentor'}: {turn.content.strip()}"
+            for turn in recent_turns
+            if turn.content.strip()
+        )
+        if formatted:
+            history_block = f"Previous Coaching Thread:\n{formatted}\n\n"
+
     user_prompt = (
+        f"{history_block}"
         f"Artist Question: {request.question.strip() or 'Give me the highest-leverage next steps to improve this mix.'}\n\n"
         f"Structured DSP Report JSON:\n{sanitized_json}"
     )
@@ -198,7 +210,7 @@ def generate_mentor_advice(
         else (fallback_proxy_path if fallback_proxy_path is not None and fallback_proxy_path.exists() else None)
     )
     use_audio = bool(request.allow_audio_ai and clip_source is not None)
-    tmp_clip: Path | None = None
+    tmp_paths: list[Path] = []
 
     try:
         from google import genai
@@ -211,9 +223,11 @@ def generate_mentor_advice(
         if use_audio and clip_source is not None:
             clip_start_sec = select_audio_clip_start_sec(report, clip_duration_sec=25.0)
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
-                tmp_clip = Path(tf.name)
-            actual_clip = extract_audio_clip(clip_source, tmp_clip, start_sec=clip_start_sec, duration_sec=25.0)
-            tmp_clip = actual_clip
+                placeholder_clip = Path(tf.name)
+            tmp_paths.append(placeholder_clip)
+            actual_clip = extract_audio_clip(clip_source, placeholder_clip, start_sec=clip_start_sec, duration_sec=25.0)
+            if actual_clip != placeholder_clip:
+                tmp_paths.append(actual_clip)
             audio_bytes = actual_clip.read_bytes()
             mime = "audio/mp3" if actual_clip.suffix.lower() == ".mp3" else "audio/aac"
             contents = [
@@ -221,13 +235,20 @@ def generate_mentor_advice(
                 types.Part.from_bytes(data=audio_bytes, mime_type=mime),
             ]
 
-        config = types.GenerateContentConfig(
-            system_instruction=system_rules,
-            response_mime_type="application/json",
-            response_schema=MentorLLMOutput,
-            temperature=0.2,
-            http_options=http_options,
-        )
+        thinking_level = "medium" if use_audio else "low"
+        config_kwargs: dict[str, object] = {
+            "system_instruction": system_rules,
+            "response_mime_type": "application/json",
+            "response_schema": MentorLLMOutput,
+            "http_options": http_options,
+        }
+        try:
+            config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=thinking_level)
+        except Exception:
+            # Older google-genai SDK versions may not expose thinking_level on ThinkingConfig
+            pass
+
+        config = types.GenerateContentConfig(**config_kwargs)
         response = client.models.generate_content(
             model=settings.gemini_model,
             contents=contents,
@@ -278,5 +299,5 @@ def generate_mentor_advice(
             fallback_reason=f"Offline Mentor fallback ({type(exc).__name__})",
         )
     finally:
-        if tmp_clip is not None:
-            tmp_clip.unlink(missing_ok=True)
+        for path in tmp_paths:
+            path.unlink(missing_ok=True)

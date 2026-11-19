@@ -55,7 +55,7 @@ const CATEGORY_TECH_NOTE: Record<string, string> = {
   dynamics:
     "Peak-to-Loudness Ratio (PLR) and PSR quantify remaining transient punch relative to sustained body loudness.",
   stereo_phase:
-    "1-second energy-weighted Pearson correlation across L/R channels plus 120 Hz low-passed sub-bass correlation check.",
+    "1-second energy-weighted Pearson correlation across L/R channels plus 4th-order Butterworth 20–120 Hz bandpass sub-bass correlation check.",
   tonal_balance:
     "6-band Welch power spectral density normalized relative to the track average energy (gain-invariant tilt vs. genre profile).",
   stems_overlap:
@@ -65,24 +65,71 @@ const CATEGORY_TECH_NOTE: Record<string, string> = {
 };
 
 const BAND_CENTER_HZ: Record<BandName, number> = {
-  sub: 45,
+  sub: 50,
   low: 140,
-  low_mid: 380,
+  low_mid: 280,
   high_mid: 1800,
-  presence: 6000,
+  presence: 5500,
   air: 12000,
 };
 
-function deriveSuggestedEq(finding: Finding): CorrectiveEqConfig | null {
-  if (finding.category !== "tonal_balance" || finding.severity === "safe") {
+export function deriveSuggestedEq(finding: Finding): CorrectiveEqConfig | null {
+  if (finding.severity === "safe") {
     return null;
   }
+
+  // Sub-bass or low-end stereo phase issue -> calibrated sub-cleanup trim audition
+  if (finding.category === "stereo_phase") {
+    if (
+      finding.evidence_id.includes("phase_low") ||
+      /sub|120\s*hz|low-end|bass/i.test(`${finding.title} ${finding.what_happened}`)
+    ) {
+      return {
+        id: finding.evidence_id,
+        freqHz: 85,
+        q: 1.0,
+        gainDb: -2.5,
+        filterType: "peaking",
+      };
+    }
+    return {
+      id: finding.evidence_id,
+      freqHz: 110,
+      q: 0.9,
+      gainDb: -2.0,
+      filterType: "peaking",
+    };
+  }
+
+  // Tonal balance, mud, harshness, sub excess, or overlap mentioning Hz/dB
+  const textBlob = `${finding.title} ${finding.what_happened} ${finding.what_to_try}`;
+  const isTonalLike =
+    finding.category === "tonal_balance" ||
+    /mud|boxy|harsh|sibilan|sub-bass|boomy|250\s*hz|low-mid|high-mid|presence|air/i.test(textBlob);
+
+  if (!isTonalLike) {
+    return null;
+  }
+
   const bandFromId = finding.evidence_id
     .replace("ev_tonal_", "")
     .replace("_01", "") as BandName;
-  const band: BandName =
+  let band: BandName =
     finding.band_name ?? (bandFromId in BAND_CENTER_HZ ? bandFromId : "low_mid");
-  const freqHz = BAND_CENTER_HZ[band] ?? 380;
+
+  if (!(band in BAND_CENTER_HZ)) {
+    if (/sub|60\s*hz|45\s*hz/i.test(textBlob)) band = "sub";
+    else if (/low-mid|mud|boxy|250\s*hz|300\s*hz/i.test(textBlob)) band = "low_mid";
+    else if (/harsh|nasal|2\s*khz|3\s*khz|high-mid/i.test(textBlob)) band = "high_mid";
+    else if (/sibilan|presence|5\s*khz|6\s*khz/i.test(textBlob)) band = "presence";
+    else if (/air|brillian|10\s*khz|12\s*khz/i.test(textBlob)) band = "air";
+    else band = "low";
+  }
+
+  let freqHz = BAND_CENTER_HZ[band] ?? 280;
+  if (band === "low_mid" && /250\s*hz/i.test(textBlob)) {
+    freqHz = 250;
+  }
 
   const numMatch = finding.measured_value.match(/([+-]?\d+(?:\.\d+)?)\s*dB/i);
   const delta = numMatch ? Number.parseFloat(numMatch[1]) : 2.5;
@@ -96,7 +143,22 @@ function deriveSuggestedEq(finding: Finding): CorrectiveEqConfig | null {
     freqHz,
     q: band === "low" || band === "low_mid" ? 1.4 : 1.1,
     gainDb: Number(gainDb.toFixed(1)),
+    filterType: "peaking",
   };
+}
+
+export function deriveAutoFixEqBands(findings: Finding[]): CorrectiveEqConfig[] {
+  const bands: CorrectiveEqConfig[] = [];
+  const seenFreqs = new Set<number>();
+  for (const finding of findings) {
+    if (bands.length >= 3) break;
+    const eq = deriveSuggestedEq(finding);
+    if (eq && !seenFreqs.has(eq.freqHz)) {
+      seenFreqs.add(eq.freqHz);
+      bands.push(eq);
+    }
+  }
+  return bands;
 }
 
 export function FindingCard({

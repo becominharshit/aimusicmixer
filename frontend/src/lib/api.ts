@@ -1,3 +1,4 @@
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type {
   AnalysisReport,
   ArtistVisionTag,
@@ -36,6 +37,23 @@ export function resolveApiUrl(path: string): string {
   return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+async function getOptionalAuthHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { ...(extra || {}) };
+  if (typeof window === "undefined") return headers;
+  try {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return headers;
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  } catch {
+    // Anonymous fallback
+  }
+  return headers;
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
@@ -57,15 +75,18 @@ export interface UploadRequestOptions {
   signal?: AbortSignal;
 }
 
-export function uploadWithProgress<T>(params: {
+export async function uploadWithProgress<T>(params: {
   url: string;
   formData: FormData;
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
 }): Promise<T> {
+  const authHeaders = await getOptionalAuthHeaders();
+
   if (typeof XMLHttpRequest === "undefined") {
     return fetch(params.url, {
       method: "POST",
+      headers: authHeaders,
       body: params.formData,
       signal: params.signal,
     }).then((res) => handleResponse<T>(res));
@@ -74,6 +95,9 @@ export function uploadWithProgress<T>(params: {
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", params.url, true);
+    if (authHeaders.Authorization) {
+      xhr.setRequestHeader("Authorization", authHeaders.Authorization);
+    }
 
     const handleAbort = () => {
       xhr.abort();
@@ -190,6 +214,7 @@ export async function loadDemoSession(params: {
 
   const res = await fetch(resolveApiUrl("/api/v1/sessions/demo"), {
     method: "POST",
+    headers: await getOptionalAuthHeaders(),
     body: form,
   });
   return handleResponse<AnalysisReport>(res);
@@ -213,6 +238,7 @@ export async function uploadReferenceTrack(
 export async function loadDemoReferenceTrack(sessionId: string): Promise<ReferenceTrackMeta> {
   const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/reference/demo`), {
     method: "POST",
+    headers: await getOptionalAuthHeaders(),
   });
   return handleResponse<ReferenceTrackMeta>(res);
 }
@@ -237,6 +263,7 @@ export async function uploadUserStems(
 export async function loadDemoStems(sessionId: string): Promise<AnalysisReport> {
   const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/stems/demo`), {
     method: "POST",
+    headers: await getOptionalAuthHeaders(),
   });
   return handleResponse<AnalysisReport>(res);
 }
@@ -259,6 +286,7 @@ export async function compareRevisedMix(
 export async function compareDemoRevision(sessionId: string): Promise<AnalysisReport> {
   const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/compare/demo`), {
     method: "POST",
+    headers: await getOptionalAuthHeaders(),
   });
   return handleResponse<AnalysisReport>(res);
 }
@@ -269,7 +297,7 @@ export async function compareSavedReports(
 ): Promise<RevisionComparison> {
   const res = await fetch(resolveApiUrl("/api/compare"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getOptionalAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ baseline, revised }),
   });
   return handleResponse<RevisionComparison>(res);
@@ -291,7 +319,7 @@ export async function updateSessionContext(
 ): Promise<AnalysisReport> {
   const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/context`), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getOptionalAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ ...payload, source_tag: "user_reported_context" }),
   });
   return handleResponse<AnalysisReport>(res);
@@ -313,7 +341,7 @@ export async function askMentor(
 ): Promise<MentorResponse> {
   const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/mentor`), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getOptionalAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   return handleResponse<MentorResponse>(res);
@@ -322,5 +350,6 @@ export async function askMentor(
 export async function clearSession(sessionId: string): Promise<void> {
   await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}`), {
     method: "DELETE",
+    headers: await getOptionalAuthHeaders(),
   });
 }

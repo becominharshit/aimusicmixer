@@ -11,6 +11,47 @@ class DynamicsResult:
     plr_db: float
     psr_db: float
     rms_dbfs: float
+    transient_punch_db: float = 0.0
+
+
+def compute_transient_punch_db(samples: np.ndarray, sample_rate: int = 44100) -> float:
+    """Compute silence-gated transient-to-body punch ratio (10 ms attack vs 200 ms body RMS in dB)."""
+    if samples.size == 0 or sample_rate <= 0:
+        return 0.0
+    mono = (
+        np.asarray(samples, dtype=np.float64)
+        if samples.ndim == 1
+        else np.mean(np.asarray(samples, dtype=np.float64), axis=1)
+    )
+    if float(np.max(np.abs(mono))) <= 1e-6:
+        return 0.0
+
+    fast_win = max(16, int(round(sample_rate * 0.010)))  # 10 ms attack window
+    slow_win = max(fast_win * 4, int(round(sample_rate * 0.200)))  # 200 ms body window
+    n_blocks = mono.shape[0] // slow_win
+    if n_blocks < 1:
+        rms = float(np.sqrt(np.mean(mono * mono) + 1e-12))
+        peak = float(np.max(np.abs(mono)))
+        return round(float(np.clip(20.0 * np.log10(max(peak, 1e-12) / max(rms, 1e-12)), 0.0, 24.0)), 2)
+
+    sub_count = max(1, slow_win // fast_win)
+    silence_gate = 10.0 ** (-45.0 / 20.0)
+    ratios_db: list[float] = []
+
+    for b in range(n_blocks):
+        block = mono[b * slow_win : (b + 1) * slow_win]
+        body_rms = float(np.sqrt(np.mean(block * block) + 1e-12))
+        if body_rms < silence_gate:
+            continue
+        reshaped = block[: sub_count * fast_win].reshape(sub_count, fast_win)
+        fast_rms = np.sqrt(np.mean(reshaped * reshaped, axis=1) + 1e-12)
+        attack_rms = float(np.max(fast_rms))
+        ratio_db = 20.0 * np.log10(max(attack_rms, 1e-12) / max(body_rms, 1e-12))
+        ratios_db.append(float(np.clip(ratio_db, 0.0, 24.0)))
+
+    if not ratios_db:
+        return 0.0
+    return round(float(np.percentile(ratios_db, 80)), 2)
 
 
 def compute_dynamics_metrics(
@@ -19,9 +60,16 @@ def compute_dynamics_metrics(
     true_peak_dbtp: float,
     short_term_max_lufs: float,
     integrated_lufs: float | None = None,
+    sample_rate: int = 44100,
 ) -> DynamicsResult:
     if samples.size == 0:
-        return DynamicsResult(crest_factor_db=0.0, plr_db=0.0, psr_db=0.0, rms_dbfs=-120.0)
+        return DynamicsResult(
+            crest_factor_db=0.0,
+            plr_db=0.0,
+            psr_db=0.0,
+            rms_dbfs=-120.0,
+            transient_punch_db=0.0,
+        )
 
     # Silence-gated chunked RMS: exclude chunks below -60 dBFS (mean_sq < 1e-6)
     # so digital fade-outs/intros do not artificially inflate Crest Factor.
@@ -47,7 +95,13 @@ def compute_dynamics_metrics(
             gated_count += c_count
 
     if peak_lin <= 1e-12:
-        return DynamicsResult(crest_factor_db=0.0, plr_db=0.0, psr_db=0.0, rms_dbfs=-120.0)
+        return DynamicsResult(
+            crest_factor_db=0.0,
+            plr_db=0.0,
+            psr_db=0.0,
+            rms_dbfs=-120.0,
+            transient_punch_db=0.0,
+        )
 
     active_sum_sq = gated_sum_sq if gated_count > 0 else total_sum_sq
     active_count = gated_count if gated_count > 0 else total_count
@@ -60,9 +114,12 @@ def compute_dynamics_metrics(
     else:
         plr = psr
 
+    transient_punch = compute_transient_punch_db(samples, sample_rate)
+
     return DynamicsResult(
         crest_factor_db=round(crest_factor, 2),
         plr_db=round(plr, 2),
         psr_db=round(psr, 2),
         rms_dbfs=round(rms_dbfs, 2),
+        transient_punch_db=transient_punch,
     )

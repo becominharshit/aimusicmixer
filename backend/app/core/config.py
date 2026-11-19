@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,12 +27,22 @@ class Settings(BaseSettings):
     session_ttl_minutes: int = 60
     max_disk_sessions: int = 15
     rate_limit_max_requests: int = 30
+    rate_limit_auth_max_requests: int = 90
     rate_limit_window_seconds: int = 60
     tmp_sessions_dir: Path = Path(tempfile.gettempdir()) / "mixbench_sessions"
     sample_assets_dir: Path = _default_sample_assets_dir()
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-4-hydrogen"
+    supabase_jwt_secret: str = ""
+
+    @field_validator("gemini_model", mode="before")
+    @classmethod
+    def _upgrade_deprecated_gemini_model(cls, value: str | None) -> str:
+        raw = (value or "").strip()
+        if not raw or raw == "gemini-2.5-flash":
+            return "gemini-4-hydrogen"
+        return raw
 
     @property
     def cors_origin_list(self) -> list[str]:

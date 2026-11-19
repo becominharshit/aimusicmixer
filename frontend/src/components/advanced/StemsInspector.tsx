@@ -35,7 +35,7 @@ async function measureAudioFileDurationMs(file: File): Promise<number | null> {
     const timer = window.setTimeout(() => {
       cleanup();
       resolve(null);
-    }, 3000);
+    }, 5000);
 
     const cleanup = () => {
       window.clearTimeout(timer);

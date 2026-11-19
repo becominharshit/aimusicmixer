@@ -39,14 +39,64 @@ const VALID_GENRES = new Set<GenreType>([
 ]);
 const VALID_STAGES = new Set<StageType>(["unmastered_mix", "final_master"]);
 
+function extractAuthenticatedSubject(request: Request): string | null {
+  const authHeader = (request.headers.get("authorization") ?? "").trim();
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
+  const token = authHeader.slice(7).trim();
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf-8")) as Record<
+      string,
+      unknown
+    >;
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8")) as Record<
+      string,
+      unknown
+    >;
+    const sub = payload.sub;
+    if (typeof sub !== "string" || !sub.trim()) return null;
+    if (typeof payload.exp === "number" && payload.exp < Date.now() / 1000) return null;
+
+    const secret = serverConfig.supabaseJwtSecret;
+    if (secret) {
+      if (header.alg !== "HS256") return null;
+      const expected = crypto
+        .createHmac("sha256", secret)
+        .update(`${parts[0]}.${parts[1]}`)
+        .digest();
+      const actual = Buffer.from(parts[2], "base64url");
+      if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
+        return null;
+      }
+    }
+
+    const digest = crypto.createHash("sha256").update(sub).digest("hex").slice(0, 16);
+    return `user:${digest}`;
+  } catch {
+    return null;
+  }
+}
+
 export function getClientIp(request: Request): string {
   const fwd = request.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim() || "unknown";
+  if (fwd) {
+    for (const hop of fwd.split(",")) {
+      const ip = hop.trim();
+      if (ip) return ip;
+    }
+  }
   return request.headers.get("x-real-ip")?.trim() || "127.0.0.1";
 }
 
 export function rateLimitErrorResponse(request: Request, bucket: string): NextResponse | null {
-  const { allowed, retryAfterSec } = sessionStore.checkRateLimit(getClientIp(request), bucket);
+  const authSubject = extractAuthenticatedSubject(request);
+  const identity = authSubject ?? getClientIp(request);
+  const { allowed, retryAfterSec } = sessionStore.checkRateLimit(
+    identity,
+    bucket,
+    authSubject !== null
+  );
   if (allowed) return null;
   return NextResponse.json(
     {
@@ -160,7 +210,8 @@ export async function buildReferencePayload(
     peaks.samplePeakDbfs,
     peaks.truePeakDbtp,
     loudness.shortTermMaxLufs,
-    loudness.integratedLufs
+    loudness.integratedLufs,
+    loaded.sampleRate
   );
   const genre: GenreType = rec.primaryReport?.context.genre ?? "electronic";
   const spectral = computeSpectralProfile(loaded.channelsData, loaded.sampleRate, genre);
@@ -182,6 +233,7 @@ export async function buildReferencePayload(
     crest_factor_db: dynamics.crestFactorDb,
     plr_db: dynamics.plrDb,
     psr_db: dynamics.psrDb,
+    transient_punch_db: dynamics.transientPunchDb,
     phase_correlation_avg: stereo.phaseCorrelationAvg,
     low_end_phase_correlation: stereo.lowEndPhaseCorrelation,
     stereo_width_ratio: stereo.stereoWidthRatio,
@@ -245,6 +297,8 @@ export async function instantiateReportFromCachedDemo(params: {
       playback_proxy_url: `/api/v1/sessions/${params.sessionId}/proxy/${actualProxyName}`,
       waveform_peaks: params.cached.loaded.waveformPeaks,
       clipping_timestamps_sec: [...params.cached.snapshot.peaks.clippingTimestampsSec],
+      bpm: params.cached.snapshot.bpm ?? null,
+      sections: params.cached.snapshot.sections ? [...params.cached.snapshot.sections] : [],
     },
     global_metrics: { ...params.cached.globalMetrics },
     streaming_estimates: streamingEstimates,

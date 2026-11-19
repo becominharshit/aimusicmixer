@@ -42,6 +42,13 @@ export interface AnalysisContext {
   user_reported_context?: UserReportedContext | null;
 }
 
+export interface SongSection {
+  label: string;
+  start_sec: number;
+  end_sec: number;
+  avg_lufs: number;
+}
+
 export interface AudioMetadata {
   filename: string;
   duration_sec: number;
@@ -51,6 +58,8 @@ export interface AudioMetadata {
   playback_proxy_url: string;
   waveform_peaks: number[][];
   clipping_timestamps_sec: number[];
+  bpm?: number | null;
+  sections?: SongSection[];
 }
 
 export interface GlobalMetrics {
@@ -63,6 +72,7 @@ export interface GlobalMetrics {
   crest_factor_db: number;
   plr_db?: number;
   psr_db: number;
+  transient_punch_db?: number | null;
   phase_correlation_avg: number;
   low_end_phase_correlation?: number;
   stereo_width_ratio: number;
@@ -236,11 +246,17 @@ export interface MentorAction {
   verification_step: string;
 }
 
+export interface MentorChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface MentorRequest {
   allow_metrics_ai: boolean;
   allow_audio_ai: boolean;
   allow_training_opt_in: boolean;
   question: string;
+  conversation_history?: MentorChatTurn[];
 }
 
 export interface MentorResponse {

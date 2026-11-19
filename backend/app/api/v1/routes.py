@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import copy
+import hashlib
+import hmac
 import json
 import shutil
 import tempfile
@@ -59,9 +62,10 @@ compat_router = APIRouter(tags=["compat"])
 
 VALID_VISION_TAGS: set[str] = {"punchy", "warm", "aggressive", "wide", "dynamic"}
 
-# In-memory per-IP sliding-window rate limiter
+# In-memory per-IP / per-authenticated-user sliding-window rate limiter with periodic pruning
 _rate_lock = threading.Lock()
 _rate_buckets: dict[tuple[str, str], list[float]] = {}
+_rate_last_prune: float = 0.0
 
 # In-memory cache for static demo fixture DSP results
 _demo_cache_lock = threading.Lock()
@@ -70,17 +74,95 @@ _demo_ref_cache: dict[str, tuple[float, dict, bytes, str]] = {}
 _demo_stem_cache: dict[str, tuple[tuple[tuple[str, float], ...], StemAnalysis]] = {}
 
 
+def _b64url_decode(segment: str) -> bytes:
+    padding = "=" * (-len(segment) % 4)
+    return base64.urlsafe_b64decode(segment + padding)
+
+
+def _extract_authenticated_subject(request: Request) -> str | None:
+    """Optionally identify a signed-in Supabase user from Bearer JWT for higher rate-limit quota."""
+    auth_header = (request.headers.get("authorization") or "").strip()
+    if not auth_header.lower().startswith("bearer "):
+        return None
+    token = auth_header[7:].strip()
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        header = json.loads(_b64url_decode(parts[0]))
+        payload = json.loads(_b64url_decode(parts[1]))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    sub = payload.get("sub")
+    if not isinstance(sub, str) or not sub.strip():
+        return None
+    exp = payload.get("exp")
+    if isinstance(exp, (int, float)) and exp < time.time():
+        return None
+
+    secret = settings.supabase_jwt_secret.strip()
+    if secret:
+        if header.get("alg") != "HS256":
+            return None
+        signing_input = f"{parts[0]}.{parts[1]}".encode("ascii")
+        expected_sig = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
+        try:
+            actual_sig = _b64url_decode(parts[2])
+        except Exception:
+            return None
+        if not hmac.compare_digest(expected_sig, actual_sig):
+            return None
+
+    digest = hashlib.sha256(sub.encode("utf-8")).hexdigest()[:16]
+    return f"user:{digest}"
+
+
+def _extract_client_ip(request: Request) -> str:
+    """Extract the real external client IP from X-Forwarded-For behind Render/Vercel proxies."""
+    xff = (request.headers.get("x-forwarded-for") or "").strip()
+    if xff:
+        for hop in xff.split(","):
+            ip = hop.strip()
+            if ip:
+                return ip
+    x_real = (request.headers.get("x-real-ip") or "").strip()
+    if x_real:
+        return x_real
+    return request.client.host if request.client else "unknown"
+
+
+def _prune_rate_buckets(now: float, window: float) -> None:
+    global _rate_last_prune
+    if (now - _rate_last_prune) < max(window, 30.0) and len(_rate_buckets) < 512:
+        return
+    _rate_last_prune = now
+    stale_keys = [
+        k for k, timestamps in _rate_buckets.items() if not timestamps or (now - timestamps[-1]) >= window
+    ]
+    for k in stale_keys:
+        _rate_buckets.pop(k, None)
+
+
 def enforce_rate_limit(bucket: str):
     def _dependency(request: Request) -> None:
-        client_host = request.client.host if request.client else "unknown"
+        auth_subject = _extract_authenticated_subject(request)
+        identity = auth_subject or _extract_client_ip(request)
         now = time.monotonic()
         window = float(settings.rate_limit_window_seconds)
-        limit = settings.rate_limit_max_requests
-        key = (client_host, bucket)
+        limit = (
+            settings.rate_limit_auth_max_requests
+            if auth_subject is not None
+            else settings.rate_limit_max_requests
+        )
+        key = (identity, bucket)
         with _rate_lock:
+            _prune_rate_buckets(now, window)
             hits = [ts for ts in _rate_buckets.get(key, []) if (now - ts) < window]
             if len(hits) >= limit:
                 retry_after = max(1, int(window - (now - hits[0])))
+                _rate_buckets[key] = hits
                 raise HTTPException(
                     status_code=429,
                     detail=f"Rate limit exceeded for {bucket}. Please wait {retry_after}s before retrying.",
@@ -252,6 +334,7 @@ def _build_reference_payload(
         true_peak_dbtp=peaks.true_peak_dbtp,
         short_term_max_lufs=loudness.short_term_max_lufs,
         integrated_lufs=loudness.integrated_lufs,
+        sample_rate=loaded.sample_rate,
     )
     genre: GenreType = rec.primary_report.context.genre if rec.primary_report else "electronic"
     spectral = compute_spectral_profile(loaded.samples, loaded.sample_rate, genre=genre)
@@ -273,6 +356,7 @@ def _build_reference_payload(
         crest_factor_db=dynamics.crest_factor_db,
         plr_db=dynamics.plr_db,
         psr_db=dynamics.psr_db,
+        transient_punch_db=dynamics.transient_punch_db,
         phase_correlation_avg=stereo.phase_correlation_avg,
         low_end_phase_correlation=stereo.low_end_phase_correlation,
         stereo_width_ratio=stereo.stereo_width_ratio,
@@ -413,6 +497,8 @@ def _instantiate_report_from_cached_demo(
             playback_proxy_url=f"/api/v1/sessions/{session_id}/proxy/{actual_proxy_name}",
             waveform_peaks=loaded.waveform_peaks,
             clipping_timestamps_sec=list(snapshot.peaks.clipping_timestamps_sec),
+            bpm=snapshot.bpm,
+            sections=copy.deepcopy(snapshot.sections),
         ),
         global_metrics=copy.deepcopy(global_metrics),
         streaming_estimates=streaming_estimates,
@@ -426,7 +512,11 @@ def _instantiate_report_from_cached_demo(
     return report, proxy_path
 
 
-@router.post("/sessions/demo", response_model=AnalysisReport)
+@router.post(
+    "/sessions/demo",
+    response_model=AnalysisReport,
+    dependencies=[Depends(enforce_rate_limit("demo"))],
+)
 def create_demo_session(
     genre: GenreType = Form("electronic"),
     stage: StageType = Form("unmastered_mix"),
@@ -802,7 +892,11 @@ def compare_demo_revised_mix(session_id: str) -> AnalysisReport:
     return rec.primary_report
 
 
-@router.post("/sessions/{session_id}/context", response_model=AnalysisReport)
+@router.post(
+    "/sessions/{session_id}/context",
+    response_model=AnalysisReport,
+    dependencies=[Depends(enforce_rate_limit("context"))],
+)
 def update_user_reported_context(
     session_id: str,
     payload: ContextUpdateRequest,
@@ -877,6 +971,7 @@ def standalone_ai_mentor(payload: MentorStandaloneRequest) -> MentorResponse:
         allow_audio_ai=payload.allow_audio_ai,
         allow_training_opt_in=payload.allow_training_opt_in,
         question=payload.question,
+        conversation_history=payload.conversation_history,
     )
     if payload.session_id:
         rec = session_store.get_session(payload.session_id)
@@ -902,6 +997,7 @@ def standalone_ai_mentor(payload: MentorStandaloneRequest) -> MentorResponse:
             allow_audio_ai=False,
             allow_training_opt_in=req.allow_training_opt_in,
             question=req.question,
+            conversation_history=req.conversation_history,
         )
     return generate_mentor_advice(report=payload.report, request=req)
 

@@ -11,7 +11,7 @@ services:
       - key: ALLOWED_ORIGIN_REGEX
         value: ^https://[a-zA-Z0-9-]+\.vercel\.app$
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-4-hydrogen
       - key: GEMINI_API_KEY
         sync: false
       - key: PYTHONUNBUFFERED

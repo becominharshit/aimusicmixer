@@ -23,6 +23,7 @@ export async function POST(request: Request) {
       allow_audio_ai?: boolean;
       allow_training_opt_in?: boolean;
       question?: string;
+      conversation_history?: Array<{ role: "user" | "assistant"; content: string }>;
     };
 
     let req: MentorRequest = {
@@ -30,6 +31,16 @@ export async function POST(request: Request) {
       allow_audio_ai: Boolean(body.allow_audio_ai),
       allow_training_opt_in: Boolean(body.allow_training_opt_in),
       question: String(body.question ?? ""),
+      conversation_history: Array.isArray(body.conversation_history)
+        ? body.conversation_history
+            .filter(
+              (t) =>
+                t &&
+                (t.role === "user" || t.role === "assistant") &&
+                typeof t.content === "string"
+            )
+            .map((t) => ({ role: t.role, content: t.content.slice(0, 2000) }))
+        : [],
     };
 
     if (body.session_id) {

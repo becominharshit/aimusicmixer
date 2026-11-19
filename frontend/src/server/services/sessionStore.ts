@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import type { AnalysisReport, BandName, GlobalMetrics, TimeSeries } from "@/types/report";
+import type { AnalysisReport, BandName, GlobalMetrics, SongSection, TimeSeries } from "@/types/report";
 import { serverConfig } from "../config";
 import type { DynamicsResult } from "../dsp/dynamics";
 import { type LoadedAudio, loadAudioFile } from "../dsp/ingest";
@@ -19,6 +19,8 @@ export interface CachedDspSnapshot {
   spectral: SpectralAnalysisResult;
   stereo: StereoResult;
   bandEnergiesDb: Record<BandName, number>;
+  bpm?: number | null;
+  sections?: SongSection[];
 }
 
 export interface SessionRecord {
@@ -59,6 +61,7 @@ class SessionStore {
   readonly maxDiskSessions: number;
   private sessions = new Map<string, SessionRecord>();
   private rateBuckets = new Map<string, number[]>();
+  private rateLastPruneMs = 0;
   readonly demoMixCache = new Map<string, DemoMixCacheEntry>();
   readonly demoRefCache = new Map<string, DemoRefCacheEntry>();
 
@@ -69,11 +72,30 @@ class SessionStore {
     fs.mkdirSync(this.rootDir, { recursive: true });
   }
 
-  checkRateLimit(clientIp: string, bucket: string): { allowed: boolean; retryAfterSec: number } {
-    const key = `${clientIp}:${bucket}`;
+  private pruneRateBuckets(now: number, windowMs: number): void {
+    if (now - this.rateLastPruneMs < Math.max(windowMs, 30_000) && this.rateBuckets.size < 512) {
+      return;
+    }
+    this.rateLastPruneMs = now;
+    for (const [key, timestamps] of this.rateBuckets.entries()) {
+      if (timestamps.length === 0 || now - timestamps[timestamps.length - 1] >= windowMs) {
+        this.rateBuckets.delete(key);
+      }
+    }
+  }
+
+  checkRateLimit(
+    identity: string,
+    bucket: string,
+    isAuthenticated = false
+  ): { allowed: boolean; retryAfterSec: number } {
+    const key = `${identity}:${bucket}`;
     const now = Date.now();
     const windowMs = serverConfig.rateLimitWindowSeconds * 1000;
-    const limit = serverConfig.rateLimitMaxRequests;
+    const limit = isAuthenticated
+      ? serverConfig.rateLimitAuthMaxRequests
+      : serverConfig.rateLimitMaxRequests;
+    this.pruneRateBuckets(now, windowMs);
     const hits = (this.rateBuckets.get(key) ?? []).filter((ts) => now - ts < windowMs);
     if (hits.length >= limit) {
       const retryAfterSec = Math.max(1, Math.ceil((windowMs - (now - hits[0])) / 1000));
