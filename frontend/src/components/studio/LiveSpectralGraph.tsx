@@ -18,21 +18,22 @@ const MAX_HZ = 20000;
 const BAND_CENTERS_HZ = [40, 120, 420, 1600, 5000, 12500];
 
 function hzToX(hz: number, width: number): number {
-  const ratio = Math.log10(Math.max(MIN_HZ, Math.min(MAX_HZ, hz)) / MIN_HZ) / Math.log10(MAX_HZ / MIN_HZ);
+  const ratio =
+    Math.log10(Math.max(MIN_HZ, Math.min(MAX_HZ, hz)) / MIN_HZ) /
+    Math.log10(MAX_HZ / MIN_HZ);
   return ratio * width;
 }
 
 function dbToNorm(db: number): number {
-  // Map typical -54 dB .. -6 dB band energy into 0.06 .. 0.94
   return Math.max(0.06, Math.min(0.95, (db + 54) / 48));
 }
 
 function barColorForIndex(i: number, total: number): string {
   const t = i / Math.max(1, total - 1);
-  if (t < 0.2) return "#FF4D3D"; // Sub/Low Vermilion
-  if (t < 0.42) return "#F5A623"; // Low-Mid Amber
-  if (t < 0.78) return "#00D9A3"; // Mids/Presence Mint
-  return "#2D6BFF"; // Air Cobalt
+  if (t < 0.2) return "#E5483A"; // Sub/Low Vermilion
+  if (t < 0.42) return "#E89B2D"; // Low-Mid Analog Amber
+  if (t < 0.78) return "#22C58B"; // Mids/Presence Calibrated Sage
+  return "#3B82F6"; // Air Cobalt
 }
 
 export function LiveSpectralGraph({
@@ -89,7 +90,10 @@ export function LiveSpectralGraph({
       const width = Math.max(220, Math.floor(rect.width));
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-      if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+      if (
+        canvas.width !== Math.floor(width * dpr) ||
+        canvas.height !== Math.floor(height * dpr)
+      ) {
         canvas.width = Math.floor(width * dpr);
         canvas.height = Math.floor(height * dpr);
       }
@@ -102,9 +106,9 @@ export function LiveSpectralGraph({
       ctx.clearRect(0, 0, width, height);
 
       const isDark = document.documentElement.classList.contains("dark");
-      const bg = isDark ? "#0D1017" : "#F0ECE3";
+      const bg = isDark ? "#0B0D12" : "#EAE4D7";
       const grid = isDark ? "rgba(255,255,255,0.06)" : "rgba(17,19,24,0.08)";
-      const labelColor = isDark ? "#788094" : "#5D6575";
+      const labelColor = isDark ? "#6B7280" : "#5D6575";
       const padBottom = 20;
       const plotH = Math.max(40, height - padBottom - 8);
       const plotTop = 8;
@@ -116,7 +120,7 @@ export function LiveSpectralGraph({
       const ticks = [60, 250, 1000, 4000, 16000];
       ctx.strokeStyle = grid;
       ctx.lineWidth = 1;
-      ctx.font = "10px var(--font-mono), monospace";
+      ctx.font = "10px 'JetBrains Mono', monospace";
       ctx.fillStyle = labelColor;
       ctx.textAlign = "center";
 
@@ -147,8 +151,10 @@ export function LiveSpectralGraph({
 
         ordered.forEach((b, idx) => {
           const x = hzToX(BAND_CENTERS_HZ[idx] ?? 1000, width);
-          const lowDb = typeof b.genre_target_low_db === "number" ? b.genre_target_low_db : b.energy_db - 3;
-          const highDb = typeof b.genre_target_high_db === "number" ? b.genre_target_high_db : b.energy_db + 3;
+          const lowDb =
+            typeof b.genre_target_low_db === "number" ? b.genre_target_low_db : b.energy_db - 3;
+          const highDb =
+            typeof b.genre_target_high_db === "number" ? b.genre_target_high_db : b.energy_db + 3;
           upperPoints.push({ x, y: plotTop + plotH * (1 - dbToNorm(highDb)) });
           lowerPoints.push({ x, y: plotTop + plotH * (1 - dbToNorm(lowDb)) });
         });
@@ -163,10 +169,10 @@ export function LiveSpectralGraph({
         }
         ctx.lineTo(0, lowerPoints[0].y);
         ctx.closePath();
-        ctx.fillStyle = isDark ? "rgba(0, 217, 163, 0.09)" : "rgba(0, 153, 115, 0.11)";
+        ctx.fillStyle = isDark ? "rgba(34, 197, 139, 0.08)" : "rgba(15, 143, 100, 0.10)";
         ctx.fill();
 
-        ctx.strokeStyle = isDark ? "rgba(0, 217, 163, 0.42)" : "rgba(0, 153, 115, 0.45)";
+        ctx.strokeStyle = isDark ? "rgba(34, 197, 139, 0.42)" : "rgba(15, 143, 100, 0.45)";
         ctx.lineWidth = 1.25;
         ctx.setLineDash([4, 3]);
         ctx.beginPath();
@@ -184,7 +190,7 @@ export function LiveSpectralGraph({
         ctx.setLineDash([]);
       }
 
-      // Compute 48 log-spaced bar magnitudes (either live FFT or deterministic static band curve)
+      // Compute 48 log-spaced bar magnitudes
       const binCount = studioAudioEngine.getSpectrumBinCount();
       if (!freqBufferRef.current || freqBufferRef.current.length !== binCount) {
         freqBufferRef.current = new Uint8Array(new ArrayBuffer(binCount));
@@ -204,14 +210,16 @@ export function LiveSpectralGraph({
         let level = 0;
         if (active && freqBufferRef.current) {
           const startBin = Math.max(1, Math.floor((f0 / nyquist) * binCount));
-          const endBin = Math.min(binCount - 1, Math.max(startBin, Math.ceil((f1 / nyquist) * binCount)));
+          const endBin = Math.min(
+            binCount - 1,
+            Math.max(startBin, Math.ceil((f1 / nyquist) * binCount))
+          );
           let maxVal = 0;
           for (let b = startBin; b <= endBin; b += 1) {
             if (freqBufferRef.current[b] > maxVal) maxVal = freqBufferRef.current[b];
           }
           level = Math.max(0.03, maxVal / 255);
         } else if (spectralBands.length >= 6) {
-          // Deterministic static interpolation from measured 6-band report when paused
           let nearest = spectralBands[0];
           let minDist = Infinity;
           for (let bIdx = 0; bIdx < 6; bIdx += 1) {
@@ -226,7 +234,6 @@ export function LiveSpectralGraph({
           level = 0.08;
         }
 
-        // Peak-hold physics
         if (level >= peaks[i]) {
           peaks[i] = level;
         } else {
@@ -239,7 +246,7 @@ export function LiveSpectralGraph({
         const color = barColorForIndex(i, BAR_COUNT);
 
         ctx.fillStyle = color;
-        ctx.globalAlpha = active ? 0.92 : 0.62;
+        ctx.globalAlpha = active ? 0.92 : 0.65;
         ctx.beginPath();
         ctx.roundRect(x, y, barW, barH, [2, 2, 0, 0]);
         ctx.fill();
@@ -247,7 +254,7 @@ export function LiveSpectralGraph({
         // Falling peak cap
         const capY = plotTop + plotH - Math.max(3, peaks[i] * plotH) - 2;
         ctx.globalAlpha = active ? 0.95 : 0.45;
-        ctx.fillStyle = isDark ? "#F5F2EB" : "#111318";
+        ctx.fillStyle = isDark ? "#F4F1EA" : "#111318";
         ctx.fillRect(x, Math.max(plotTop, capY), barW, 2);
       }
 
@@ -273,24 +280,27 @@ export function LiveSpectralGraph({
     >
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-[var(--studio-mint)]" />
-          <span className="tabular-telemetry text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-primary)]">
-            {compact ? "Live Spectrum · 20 Hz–20 kHz" : "Live 48-Band Spectral Analyzer"}
+          <Activity className="h-4 w-4 text-[var(--studio-mint)]" aria-hidden="true" />
+          <span className="text-xs font-semibold text-[var(--text-primary)]">
+            {compact ? "Live Spectrum" : "48-Band Live Spectral Analyzer"}
+          </span>
+          <span className="tabular-telemetry text-[11px] text-[var(--text-muted)]">
+            20 Hz–20 kHz
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 tabular-telemetry text-[10px] text-[var(--text-muted)]">
-            <span className="h-1.5 w-3 rounded-sm bg-[var(--studio-mint)]/45 border border-[var(--studio-mint)]" />
+        <div className="flex items-center gap-2.5">
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
+            <span className="h-1.5 w-3 rounded-xs bg-[var(--studio-mint)]/45 border border-[var(--studio-mint)]" />
             Genre Envelope
           </span>
           <span
-            className={`tabular-telemetry rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+            className={`tabular-telemetry rounded px-1.5 py-0.5 text-[10px] font-semibold ${
               isPlaying
                 ? "bg-[var(--studio-mint-soft)] text-[var(--studio-mint)]"
                 : "bg-[var(--bg-inset)] text-[var(--text-muted)]"
             }`}
           >
-            {isPlaying ? "60 FPS LIVE" : "MEASURED HOLD"}
+            {isPlaying ? "60 FPS LIVE" : "MEASURED"}
           </span>
         </div>
       </div>

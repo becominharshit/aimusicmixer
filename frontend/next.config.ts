@@ -44,7 +44,7 @@ const securityHeaders = [
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data: blob: https://*.supabase.co",
       "media-src 'self' blob: data: https://*.supabase.co https://*.onrender.com http://localhost:* http://127.0.0.1:*",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.onrender.com https://fonts.googleapis.com https://fonts.gstatic.com http://localhost:* http://127.0.0.1:*",
+      "connect-src 'self' blob: https://*.supabase.co wss://*.supabase.co https://*.onrender.com https://fonts.googleapis.com https://fonts.gstatic.com http://localhost:* http://127.0.0.1:*",
       "worker-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",

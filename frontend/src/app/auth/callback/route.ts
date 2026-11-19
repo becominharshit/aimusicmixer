@@ -13,10 +13,10 @@ function resolvePublicOrigin(request: Request, requestUrl: URL): string {
 }
 
 function sanitizeNextPath(next: string | null): string {
-  if (!next) return "/";
+  if (!next) return "/studio";
   const trimmed = next.trim();
   if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.includes("\\")) {
-    return "/";
+    return "/studio";
   }
   return trimmed;
 }

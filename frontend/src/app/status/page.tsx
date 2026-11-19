@@ -135,7 +135,7 @@ export default function SystemStatusPage() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--studio-mint)] hover:text-[var(--text-primary)]"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Back to Studio
+              Back to MixBench
             </Link>
             <div className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-[var(--studio-mint)]" />

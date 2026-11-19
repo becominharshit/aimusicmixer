@@ -68,12 +68,13 @@ export function WorkspaceSubNav({
       : "Offline Ready";
 
   return (
-    <div className="no-print border-b border-[var(--border-hairline)] bg-[var(--bg-surface)]">
-      <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-6">
+    <div className="no-print relative z-20 border-b border-[var(--border-hairline)] bg-[var(--bg-surface)]">
+      <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2.5 px-3 py-2.5 sm:px-6">
         <nav
+          role="tablist"
           aria-label="MixBench workflow sections"
           data-testid="workspace-subnav"
-          className="relative inline-flex max-w-full flex-nowrap items-center gap-1 overflow-x-auto bg-[var(--bg-inset)] p-1 hairline-border squircle-inner"
+          className="relative inline-flex max-w-full flex-nowrap items-center gap-1 overflow-x-auto rounded-[12px] bg-[var(--bg-inset)] p-1 hairline-border lg:overflow-visible"
         >
           {tabs.map((tab) => {
             const active = activeTab === tab.id;
@@ -86,15 +87,17 @@ export function WorkspaceSubNav({
                 aria-selected={active}
                 whileTap={TACTILE_TAP}
                 onClick={() => onChangeTab(tab.id)}
-                className={`relative z-10 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-xs font-medium squircle-inner cursor-pointer transition-colors ${
-                  active ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                className={`relative z-10 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-3.5 py-1.5 text-xs font-medium cursor-pointer transition-colors ${
+                  active
+                    ? "text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 }`}
               >
                 {active && (
                   <motion.span
                     layoutId="workspace-subnav-pill"
                     transition={STUDIO_SPRING}
-                    className="pointer-events-none absolute inset-0 -z-10 bg-[var(--bg-elevated)] active-hairline-border squircle-inner"
+                    className="pointer-events-none absolute inset-0 -z-10 rounded-[8px] bg-[var(--bg-elevated)] border border-[var(--border-active)]"
                   />
                 )}
                 <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--studio-mint)]" aria-hidden="true" />
@@ -119,11 +122,11 @@ export function WorkspaceSubNav({
           type="button"
           whileTap={TACTILE_TAP}
           onClick={onOpenMentor}
-          className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap bg-[var(--studio-mint)] px-3.5 py-1.5 text-xs font-semibold text-[#0B0D11] hover:brightness-105 squircle-inner cursor-pointer transition-all"
+          className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap bg-[var(--studio-mint)] px-3.5 py-1.5 text-xs font-semibold text-[#090B0E] hover:brightness-105 squircle-inner cursor-pointer transition-[filter,transform]"
         >
           <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>AI Mix Mentor</span>
-          <span className="shrink-0 rounded-md bg-black/15 px-2 py-0.5 text-[10px] font-semibold text-[#0B0D11]">
+          <span className="shrink-0 rounded-md bg-black/15 px-2 py-0.5 text-[10px] font-semibold text-[#090B0E]">
             {mentorBadge}
           </span>
         </motion.button>

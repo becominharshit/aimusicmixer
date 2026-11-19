@@ -1,3 +1,5 @@
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+
 export type AudioSourceSlot = "primary" | "reference" | "revised";
 export type StereoMode = "stereo" | "mono";
 export type DeviceProfile = "full" | "smartphone" | "laptop";
@@ -354,6 +356,20 @@ export class StudioAudioEngine {
     this.emit();
   }
 
+  async loadFileSlot(slot: AudioSourceSlot, file: File, lufs: number | null): Promise<void> {
+    const ctx = this.ensureGraph();
+    const arrayBuffer = await file.arrayBuffer();
+    const decoded = await ctx.decodeAudioData(arrayBuffer);
+    this.slots[slot].buffer = null;
+    this.slots[slot] = { buffer: decoded, lufs, url: `file:${file.name}:${file.size}` };
+    if (slot === "primary" && this.loopEndSec <= 0) {
+      this.loopStartSec = 0;
+      this.loopEndSec = decoded.duration;
+    }
+    this.applyLoudnessGain(false);
+    this.emit();
+  }
+
   async loadSlot(slot: AudioSourceSlot, url: string, lufs: number | null): Promise<void> {
     if (this.slots[slot].url === url && this.slots[slot].buffer) {
       this.slots[slot].lufs = lufs;
@@ -363,7 +379,28 @@ export class StudioAudioEngine {
     }
 
     const ctx = this.ensureGraph();
-    const res = await fetch(url);
+    const headers: Record<string, string> = {};
+    const isApiProxyUrl =
+      !url.startsWith("blob:") &&
+      !url.includes("supabase.co/storage") &&
+      (url.startsWith("/") || url.includes("/api/v1/sessions/"));
+
+    if (isApiProxyUrl && typeof window !== "undefined") {
+      try {
+        const supabase = getSupabaseBrowserClient();
+        if (supabase) {
+          const { data } = await supabase.auth.getSession();
+          const token = data.session?.access_token;
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
+        }
+      } catch {
+        // Proceed without Authorization header
+      }
+    }
+
+    const res = await fetch(url, Object.keys(headers).length > 0 ? { headers } : undefined);
     if (!res.ok) {
       throw new Error(`Could not fetch audio proxy for ${slot} (${res.status}).`);
     }

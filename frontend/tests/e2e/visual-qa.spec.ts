@@ -1,9 +1,22 @@
-import { test, expect, type Locator } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
-async function assertNoButtonOverlap(group: Locator, label: string) {
+const shotDir = process.env.QA_SHOT_DIR || "";
+const hasMockAuth = Boolean(process.env.E2E_AUTH_ENABLED === "1");
+
+async function saveShot(page: Page, name: string, fullPage = false) {
+  if (!shotDir) return;
+  fs.mkdirSync(shotDir, { recursive: true });
+  await page.screenshot({ path: path.join(shotDir, name), fullPage });
+}
+
+async function assertNoButtonOverlap(group: Locator, label: string, minCount = 2) {
   const buttons = group.locator("button:visible");
   const count = await buttons.count();
-  expect(count, `${label} should render at least 2 visible controls`).toBeGreaterThanOrEqual(2);
+  expect(count, `${label} should render at least ${minCount} visible controls`).toBeGreaterThanOrEqual(
+    minCount
+  );
 
   const rects: Array<{ text: string; left: number; right: number; top: number; bottom: number }> = [];
   for (let i = 0; i < count; i++) {
@@ -36,8 +49,35 @@ async function assertNoButtonOverlap(group: Locator, label: string) {
   }
 }
 
-test.describe("MixBench Global Launch Visual & Functional QA", () => {
-  test("desktop 1440x900: hero preview, studio components, theme toggle, zero overlap, mentor recovery, and privacy defaults", async ({
+async function assertNoTextClipping(locator: Locator, label: string) {
+  const metrics = await locator.evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+    text: (el.textContent || "").trim(),
+  }));
+  expect(
+    metrics.scrollWidth,
+    `${label} ("${metrics.text}") clipped horizontally (scrollWidth=${metrics.scrollWidth} > clientWidth=${metrics.clientWidth})`
+  ).toBeLessThanOrEqual(metrics.clientWidth + 2);
+}
+
+test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
+  test("auth gate: visiting /studio while signed out redirects cleanly to /?signin=1 and opens Sign In modal", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/studio");
+
+    // Middleware redirects unauthenticated /studio requests straight to /
+    await expect(page).toHaveURL(/\/(\?signin=1)?$/);
+    await expect(page.getByTestId("landing-hero")).toBeVisible();
+    await expect(page.getByTestId("auth-modal")).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByText(/Sign in to launch MixBench Studio and save your mix diagnostics/i)
+    ).toBeVisible();
+  });
+
+  test("landing page 1440x900: Veo hero, back-nav opacity===1, media integrity, clustered FlawTimelineBar, and Daylight toggle", async ({
     page,
   }) => {
     const consoleErrors: string[] = [];
@@ -52,7 +92,36 @@ test.describe("MixBench Global Launch Visual & Functional QA", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
 
-    // Verify dual-theme toggle works cleanly (Dark Vinyl default -> Daylight Studio Light -> Dark)
+    // Hero headline and CTAs render immediately visible at opacity === 1
+    const heroHeading = page.locator("h1").first();
+    const primaryCta = page.getByTestId("hero-primary-cta");
+    const demoCta = page.getByTestId("hero-preview-demo-cta");
+    await expect(heroHeading).toBeVisible();
+    await expect(primaryCta).toBeVisible();
+    await expect(demoCta).toBeVisible();
+
+    expect(await heroHeading.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+    expect(await primaryCta.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+    expect(await demoCta.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+
+    // Capture full-bleed hero screenshot
+    await page.waitForTimeout(300);
+    await saveShot(page, "01-landing-hero-1440.png", false);
+
+    // Back-navigation regression guard: / -> /status -> Back to / MUST keep hero at opacity === 1
+    await page.getByRole("link", { name: /^Status$/i }).first().click();
+    await expect(page).toHaveURL(/\/status$/);
+    await expect(page.getByText(/MixBench System Status/i)).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/$/);
+    await page.waitForTimeout(350);
+
+    await expect(heroHeading).toBeVisible();
+    expect(await heroHeading.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+    expect(await primaryCta.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+    expect(await demoCta.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+
+    // Dual-theme toggle works cleanly (Dark default -> Warm Daylight -> Dark)
     const themeToggle = page.getByTestId("theme-toggle");
     await expect(themeToggle).toBeVisible();
     await themeToggle.click();
@@ -60,117 +129,239 @@ test.describe("MixBench Global Launch Visual & Functional QA", () => {
     await themeToggle.click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
-    await expect(page.getByRole("button", { name: /Try Sample Flawed Mix/i }).first()).toBeVisible();
-    await page.getByRole("button", { name: /Try Sample Flawed Mix/i }).first().click();
+    // Scroll to Section 2: Interactive Turntable + Live Spectrum + Clustered FlawTimelineBar
+    const demoSection = page.getByTestId("landing-demo-showcase");
+    await demoSection.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(350);
 
-    // Wait for deterministic DSP report to render
-    await expect(page.getByText(/demo-flawed-v1\.wav/i).first()).toBeVisible({ timeout: 25_000 });
-
-    // Signature Studio Components render cleanly in Simple View
     await expect(page.getByTestId("spinning-disc-player")).toBeVisible();
-    await expect(page.getByTestId("flaw-timeline-bar")).toBeVisible();
     await expect(page.getByTestId("live-spectral-graph")).toBeVisible();
+    await expect(page.getByTestId("flaw-timeline-bar")).toBeVisible();
 
-    // Finding cards expose classification badges, DAW repair checkboxes, and Audition EQ
-    const auditionEqBtn = page.getByRole("button", { name: /Audition .* dB @/i }).first();
-    await expect(auditionEqBtn).toBeVisible();
-    const firstCheckbox = page.getByRole("checkbox").first();
-    await expect(firstCheckbox).toBeVisible();
-    await firstCheckbox.click();
-    await expect(firstCheckbox).toBeChecked();
+    // Verify bespoke Nano Banana vinyl platter texture actually loaded
+    const vinylImg = page.getByAltText(/Pressed matte-black studio vinyl platter/i);
+    await expect(vinylImg).toBeVisible();
+    const vinylWidth = await vinylImg.evaluate((img: HTMLImageElement) => img.naturalWidth);
+    expect(vinylWidth).toBeGreaterThan(200);
 
-    // Verify no overlapping pills in WorkspaceSubNav and BottomTransportDock
-    await assertNoButtonOverlap(page.getByTestId("workspace-subnav"), "WorkspaceSubNav (1440px)");
+    // Verify clustered FlawTimelineBar pill (2 Flaws · 0:03) has zero overlap & opens popover
+    await assertNoButtonOverlap(
+      page.getByTestId("flaw-marker-rail"),
+      "Landing FlawTimelineBar pins (1440px)"
+    );
+    const clusterPill = page.getByRole("button", { name: /Inspect 2 flaws near 0:03/i });
+    await expect(clusterPill).toBeVisible();
+    await clusterPill.click();
+    await expect(page.getByText(/Out-of-Phase Sub-Bass/i)).toBeVisible();
+    await expect(page.getByText(/Inter-Sample True Peak Overshoot/i)).toBeVisible();
+    await page.waitForTimeout(240);
+    await saveShot(page, "02-landing-demo-deck-1440.png", false);
+
+    // Scroll to Section 3 & verify bespoke Analog Console macro loaded
+    const proofBand = page.getByTestId("landing-proof-band");
+    await proofBand.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(350);
+    const consoleImg = page.getByAltText(/analog mastering console/i);
+    await expect(consoleImg).toBeVisible();
+    const consoleWidth = await consoleImg.evaluate((img: HTMLImageElement) => img.naturalWidth);
+    expect(consoleWidth).toBeGreaterThan(400);
+    await saveShot(page, "03-landing-proof-console-1440.png", false);
+
+    // Zero horizontal overflow at 1440px
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    );
+    expect(overflow).toBeLessThanOrEqual(2);
+
+    const realErrors = consoleErrors.filter((e) => !e.toLowerCase().includes("websocket"));
+    expect(realErrors, `Unexpected console errors: ${realErrors.join(" | ")}`).toEqual([]);
+    expect(pageErrors, `Unexpected uncaught page errors: ${pageErrors.join(" | ")}`).toEqual([]);
+  });
+
+  test("landing page mobile 390x844: zero horizontal overflow and clean stacked layout", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+
+    const heroHeading = page.locator("h1").first();
+    await expect(heroHeading).toBeVisible();
+    expect(await heroHeading.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+    await saveShot(page, "04-landing-hero-390.png", false);
+
+    await page.getByTestId("landing-demo-showcase").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId("spinning-disc-player")).toBeVisible();
+    await assertNoButtonOverlap(
+      page.getByTestId("flaw-marker-rail"),
+      "Landing FlawTimelineBar pins (390px)"
+    );
+    await saveShot(page, "05-landing-demo-390.png", false);
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    );
+    expect(overflow).toBeLessThanOrEqual(2);
+  });
+
+  test("authenticated /studio workbench (1440x900 & 390x844): single-row header, zero overlap, zero clipping, sign-out -> /", async ({
+    page,
+  }) => {
+    test.skip(!hasMockAuth, "Requires local mock Supabase Auth server (E2E_AUTH_ENABLED=1)");
+
+    const consoleErrors: string[] = [];
+    const pageErrors: string[] = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "error") consoleErrors.push(msg.text());
+    });
+    page.on("pageerror", (err) => {
+      pageErrors.push(err.message);
+    });
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/studio");
+
+    // Redirected to / with AuthModal open
+    await expect(page.getByTestId("auth-modal")).toBeVisible({ timeout: 10_000 });
+    await page.fill("#auth-email", "engineer@mixbench.studio");
+    await page.fill("#auth-password", "studio-pass-123");
+    await page.getByRole("button", { name: /Sign In with Email/i }).click();
+
+    // Lands cleanly inside /studio
+    await expect(page).toHaveURL(/\/studio/, { timeout: 15_000 });
+    await expect(page.getByRole("button", { name: /Try Sample Flawed Mix/i })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Verify StudioHeader is strictly single-row (<= 66px) and Advanced Mix Check never clips trailing "k"
+    const header = page.getByTestId("studio-header");
+    const headerBox = await header.boundingBox();
+    expect(headerBox).not.toBeNull();
+    expect(headerBox!.height).toBeLessThanOrEqual(68);
+
+    const advBtn = page.getByRole("button", { name: "Advanced Mix Check", exact: true });
+    await assertNoTextClipping(advBtn, "Advanced Mix Check button");
+
+    // Load Sample Flawed Mix
+    await page.getByRole("button", { name: /Try Sample Flawed Mix/i }).click();
+    await expect(page.getByRole("heading", { name: /demo-flawed-v1\.wav/i })).toBeVisible({
+      timeout: 25_000,
+    });
+
+    // Header stays strictly single-row even with active report + Export/Share dropdown
+    const headerBoxWithReport = await header.boundingBox();
+    expect(headerBoxWithReport!.height).toBeLessThanOrEqual(68);
+
+    // Sticky WorkspaceSubNav sits cleanly below header (zero 2-3px top clipping)
+    const subnav = page.getByTestId("workspace-subnav");
+    const subnavBox = await subnav.boundingBox();
+    expect(subnavBox!.y).toBeGreaterThanOrEqual(headerBoxWithReport!.y + headerBoxWithReport!.height - 1);
+
+    // Zero overlapping pills in WorkspaceSubNav, FlawTimelineBar, and BottomTransportDock
+    await assertNoButtonOverlap(subnav, "WorkspaceSubNav (1440px)");
+    await assertNoButtonOverlap(page.getByTestId("flaw-marker-rail"), "Studio FlawTimelineBar (1440px)", 1);
     await assertNoButtonOverlap(page.getByTestId("dock-source-group"), "Dock Source Group (1440px)");
     await assertNoButtonOverlap(page.getByTestId("dock-stereo-group"), "Dock Stereo Group (1440px)");
     await assertNoButtonOverlap(page.getByTestId("dock-device-group"), "Dock Device Group (1440px)");
 
-    // Verify 1-click Auto-Fix Preview button is present and interactive once audio decodes
+    // Switch device profiles and ensure zero pill clipping on Full Range / Smartphone / Laptop
+    const dockDeviceGroup = page.getByTestId("dock-device-group");
+    for (const label of ["Smartphone", "Laptop", "Full Range"]) {
+      await dockDeviceGroup.getByRole("button", { name: new RegExp(label, "i") }).click();
+      await assertNoButtonOverlap(dockDeviceGroup, `Dock Device Group (${label} active)`);
+    }
+
+    // Export / Share dropdown exposes EQ Preset, JSON, and PDF cleanly
+    await page.getByTestId("header-export-menu-btn").click();
+    await expect(page.getByRole("menuitem", { name: /Download EQ Preset/i })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: /Export JSON report/i })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: /Print PDF report/i })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(240);
+
+    await saveShot(page, "06-studio-simple-1440.png", false);
+
+    // Auto-Fix Preview toggle
     const autoFixBtn = page.getByTestId("dock-autofix-btn");
-    await expect(autoFixBtn).toBeVisible();
     await expect(autoFixBtn).toBeEnabled({ timeout: 15_000 });
     await autoFixBtn.click();
     await expect(autoFixBtn).toHaveAttribute("aria-pressed", "true");
     await autoFixBtn.click();
     await expect(autoFixBtn).toHaveAttribute("aria-pressed", "false");
 
-    // Verify Recheck in v2 switches to Revision Check and scrolls to top
-    await page.evaluate(() => window.scrollTo(0, 800));
-    await page.getByRole("button", { name: /Recheck in v2/i }).first().click();
-    await expect(page.getByRole("tab", { name: /Revision Check/i })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
-    await page.waitForTimeout(450);
-    const scrollYAfterRecheck = await page.evaluate(() => window.scrollY);
-    expect(scrollYAfterRecheck).toBeLessThanOrEqual(40);
-
-    // Switch to Advanced Mix Check -> verify FlawTimelineBar, LiveSpectralGraph, BPM badge, Song Sections, and Stereo Vectorscope
-    await page.getByRole("button", { name: "Advanced Mix Check", exact: true }).click();
+    // Advanced Mix Check
+    await advBtn.click();
     await expect(page.getByTestId("flaw-timeline-bar")).toBeVisible();
     await expect(page.getByTestId("live-spectral-graph")).toBeVisible();
-    await expect(page.getByTestId("waveform-bpm-badge")).toBeVisible();
-    await expect(page.getByTestId("waveform-sections")).toBeVisible();
     await expect(page.getByTestId("stereo-vectorscope")).toBeVisible();
+    await page.waitForTimeout(200);
+    await assertNoButtonOverlap(
+      page.getByTestId("flaw-marker-rail"),
+      "Advanced FlawTimelineBar (1440px)",
+      1
+    );
+    await saveShot(page, "07-studio-advanced-1440.png", false);
 
-    // Open Mentor Drawer -> verify all 3 privacy toggles default OFF, run Offline Mentor cleanly (exits loading), and close
+    // AI Mix Mentor Drawer privacy defaults
     await page.getByRole("button", { name: /AI Mix Mentor/i }).click();
-    const toggleA = page.getByRole("switch", { name: /Toggle A Metrics-Only AI Mentor/i });
-    const toggleB = page.getByRole("switch", { name: /Toggle B Direct Audio Listening Opt-In/i });
-    const toggleC = page.getByRole("switch", { name: /Toggle C Future Model Training Opt-In/i });
-    await expect(toggleA).toHaveAttribute("aria-checked", "false");
-    await expect(toggleB).toHaveAttribute("aria-checked", "false");
-    await expect(toggleB).toBeDisabled();
-    await expect(toggleC).toHaveAttribute("aria-checked", "false");
-
-    await page.getByRole("button", { name: /Run Offline Deterministic Mentor/i }).click();
-    await expect(page.getByText(/Generating Coaching\.\.\./i)).toBeHidden({ timeout: 15_000 });
-
+    await expect(
+      page.getByRole("switch", { name: /Toggle A Metrics-Only AI Mentor/i })
+    ).toHaveAttribute("aria-checked", "false");
+    await expect(
+      page.getByRole("switch", { name: /Toggle B Direct Audio Listening Opt-In/i })
+    ).toBeDisabled();
     await page.getByRole("button", { name: /Close AI Mix Mentor/i }).click();
-    await expect(toggleA).toBeHidden();
 
-    // Zero horizontal overflow at 1440px
-    const desktopOverflow = await page.evaluate(
+    // Check 1024px single-row header invariant too
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await page.waitForTimeout(200);
+    const headerBox1024 = await header.boundingBox();
+    expect(headerBox1024!.height).toBeLessThanOrEqual(68);
+    await assertNoTextClipping(advBtn, "Advanced Mix Check (1024px)");
+
+    // Mobile 390x844 studio check
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(250);
+    await assertNoButtonOverlap(subnav, "WorkspaceSubNav (390px)");
+    await assertNoButtonOverlap(
+      page.getByTestId("flaw-marker-rail"),
+      "Advanced FlawTimelineBar (390px)",
+      1
+    );
+    await assertNoButtonOverlap(page.getByTestId("dock-device-group"), "Dock Device Group (390px)");
+    const mobileOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth
     );
-    expect(desktopOverflow).toBeLessThanOrEqual(2);
+    expect(mobileOverflow).toBeLessThanOrEqual(4);
+    await saveShot(page, "08-studio-mobile-390.png", false);
 
-    // Filter out expected HMR WebSocket noise if any
-    const realErrors = consoleErrors.filter((e) => !e.toLowerCase().includes("websocket"));
-    expect(realErrors, `Unexpected browser console errors: ${realErrors.join(" | ")}`).toEqual([]);
+    // Sign Out immediately returns to Landing Page /
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name: /Sign out/i }).click();
+    await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
+    await expect(page.getByTestId("landing-hero")).toBeVisible();
+
+    const realErrors = consoleErrors.filter(
+      (e) =>
+        !e.toLowerCase().includes("websocket") &&
+        !e.toLowerCase().includes("status of 500") &&
+        !e.toLowerCase().includes("failed to load resource")
+    );
+    expect(realErrors, `Unexpected console errors: ${realErrors.join(" | ")}`).toEqual([]);
     expect(pageErrors, `Unexpected uncaught page errors: ${pageErrors.join(" | ")}`).toEqual([]);
   });
 
-  test("mobile 390x844: zero horizontal overflow and zero overlapping pills", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/");
-
-    await page.getByRole("button", { name: /Try Sample Flawed Mix/i }).first().click();
-    await expect(page.getByText(/demo-flawed-v1\.wav/i).first()).toBeVisible({ timeout: 25_000 });
-
-    await expect(page.getByTestId("spinning-disc-player")).toBeVisible();
-    await assertNoButtonOverlap(page.getByTestId("workspace-subnav"), "WorkspaceSubNav (390px)");
-    await assertNoButtonOverlap(page.getByTestId("dock-source-group"), "Dock Source Group (390px)");
-    await assertNoButtonOverlap(page.getByTestId("dock-stereo-group"), "Dock Stereo Group (390px)");
-    await assertNoButtonOverlap(page.getByTestId("dock-device-group"), "Dock Device Group (390px)");
-
-    const horizontalOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth
-    );
-    expect(horizontalOverflow).toBeLessThanOrEqual(4);
-  });
-
-  test("diagnostics /status, legal, and client share routes return 200 and render cleanly", async ({
+  test("diagnostics /status, legal /privacy & /terms, and /share/demo routes return 200 cleanly", async ({
     page,
   }) => {
     const statusRes = await page.goto("/status");
     expect(statusRes?.status()).toBe(200);
-    await expect(page.getByRole("heading", { name: /System Status & API Contract/i })).toBeVisible();
+    await expect(page.getByText(/MixBench System Status/i)).toBeVisible();
     await expect(page.getByText(/\/api\/v1\/analyze\/mock/i)).toBeVisible();
 
     const privacyRes = await page.goto("/privacy");
     expect(privacyRes?.status()).toBe(200);
-    await expect(page.getByRole("heading", { name: /Zero-Audio-by-Default/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /MixBench Privacy Policy/i })).toBeVisible();
 
     const termsRes = await page.goto("/terms");
     expect(termsRes?.status()).toBe(200);

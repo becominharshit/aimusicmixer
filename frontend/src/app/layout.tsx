@@ -3,9 +3,9 @@ import { MotionConfig } from "motion/react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MixBench — Privacy-First Mix & Mastering Learning Workbench",
+  title: "MixBench — Deterministic Mix & Mastering Diagnostics Studio",
   description:
-    "Learn mixing and mastering by doing mixing and mastering, powered by deterministic ITU-R BS.1770 / 4x True Peak DSP and opt-in Gemini 4 Hydrogen mentoring.",
+    "Hear every mix flaw and prove every fix with deterministic ITU-R BS.1770 loudness, 4x True Peak, 20–120 Hz sub-bass phase DSP, and privacy-first Gemini 4 Hydrogen studio coaching.",
 };
 
 const themeInitScript = `
@@ -37,7 +37,7 @@ export default function RootLayout({
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
         />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

@@ -96,7 +96,7 @@ export function SimpleView({
         : "text-[var(--studio-mint)]";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 py-4">
+    <div className="mx-auto max-w-6xl space-y-6 py-4">
       {/* Transparent Browser-Native Fallback Notice */}
       {isLocalPreview && (
         <div
@@ -176,35 +176,43 @@ export function SimpleView({
         <div className="flex flex-col justify-between gap-4 lg:col-span-7">
           <LiveSpectralGraph spectralBands={report.spectral_bands} height={192} />
 
-          {/* Measured Telemetry Strip (No Reductive Quality Scores) */}
+          {/* Measured Telemetry Strip (Single-Line Tabular Alignment) */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
-              <div className="text-[11px] text-[var(--text-secondary)]">Integrated Loudness</div>
-              <div className="mt-1 text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
+            <div className="min-w-0 bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
+              <div className="text-[11px] font-medium text-[var(--text-secondary)]">
+                Integrated Loudness
+              </div>
+              <div className="mt-1 whitespace-nowrap text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
                 {m.integrated_lufs.toFixed(1)}{" "}
                 <span className="text-[11px] font-normal text-[var(--text-muted)]">LUFS</span>
               </div>
             </div>
-            <div className="bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
-              <div className="text-[11px] text-[var(--text-secondary)]">4x True Peak</div>
-              <div className={`mt-1 text-lg font-semibold tabular-telemetry ${truePeakTone}`}>
-                {m.true_peak_dbtp >= 0 ? `+${m.true_peak_dbtp.toFixed(2)}` : m.true_peak_dbtp.toFixed(2)}{" "}
+            <div className="min-w-0 bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
+              <div className="text-[11px] font-medium text-[var(--text-secondary)]">
+                4x True Peak
+              </div>
+              <div className={`mt-1 whitespace-nowrap text-lg font-semibold tabular-telemetry ${truePeakTone}`}>
+                {m.true_peak_dbtp >= 0
+                  ? `+${m.true_peak_dbtp.toFixed(2)}`
+                  : m.true_peak_dbtp.toFixed(2)}{" "}
                 <span className="text-[11px] font-normal text-[var(--text-muted)]">dBTP</span>
               </div>
             </div>
-            <div className="bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
-              <div className="text-[11px] text-[var(--text-secondary)]">PLR / LRA</div>
-              <div className="mt-1 text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
+            <div className="min-w-0 bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
+              <div className="text-[11px] font-medium text-[var(--text-secondary)]">PLR / LRA</div>
+              <div className="mt-1 whitespace-nowrap text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
                 {plr.toFixed(1)}{" "}
                 <span className="text-[11px] font-normal text-[var(--text-muted)]">
                   dB / {m.loudness_range_lu.toFixed(1)} LU
                 </span>
               </div>
             </div>
-            <div className="bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
-              <div className="text-[11px] text-[var(--text-secondary)]">Phase Correlation</div>
+            <div className="min-w-0 bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
+              <div className="text-[11px] font-medium text-[var(--text-secondary)]">
+                Phase Correlation
+              </div>
               <div
-                className={`mt-1 text-lg font-semibold tabular-telemetry ${
+                className={`mt-1 whitespace-nowrap text-lg font-semibold tabular-telemetry ${
                   m.phase_correlation_avg < 0
                     ? "text-[var(--studio-vermilion)]"
                     : m.phase_correlation_avg < 0.35

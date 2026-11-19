@@ -39,6 +39,20 @@ from app.schemas.report import (
 from app.services import analyze_audio_to_report, session_store
 
 
+def _fake_request(headers: dict[str, str] | None = None, host: str = "127.0.0.1"):
+    return SimpleNamespace(headers=headers or {}, client=SimpleNamespace(host=host))
+
+
+def _make_unsigned_jwt(sub: str) -> str:
+    import base64
+
+    def _b64(obj: dict) -> str:
+        raw = json.dumps(obj, separators=(",", ":")).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+    return f"{_b64({'alg': 'none', 'typ': 'JWT'})}.{_b64({'sub': sub})}.sig"
+
+
 def test_health_and_mock_schema_contract() -> None:
     from app.main import root
 
@@ -63,7 +77,9 @@ def test_end_to_end_session_demo_stems_revision_mentor_and_cleanup() -> None:
     assert demo_v1.exists()
 
     # 1. Create real demo session via full deterministic DSP pipeline
+    req = _fake_request()
     report = create_demo_session(
+        request=req,  # type: ignore[arg-type]
         genre="electronic",
         stage="unmastered_mix",
         artist_vision='["punchy","wide"]',
@@ -78,19 +94,19 @@ def test_end_to_end_session_demo_stems_revision_mentor_and_cleanup() -> None:
 
     # Playback proxy file resolves cleanly via FileResponse route
     proxy_name = report.audio_metadata.playback_proxy_url.rsplit("/", 1)[-1]
-    proxy_resp = stream_playback_proxy(sid, proxy_name)
+    proxy_resp = stream_playback_proxy(sid, proxy_name, req)  # type: ignore[arg-type]
     assert proxy_resp.path.exists()
     assert proxy_resp.path.stat().st_size > 1024
 
     # 2. Load reference track -> includes full global_metrics & spectral_bands
-    ref_meta = load_demo_reference_track(sid)
+    ref_meta = load_demo_reference_track(sid, req)  # type: ignore[arg-type]
     assert ref_meta["reference_filename"] == "reference_track.wav"
     assert -25.0 <= ref_meta["integrated_lufs"] <= -5.0
     assert "global_metrics" in ref_meta
     assert len(ref_meta["spectral_bands"]) == 6
 
     # 3. Load aligned demo stems -> unlocks stem analysis with pairwise overlap
-    stem_report = load_demo_stems(sid)
+    stem_report = load_demo_stems(sid, req)  # type: ignore[arg-type]
     assert stem_report.context.has_user_stems is True
     assert stem_report.context.stem_count == 4
     assert stem_report.stem_analysis is not None
@@ -98,7 +114,7 @@ def test_end_to_end_session_demo_stems_revision_mentor_and_cleanup() -> None:
     assert len(stem_report.stem_analysis.overlap_matrix) >= 1
 
     # 4. Compare Mix v2 -> confirms measurable improvements & standalone /api/compare contract
-    v2_report = compare_demo_revised_mix(sid)
+    v2_report = compare_demo_revised_mix(sid, req)  # type: ignore[arg-type]
     assert v2_report.revision_comparison is not None
     assert v2_report.revision_comparison.metric_deltas.true_peak_dbtp_delta < 0.0
     assert any(
@@ -124,6 +140,7 @@ def test_end_to_end_session_demo_stems_revision_mentor_and_cleanup() -> None:
             bus_routing="Drum Bus -> Mix Bus",
             plugin_notes="Limiter bypassed",
         ),
+        req,  # type: ignore[arg-type]
     )
     assert ctx_report.context.genre == "rock"
     assert ctx_report.context.stage == "final_master"
@@ -139,6 +156,7 @@ def test_end_to_end_session_demo_stems_revision_mentor_and_cleanup() -> None:
                 allow_audio_ai=False,
                 allow_training_opt_in=False,
             ),
+            req,  # type: ignore[arg-type]
         )
     )
     assert mentor_resp.mode == "deterministic_fallback"
@@ -150,7 +168,7 @@ def test_end_to_end_session_demo_stems_revision_mentor_and_cleanup() -> None:
     assert all(eid in valid_ids for eid in mentor_resp.cited_evidence_ids)
 
     # 7. Clear session deletes temp files
-    cleared = clear_session(sid)
+    cleared = clear_session(sid, req)  # type: ignore[arg-type]
     assert cleared["deleted"] is True
     assert session_store.get_session(sid) is None
 
@@ -176,8 +194,10 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
 
     raw_bytes = demo_v1.read_bytes()
     upload = _MemUpload(raw_bytes, "demo-flawed-v1.wav")
+    req = _fake_request()
     report = _run_coro_sync(
         analyze_mix(
+            request=req,  # type: ignore[arg-type]
             file=upload,  # type: ignore[arg-type]
             genre="electronic",
             stage="unmastered_mix",
@@ -209,7 +229,9 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
             _MemUpload(p.read_bytes(), p.name)
             for p in sorted(stems_dir.glob("*.wav"))[:2]
         ]
-        stem_res = _run_coro_sync(analyze_stems_endpoint(files=stem_files, session_id=None))  # type: ignore[arg-type]
+        stem_res = _run_coro_sync(
+            analyze_stems_endpoint(request=req, files=stem_files, session_id=None)  # type: ignore[arg-type]
+        )
         assert stem_res.alignment_passed is True
         assert len(stem_res.stems) == 2
 
@@ -217,6 +239,7 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
         with pytest.raises(HTTPException) as exc:
             _run_coro_sync(
                 analyze_stems_endpoint(
+                    request=req,  # type: ignore[arg-type]
                     files=[_MemUpload(raw_bytes[:4096], "single.wav")],  # type: ignore[arg-type]
                     session_id=None,
                 )
@@ -232,7 +255,8 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
                     allow_audio_ai=True,
                     allow_training_opt_in=False,
                     question="What should I fix first?",
-                )
+                ),
+                req,  # type: ignore[arg-type]
             )
         )
         assert offline_advice.mode == "deterministic_fallback"
@@ -282,7 +306,8 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
                     allow_audio_ai=False,
                     allow_training_opt_in=False,
                     question="Verify clipping",
-                )
+                ),
+                req,  # type: ignore[arg-type]
             )
         )
         assert gemini_resp.mode == "gemini_metrics_only", gemini_resp.summary
@@ -293,7 +318,7 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
         assert captured.get("config").thinking_config is not None
         assert str(captured.get("config").thinking_config.thinking_level).lower().endswith("minimal")
     finally:
-        clear_session(report.session_id)
+        clear_session(report.session_id, req)  # type: ignore[arg-type]
 
 
 def test_corrupt_upload_rejected_and_missing_session_404(tmp_path) -> None:
@@ -312,7 +337,7 @@ def test_corrupt_upload_rejected_and_missing_session_404(tmp_path) -> None:
     shutil.rmtree(tmp_path, ignore_errors=True)
 
     with pytest.raises(HTTPException) as exc_info:
-        load_demo_stems("sess_nonexistent_999")
+        load_demo_stems("sess_nonexistent_999", _fake_request())  # type: ignore[arg-type]
     assert exc_info.value.status_code == 404
 
 
@@ -327,6 +352,7 @@ def test_oversized_upload_returns_413_and_cleans_up(monkeypatch) -> None:
     with pytest.raises(HTTPException) as exc_info:
         _run_coro_sync(
             analyze_mix(
+                request=_fake_request(),  # type: ignore[arg-type]
                 file=upload,  # type: ignore[arg-type]
                 genre="electronic",
                 stage="unmastered_mix",
@@ -366,7 +392,8 @@ def test_gemini_api_error_triggers_deterministic_fallback(monkeypatch) -> None:
                 allow_audio_ai=False,
                 allow_training_opt_in=False,
                 question="Help me fix clipping",
-            )
+            ),
+            _fake_request(),  # type: ignore[arg-type]
         )
     )
     assert resp.mode == "deterministic_fallback"
@@ -376,7 +403,9 @@ def test_gemini_api_error_triggers_deterministic_fallback(monkeypatch) -> None:
 
 def test_gemini_timeout_triggers_deterministic_fallback_without_blocking(monkeypatch) -> None:
     import time
+
     import google.genai as real_genai
+
     from app.ai import generate_mentor_advice_async
 
     mock_report = get_mock_report()
@@ -393,9 +422,9 @@ def test_gemini_timeout_triggers_deterministic_fallback_without_blocking(monkeyp
     monkeypatch.setattr(settings, "gemini_api_key", "test-key-123")
     monkeypatch.setattr(real_genai, "Client", HangingClient)
 
-    t0 = time.monotonic()
-    resp = _run_coro_sync(
-        generate_mentor_advice_async(
+    async def _timed_call():
+        started = time.monotonic()
+        result = await generate_mentor_advice_async(
             report=mock_report,
             request=MentorRequest(
                 allow_metrics_ai=True,
@@ -405,8 +434,9 @@ def test_gemini_timeout_triggers_deterministic_fallback_without_blocking(monkeyp
             ),
             timeout_sec=0.05,
         )
-    )
-    elapsed = time.monotonic() - t0
+        return result, time.monotonic() - started
+
+    resp, elapsed = _run_coro_sync(_timed_call())
     assert elapsed < 0.35
     assert resp.mode == "deterministic_fallback"
     assert resp.fallback_reason is not None and "Timeout" in resp.fallback_reason
@@ -432,8 +462,19 @@ def test_cors_and_memory_cap_configuration() -> None:
 
 
 def test_demo_session_cache_hit_populates_downstream_state() -> None:
-    first = create_demo_session(genre="electronic", stage="unmastered_mix", artist_vision='["punchy"]')
-    second = create_demo_session(genre="electronic", stage="unmastered_mix", artist_vision='["punchy"]')
+    req = _fake_request()
+    first = create_demo_session(
+        request=req,  # type: ignore[arg-type]
+        genre="electronic",
+        stage="unmastered_mix",
+        artist_vision='["punchy"]',
+    )
+    second = create_demo_session(
+        request=req,  # type: ignore[arg-type]
+        genre="electronic",
+        stage="unmastered_mix",
+        artist_vision='["punchy"]',
+    )
     try:
         assert first.session_id != second.session_id
         rec_second = session_store.get_session(second.session_id)
@@ -445,25 +486,27 @@ def test_demo_session_cache_hit_populates_downstream_state() -> None:
 
         # Downstream proxy stream and reference A/B work on cached demo session
         proxy_name = second.audio_metadata.playback_proxy_url.rsplit("/", 1)[-1]
-        proxy_resp = stream_playback_proxy(second.session_id, proxy_name)
+        proxy_resp = stream_playback_proxy(second.session_id, proxy_name, req)  # type: ignore[arg-type]
         assert proxy_resp.path.exists()
-        ref_meta = load_demo_reference_track(second.session_id)
+        ref_meta = load_demo_reference_track(second.session_id, req)  # type: ignore[arg-type]
         assert ref_meta["reference_filename"] == "reference_track.wav"
     finally:
-        clear_session(first.session_id)
-        clear_session(second.session_id)
+        clear_session(first.session_id, req)  # type: ignore[arg-type]
+        clear_session(second.session_id, req)  # type: ignore[arg-type]
 
 
 def test_proxy_aware_rate_limiter_uses_xff_and_auth_buckets() -> None:
     from app.api.v1.routes import _extract_client_rate_key
 
-    req_xff = SimpleNamespace(
-        headers={"x-forwarded-for": "203.0.113.42, 10.0.0.1"},
-        client=SimpleNamespace(host="127.0.0.1"),
+    req_xff = _fake_request(headers={"x-forwarded-for": "203.0.113.42, 10.0.0.1"})
+    key = _extract_client_rate_key(req_xff)  # type: ignore[arg-type]
+    assert key == "203.0.113.42"
+
+    req_auth = _fake_request(
+        headers={"authorization": f"Bearer {_make_unsigned_jwt('user-rate-001')}"}
     )
-    key, is_auth = _extract_client_rate_key(req_xff)  # type: ignore[arg-type]
-    assert key == "ip:203.0.113.42"
-    assert is_auth is False
+    auth_key = _extract_client_rate_key(req_auth)  # type: ignore[arg-type]
+    assert auth_key.startswith("user:")
 
 
 def test_gemini_minimal_thinking_level_retries_once_with_low(monkeypatch) -> None:
@@ -512,7 +555,8 @@ def test_gemini_minimal_thinking_level_retries_once_with_low(monkeypatch) -> Non
                 allow_audio_ai=False,
                 allow_training_opt_in=False,
                 question="Check low-mid buildup",
-            )
+            ),
+            _fake_request(),  # type: ignore[arg-type]
         )
     )
     assert resp.mode == "gemini_metrics_only"
@@ -526,6 +570,7 @@ def test_magic_byte_validation_rejects_disguised_non_audio_with_415() -> None:
     with pytest.raises(HTTPException) as exc_info:
         _run_coro_sync(
             analyze_mix(
+                request=_fake_request(),  # type: ignore[arg-type]
                 file=disguised_html,  # type: ignore[arg-type]
                 genre="electronic",
                 stage="unmastered_mix",
@@ -541,9 +586,11 @@ def test_magic_byte_validation_rejects_disguised_non_audio_with_415() -> None:
 def test_sha256_dedup_cache_and_finding_classifications() -> None:
     demo_v1 = Path(__file__).resolve().parents[2] / "frontend" / "public" / "demo" / "demo-flawed-v1.wav"
     raw_bytes = demo_v1.read_bytes()
+    req = _fake_request()
 
     r1 = _run_coro_sync(
         analyze_mix(
+            request=req,  # type: ignore[arg-type]
             file=_MemUpload(raw_bytes, "dup_check.wav"),  # type: ignore[arg-type]
             genre="electronic",
             stage="unmastered_mix",
@@ -555,6 +602,7 @@ def test_sha256_dedup_cache_and_finding_classifications() -> None:
     )
     r2 = _run_coro_sync(
         analyze_mix(
+            request=req,  # type: ignore[arg-type]
             file=_MemUpload(raw_bytes, "dup_check.wav"),  # type: ignore[arg-type]
             genre="electronic",
             stage="unmastered_mix",
@@ -570,14 +618,23 @@ def test_sha256_dedup_cache_and_finding_classifications() -> None:
         assert r1.global_metrics.true_peak_dbtp == r2.global_metrics.true_peak_dbtp
         assert all(f.classification in {"objective_defect", "stylistic_choice"} for f in r1.findings)
     finally:
-        clear_session(r1.session_id)
-        clear_session(r2.session_id)
+        clear_session(r1.session_id, req)  # type: ignore[arg-type]
+        clear_session(r2.session_id, req)  # type: ignore[arg-type]
 
 
 def test_session_ownership_enforces_403_across_users() -> None:
-    from app.api.v1.routes import _assert_session_owner
+    from app.api.v1.routes import _assert_session_access
+
+    req_owner = _fake_request(
+        headers={"authorization": f"Bearer {_make_unsigned_jwt('user-a-uuid')}"}
+    )
+    req_other = _fake_request(
+        headers={"authorization": f"Bearer {_make_unsigned_jwt('user-b-uuid')}"}
+    )
+    req_anon = _fake_request()
 
     report = create_demo_session(
+        request=req_owner,  # type: ignore[arg-type]
         genre="electronic",
         stage="unmastered_mix",
         artist_vision='["punchy"]',
@@ -585,25 +642,26 @@ def test_session_ownership_enforces_403_across_users() -> None:
     try:
         rec = session_store.get_session(report.session_id)
         assert rec is not None
-        rec.owner_user_id = "user-a-uuid"
+        assert rec.owner_user_id == "user-a-uuid"
 
         # Same owner succeeds
-        _assert_session_owner(rec, "user-a-uuid")
+        _assert_session_access(rec, req_owner)  # type: ignore[arg-type]
 
         # Different user or anonymous caller gets 403 Forbidden
         with pytest.raises(HTTPException) as exc_other:
-            _assert_session_owner(rec, "user-b-uuid")
+            _assert_session_access(rec, req_other)  # type: ignore[arg-type]
         assert exc_other.value.status_code == 403
 
         with pytest.raises(HTTPException) as exc_anon:
-            _assert_session_owner(rec, None)
+            _assert_session_access(rec, req_anon)  # type: ignore[arg-type]
         assert exc_anon.value.status_code == 403
     finally:
-        clear_session(report.session_id)
+        clear_session(report.session_id, req_owner)  # type: ignore[arg-type]
 
 
 def test_security_headers_middleware_attached() -> None:
     from starlette.testclient import TestClient
+
     from app.main import app
 
     client = TestClient(app)

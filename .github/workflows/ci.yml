@@ -39,7 +39,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm ci --workspaces=false
       - name: TypeScript typecheck
         run: npm run typecheck
       - name: ESLint
@@ -73,22 +73,33 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm ci --workspaces=false
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium
-      - name: Build production app
+      - name: Build production app with local mock auth target for E2E
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ""
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ""
+          NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock.sig"
         run: npm run build
-      - name: Run Playwright visual & layout QA suite (1440x900 & 390x844)
+      - name: Run Playwright visual & auth-gate QA suite (1440x900 & 390x844)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock.sig"
+          E2E_AUTH_ENABLED: "1"
         run: |
+          node tests/e2e/mock-supabase-auth.mjs &
+          MOCK_PID=$!
           npm run start &
           SERVER_PID=$!
-          npx wait-on http://127.0.0.1:3000 --timeout 30000 || sleep 5
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:54321/health >/dev/null && curl -sf http://127.0.0.1:3000 >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
           npx playwright test tests/e2e/visual-qa.spec.ts --reporter=list
           TEST_EXIT=$?
-          kill $SERVER_PID || true
+          kill $SERVER_PID $MOCK_PID || true
           exit $TEST_EXIT
       - name: Upload Playwright failure screenshots & traces
         if: failure()

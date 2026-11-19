@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -12,6 +13,8 @@ interface AuthModalProps {
   onOpenChange: (open: boolean) => void;
   initialError?: string | null;
   promptReason?: string | null;
+  redirectTo?: string;
+  onAuthSuccess?: () => void;
 }
 
 export function AuthModal({
@@ -19,7 +22,10 @@ export function AuthModal({
   onOpenChange,
   initialError = null,
   promptReason = null,
+  redirectTo = "/studio",
+  onAuthSuccess,
 }: AuthModalProps) {
+  const router = useRouter();
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,11 +44,20 @@ export function AuthModal({
 
   const configured = isSupabaseConfigured();
 
+  const completeSignIn = () => {
+    onOpenChange(false);
+    onAuthSuccess?.();
+    if (redirectTo) {
+      router.push(redirectTo);
+      router.refresh();
+    }
+  };
+
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     const supabase = getSupabaseBrowserClient();
     if (!supabase) {
-      setErrorMsg("Supabase environment variables are not configured.");
+      setErrorMsg("Supabase authentication is not configured in this environment.");
       return;
     }
 
@@ -59,19 +74,27 @@ export function AuthModal({
         if (error) {
           setErrorMsg(error.message);
         } else {
-          onOpenChange(false);
+          completeSignIn();
         }
       } else {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
+          options: {
+            emailRedirectTo:
+              typeof window !== "undefined"
+                ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`
+                : undefined,
+          },
         });
         if (error) {
           setErrorMsg(error.message);
         } else if (data.session) {
-          onOpenChange(false);
+          completeSignIn();
         } else {
-          setInfoMsg("Account created. Check your inbox to confirm your email address before signing in.");
+          setInfoMsg(
+            "Account created. Check your inbox to confirm your email address before signing in."
+          );
         }
       }
     } catch (err) {
@@ -87,12 +110,13 @@ export function AuthModal({
     setLoading(true);
     setErrorMsg(null);
     try {
+      const nextParam = encodeURIComponent(redirectTo || "/studio");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo:
             typeof window !== "undefined"
-              ? `${window.location.origin}/auth/callback`
+              ? `${window.location.origin}/auth/callback?next=${nextParam}`
               : undefined,
         },
       });
@@ -108,23 +132,30 @@ export function AuthModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby="auth-modal-desc" className="max-w-md space-y-4">
+      <DialogContent
+        aria-describedby="auth-modal-desc"
+        data-testid="auth-modal"
+        className="max-w-md space-y-4"
+      >
         <div className="space-y-1.5 pr-8">
           <DialogTitle className="font-display text-lg font-bold tracking-[-0.02em] text-[var(--text-primary)]">
-            {authMode === "signin" ? "Sign in to MixBench" : "Create MixBench Account"}
+            {authMode === "signin" ? "Sign in to MixBench Studio" : "Create MixBench Account"}
           </DialogTitle>
           <p id="auth-modal-desc" className="text-xs leading-relaxed text-[var(--text-secondary)]">
             {promptReason ||
-              "Optional cloud sync for saving Mix Analysis History across sessions, audio proxy playback, and persisting your privacy toggles. Anonymous mixing & DSP diagnostics remain unlocked without an account."}
+              "Sign in to launch MixBench Studio and save your mix diagnostics."}
           </p>
         </div>
 
         {!configured ? (
           <div className="bg-[var(--bg-inset)] p-4 text-xs text-[var(--text-secondary)] hairline-border squircle-inner space-y-1.5">
-            <div className="font-semibold text-[var(--text-primary)]">Cloud Persistence Disabled</div>
+            <div className="font-semibold text-[var(--text-primary)]">
+              Studio Authentication Not Configured
+            </div>
             <p>
               Set <code className="text-[var(--text-primary)]">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-              <code className="text-[var(--text-primary)]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to enable sign-in and cross-session mix history.
+              <code className="text-[var(--text-primary)]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to
+              enable MixBench Studio sign-in and private cloud mix history.
             </p>
             {errorMsg && (
               <div
@@ -174,7 +205,10 @@ export function AuthModal({
 
             <form onSubmit={handleEmailAuth} className="space-y-3">
               <div className="space-y-1">
-                <label htmlFor="auth-email" className="block text-xs font-medium text-[var(--text-primary)]">
+                <label
+                  htmlFor="auth-email"
+                  className="block text-xs font-medium text-[var(--text-primary)]"
+                >
                   Email
                 </label>
                 <input
@@ -189,7 +223,10 @@ export function AuthModal({
               </div>
 
               <div className="space-y-1">
-                <label htmlFor="auth-password" className="block text-xs font-medium text-[var(--text-primary)]">
+                <label
+                  htmlFor="auth-password"
+                  className="block text-xs font-medium text-[var(--text-primary)]"
+                >
                   Password
                 </label>
                 <input
@@ -241,7 +278,9 @@ export function AuthModal({
                 }}
                 className="font-medium text-[var(--studio-mint)] hover:underline cursor-pointer"
               >
-                {authMode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+                {authMode === "signin"
+                  ? "Need an account? Sign up"
+                  : "Already have an account? Sign in"}
               </button>
               <span className="inline-flex items-center gap-1 text-[11px]">
                 <ShieldCheck className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />

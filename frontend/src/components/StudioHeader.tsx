@@ -8,6 +8,7 @@ import {
   AlertCircle,
   Check,
   CheckCircle2,
+  ChevronDown,
   Download,
   History,
   Link2,
@@ -16,9 +17,8 @@ import {
   Moon,
   Printer,
   RefreshCw,
-  ShieldCheck,
+  Share2,
   Sliders,
-  Sparkles,
   Sun,
   Trash2,
   User,
@@ -26,6 +26,7 @@ import {
 import { deriveAutoFixEqBands } from "@/components/FindingCard";
 import { API_BASE_URL } from "@/lib/api";
 import { STUDIO_EASE, STUDIO_SPRING, TACTILE_TAP } from "@/lib/motion";
+import { getCurrentStudioTheme, toggleStudioTheme } from "@/lib/theme";
 import { formatTimecode } from "@/lib/utils";
 import type { AnalysisReport, BackendHealth } from "@/types/report";
 
@@ -74,38 +75,38 @@ export function StudioHeader({
   onShareReviewLink,
 }: StudioHeaderProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isDarkTheme, setIsDarkTheme] = useState(true);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const exportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (typeof document !== "undefined") {
-      setIsDarkTheme(document.documentElement.classList.contains("dark"));
-    }
+    setIsDarkTheme(getCurrentStudioTheme() === "dark");
   }, []);
 
   const handleToggleTheme = () => {
-    if (typeof document === "undefined") return;
-    const nextDark = !document.documentElement.classList.contains("dark");
-    document.documentElement.classList.toggle("dark", nextDark);
-    setIsDarkTheme(nextDark);
-    try {
-      window.localStorage.setItem("mixbench_theme", nextDark ? "dark" : "light");
-    } catch {
-      // Ignore storage quota / private mode
-    }
+    const next = toggleStudioTheme();
+    setIsDarkTheme(next === "dark");
   };
 
   useEffect(() => {
-    if (!popoverOpen) return;
+    if (!popoverOpen && !exportOpen) return;
     const handleOutside = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (popoverOpen && popoverRef.current && !popoverRef.current.contains(target)) {
         setPopoverOpen(false);
+      }
+      if (exportOpen && exportRef.current && !exportRef.current.contains(target)) {
+        setExportOpen(false);
       }
     };
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPopoverOpen(false);
+      if (e.key === "Escape") {
+        setPopoverOpen(false);
+        setExportOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleOutside);
     document.addEventListener("keydown", handleEsc);
@@ -113,7 +114,7 @@ export function StudioHeader({
       document.removeEventListener("mousedown", handleOutside);
       document.removeEventListener("keydown", handleEsc);
     };
-  }, [popoverOpen]);
+  }, [popoverOpen, exportOpen]);
 
   const handleExportJson = () => {
     if (!report) return;
@@ -131,6 +132,7 @@ export function StudioHeader({
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+    setExportOpen(false);
   };
 
   const handleExportEqPreset = () => {
@@ -178,6 +180,7 @@ export function StudioHeader({
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+    setExportOpen(false);
   };
 
   const handleShareClick = async () => {
@@ -195,16 +198,11 @@ export function StudioHeader({
   };
 
   const handlePrintPdf = () => {
+    setExportOpen(false);
     if (typeof window !== "undefined") {
       window.print();
     }
   };
-
-  const privacyLabel = report?.privacy_audit.raw_audio_sent_to_ai
-    ? "Audio AI Opt-In"
-    : report?.privacy_audit.external_ai_enabled
-      ? "Metrics-Only AI"
-      : "Zero Audio Sent";
 
   const statusText =
     healthStatus === "online"
@@ -217,7 +215,7 @@ export function StudioHeader({
 
   const compactStatusText =
     healthStatus === "online"
-      ? "Online"
+      ? "DSP Online"
       : healthStatus === "waking"
         ? "Waking…"
         : healthStatus === "offline"
@@ -227,17 +225,20 @@ export function StudioHeader({
   const configuredHealthEndpoint = `${API_BASE_URL || ""}/health`;
 
   return (
-    <header className="border-b border-[var(--border-hairline)] bg-[var(--bg-canvas)]/92 backdrop-blur-md sm:sticky sm:top-0 sm:z-40 print:border-0 print:bg-white">
-      <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--studio-mint)] text-[#0B0D11] squircle-inner shadow-xs">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
+    <header
+      data-testid="studio-header"
+      className="sticky top-0 z-40 border-b border-[var(--border-hairline)] bg-[var(--bg-canvas)]/92 backdrop-blur-md print:border-0 print:bg-white"
+    >
+      {/* Strictly single-row h-16 on desktop (>= 1024px) to prevent sticky tab bar clipping */}
+      <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-6 lg:h-16 lg:flex-nowrap lg:gap-3 lg:py-0">
+        {/* Left: Brand Identity */}
+        <Link
+          href="/"
+          title="Return to MixBench Overview"
+          className="flex shrink-0 items-center gap-2.5 rounded-lg focus-visible:outline-2"
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-[var(--studio-mint)] text-[#090B0E] squircle-inner">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path
                 d="M4 12h2.5l2-6 3 12 2.5-9 2 3H20"
                 stroke="currentColor"
@@ -247,25 +248,20 @@ export function StudioHeader({
               />
             </svg>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-display text-base font-bold tracking-[-0.02em] text-[var(--text-primary)]">
-                MixBench
-              </span>
-              <span className="hidden rounded-md bg-[var(--studio-mint-soft)] px-2 py-0.5 tabular-telemetry text-[10px] font-semibold text-[var(--studio-mint)] sm:inline-flex">
-                v1.0
-              </span>
-            </div>
-            <p className="hidden text-xs text-[var(--text-secondary)] sm:block">
-              Deterministic Audio DSP Workbench
-            </p>
+          <div className="flex items-center gap-2">
+            <span className="font-display text-sm font-bold tracking-[-0.02em] text-[var(--text-primary)] sm:text-base">
+              MixBench
+            </span>
+            <span className="hidden rounded-md bg-[var(--bg-inset)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)] hairline-border xl:inline-flex">
+              Studio
+            </span>
           </div>
-        </div>
+        </Link>
 
-        {/* Simple <-> Advanced Mode Switcher */}
+        {/* Center: Simple <-> Advanced Mode Switcher (zero trailing-character clipping) */}
         <nav
           aria-label="Workspace mode"
-          className="no-print relative inline-flex max-w-full min-h-[38px] shrink-0 flex-nowrap items-center gap-1 overflow-x-auto bg-[var(--bg-inset)] p-1 hairline-border squircle-inner"
+          className="no-print relative inline-flex shrink-0 flex-nowrap items-center gap-1 rounded-[12px] bg-[var(--bg-inset)] p-1 hairline-border"
         >
           {(
             [
@@ -280,8 +276,10 @@ export function StudioHeader({
                 type="button"
                 whileTap={TACTILE_TAP}
                 onClick={() => onModeChange(item.id)}
-                className={`relative z-10 shrink-0 whitespace-nowrap px-2.5 py-1.5 text-xs font-medium transition-colors duration-150 sm:px-3.5 sm:text-sm cursor-pointer squircle-inner ${
-                  active ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                className={`relative z-10 inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-[8px] px-3 py-1.5 text-xs font-medium transition-colors duration-150 sm:px-3.5 sm:text-[13px] cursor-pointer ${
+                  active
+                    ? "text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 }`}
                 aria-pressed={active}
               >
@@ -289,7 +287,7 @@ export function StudioHeader({
                   <motion.span
                     layoutId="workspace-mode-pill"
                     transition={STUDIO_SPRING}
-                    className="pointer-events-none absolute inset-0 -z-10 bg-[var(--bg-elevated)] hairline-border squircle-inner shadow-2xs"
+                    className="pointer-events-none absolute inset-0 -z-10 rounded-[8px] bg-[var(--bg-elevated)] hairline-border"
                   />
                 )}
                 <span className="hidden sm:inline">{item.label}</span>
@@ -299,130 +297,154 @@ export function StudioHeader({
           })}
         </nav>
 
-        <div className="no-print flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {/* Dark Vinyl / Daylight Studio Theme Toggle */}
-          <motion.button
-            type="button"
-            data-testid="theme-toggle"
-            whileTap={TACTILE_TAP}
-            onClick={handleToggleTheme}
-            aria-label="Toggle studio theme"
-            title={isDarkTheme ? "Switch to Daylight Studio Light" : "Switch to Vinyl-Carbon Dark"}
-            className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
-          >
-            {isDarkTheme ? (
-              <Sun className="h-3.5 w-3.5 text-[var(--studio-amber)]" aria-hidden="true" />
-            ) : (
-              <Moon className="h-3.5 w-3.5 text-[var(--studio-cobalt)]" aria-hidden="true" />
-            )}
-            <span className="hidden 2xl:inline">{isDarkTheme ? "Daylight" : "Vinyl Dark"}</span>
-          </motion.button>
-
+        {/* Right: Single-Row Action Cluster */}
+        <div className="no-print flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {/* Active File Telemetry Badge (2XL only so 1024-1440px stays spacious single-row) */}
           {report && (
-            <div className="hidden items-center gap-2 bg-[var(--bg-elevated)] px-3 py-1.5 text-xs hairline-border squircle-inner xl:flex">
-              <span className="max-w-[140px] truncate font-medium text-[var(--text-primary)]">
+            <div className="hidden items-center gap-2 bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs hairline-border squircle-inner 2xl:flex">
+              <span className="max-w-[130px] truncate font-medium text-[var(--text-primary)]">
                 {report.audio_metadata.filename}
               </span>
-              <span className="text-[var(--text-secondary)] tabular-telemetry">
+              <span className="text-[var(--text-muted)] tabular-telemetry text-[11px] whitespace-nowrap">
                 {(report.audio_metadata.sample_rate_hz / 1000).toFixed(1)} kHz ·{" "}
-                {report.audio_metadata.bit_depth}-bit ·{" "}
                 {formatTimecode(report.audio_metadata.duration_sec)}
               </span>
             </div>
           )}
 
-          {/* Privacy Mode Indicator */}
+          {/* Consolidated Export / Share Dropdown Menu */}
           {report && (
-            <div
-              className={`hidden items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium squircle-inner 2xl:inline-flex ${
-                report.privacy_audit.raw_audio_sent_to_ai
-                  ? "bg-[var(--studio-amber-soft)] text-[var(--studio-amber)] border border-[var(--studio-amber)]/35"
-                  : report.privacy_audit.external_ai_enabled
-                    ? "bg-[var(--studio-mint-soft)] text-[var(--studio-mint)] border border-[var(--border-active)]"
-                    : "bg-[var(--bg-elevated)] text-[var(--text-primary)] hairline-border"
-              }`}
-            >
-              {report.privacy_audit.external_ai_enabled ? (
-                <Sparkles className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-              ) : (
-                <ShieldCheck className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-              )}
-              <span>{privacyLabel}</span>
+            <div ref={exportRef} className="relative">
+              <motion.button
+                type="button"
+                data-testid="header-export-menu-btn"
+                whileTap={TACTILE_TAP}
+                onClick={() => {
+                  setPopoverOpen(false);
+                  setExportOpen((prev) => !prev);
+                }}
+                aria-expanded={exportOpen}
+                aria-haspopup="menu"
+                aria-label="Export or share studio report"
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
+              >
+                {shareCopied ? (
+                  <Check className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
+                ) : (
+                  <Share2 className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
+                )}
+                <span className="hidden sm:inline">{shareCopied ? "Link Copied" : "Export / Share"}</span>
+                <ChevronDown
+                  className={`h-3 w-3 text-[var(--text-muted)] transition-transform duration-150 ${
+                    exportOpen ? "rotate-180" : ""
+                  }`}
+                  aria-hidden="true"
+                />
+              </motion.button>
+
+              <AnimatePresence>
+                {exportOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                    transition={{ duration: 0.16, ease: STUDIO_EASE }}
+                    role="menu"
+                    aria-label="Export and share options"
+                    style={{ transformOrigin: "top right" }}
+                    className="absolute right-0 mt-2 w-56 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl z-50"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-label="Download EQ Preset"
+                      onClick={handleExportEqPreset}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-inset)] cursor-pointer transition-colors"
+                    >
+                      <Sliders className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
+                      <div>
+                        <div>EQ Preset (JSON)</div>
+                        <div className="text-[10px] text-[var(--text-muted)]">
+                          Parametric bands &amp; sub mono-maker
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-label="Export JSON report"
+                      onClick={handleExportJson}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-inset)] cursor-pointer transition-colors"
+                    >
+                      <Download className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
+                      <div>
+                        <div>Export Report JSON</div>
+                        <div className="text-[10px] text-[var(--text-muted)]">
+                          Full deterministic v1.0 telemetry
+                        </div>
+                      </div>
+                    </button>
+
+                    {onShareReviewLink && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        aria-label="Share Review Link"
+                        disabled={isSharing}
+                        onClick={() => void handleShareClick()}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-inset)] cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        {shareCopied ? (
+                          <Check className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
+                        ) : (
+                          <Link2 className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
+                        )}
+                        <div>
+                          <div>{shareCopied ? "Review Link Copied" : "Share Client Link"}</div>
+                          <div className="text-[10px] text-[var(--text-muted)]">
+                            Read-only verification snapshot
+                          </div>
+                        </div>
+                      </button>
+                    )}
+
+                    <div className="my-1 border-t border-[var(--border-hairline)]" />
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-label="Print PDF report"
+                      onClick={handlePrintPdf}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-inset)] cursor-pointer transition-colors"
+                    >
+                      <Printer className="h-3.5 w-3.5 text-[var(--text-secondary)]" aria-hidden="true" />
+                      <div>
+                        <div>Print Studio PDF</div>
+                        <div className="text-[10px] text-[var(--text-muted)]">
+                          Clean client session sheet
+                        </div>
+                      </div>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
 
-          {/* Export Studio Report (EQ Preset + JSON + Share + Print PDF) */}
-          {report && (
-            <div className="inline-flex items-center gap-1">
-              <motion.button
-                type="button"
-                whileTap={TACTILE_TAP}
-                onClick={handleExportEqPreset}
-                title="Download DAW-ready EQ & M/S Sub Preset JSON"
-                aria-label="Download EQ Preset"
-                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
-              >
-                <Sliders className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-                <span className="hidden lg:inline">EQ Preset</span>
-              </motion.button>
-              <motion.button
-                type="button"
-                whileTap={TACTILE_TAP}
-                onClick={handleExportJson}
-                title="Download AnalysisReport v1.0 JSON"
-                aria-label="Export JSON report"
-                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
-              >
-                <Download className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-                <span className="hidden xl:inline">JSON</span>
-              </motion.button>
-              {onShareReviewLink && (
-                <motion.button
-                  type="button"
-                  whileTap={TACTILE_TAP}
-                  disabled={isSharing}
-                  onClick={() => void handleShareClick()}
-                  title="Copy read-only Client Review Link"
-                  aria-label="Share Review Link"
-                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
-                >
-                  {shareCopied ? (
-                    <>
-                      <Check className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-                      <span className="hidden lg:inline text-[var(--studio-mint)]">Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Link2 className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-                      <span className="hidden lg:inline">Share</span>
-                    </>
-                  )}
-                </motion.button>
-              )}
-              <motion.button
-                type="button"
-                whileTap={TACTILE_TAP}
-                onClick={handlePrintPdf}
-                title="Print clean studio PDF report"
-                aria-label="Print PDF report"
-                className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
-              >
-                <Printer className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-                <span className="hidden xl:inline">PDF</span>
-              </motion.button>
-            </div>
-          )}
-
-          {/* Live Backend Health Status Pill + Actionable Diagnostic Popover */}
+          {/* Live Backend Health Status Pill + Diagnostic Popover */}
           <div ref={popoverRef} className="relative">
             <motion.button
               type="button"
               whileTap={TACTILE_TAP}
-              onClick={() => setPopoverOpen((prev) => !prev)}
+              onClick={() => {
+                setExportOpen(false);
+                setPopoverOpen((prev) => !prev);
+              }}
               aria-expanded={popoverOpen}
               aria-label={statusText}
               title={`${statusText} (${configuredHealthEndpoint})`}
-              className={`inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-medium squircle-inner cursor-pointer transition-colors ${
+              className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-xs font-medium squircle-inner cursor-pointer transition-colors ${
                 healthStatus === "online"
                   ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] hairline-border hover:border-[var(--border-active)]"
                   : healthStatus === "waking"
@@ -434,7 +456,7 @@ export function StudioHeader({
             >
               <span
                 aria-hidden="true"
-                className={`h-2 w-2 rounded-full ${
+                className={`h-2 w-2 shrink-0 rounded-full ${
                   healthStatus === "online"
                     ? "bg-[var(--studio-mint)]"
                     : healthStatus === "waking"
@@ -444,19 +466,20 @@ export function StudioHeader({
                         : "bg-[var(--text-muted)] animate-pulse"
                 }`}
               />
-              <span className="hidden sm:inline">{statusText}</span>
-              <span className="sm:hidden">{compactStatusText}</span>
+              <span className="hidden xl:inline">{statusText}</span>
+              <span className="xl:hidden">{compactStatusText}</span>
             </motion.button>
 
             <AnimatePresence>
               {popoverOpen && (
                 <motion.div
-                  initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                  initial={{ opacity: 0, y: 6, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.97 }}
                   transition={{ duration: 0.16, ease: STUDIO_EASE }}
                   role="dialog"
                   aria-label="DSP backend connection diagnostics"
+                  style={{ transformOrigin: "top right" }}
                   className="fixed right-3 left-3 sm:absolute sm:left-auto sm:right-0 mt-2 sm:w-80 bg-[var(--bg-elevated)] p-4 border border-[var(--border-strong)] squircle-outer shadow-2xl z-50 space-y-3 text-xs"
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -507,10 +530,12 @@ export function StudioHeader({
                   ) : healthStatus === "waking" ? (
                     <div className="space-y-1.5 text-[11px] text-[var(--text-secondary)]">
                       <p className="font-medium text-[var(--studio-amber)]">
-                        Cold-starting DSP container ({wakeAttempt > 0 ? `retry ${wakeAttempt}/${wakeMaxAttempts}` : "connecting…"}).
+                        Cold-starting DSP container (
+                        {wakeAttempt > 0 ? `retry ${wakeAttempt}/${wakeMaxAttempts}` : "connecting…"}).
                       </p>
                       <p>
-                        Retrying <code className="text-[var(--text-primary)]">/health</code> automatically every 5 seconds while local Web Audio DSP preview handles instant uploads.
+                        Retrying <code className="text-[var(--text-primary)]">/health</code> automatically
+                        every 5 seconds while local Web Audio DSP preview handles instant uploads.
                       </p>
                     </div>
                   ) : (
@@ -519,7 +544,8 @@ export function StudioHeader({
                         {healthError || "Could not establish HTTP connection to DSP backend."}
                       </p>
                       <p>
-                        Uploads automatically fall back to deterministic Browser Web Audio DSP Preview until the server reconnects.
+                        Uploads automatically fall back to deterministic Browser Web Audio DSP Preview
+                        until the server reconnects.
                       </p>
                     </div>
                   )}
@@ -539,28 +565,47 @@ export function StudioHeader({
             </AnimatePresence>
           </div>
 
+          {/* Dark Studio / Warm Daylight Theme Toggle */}
+          <motion.button
+            type="button"
+            data-testid="theme-toggle"
+            whileTap={TACTILE_TAP}
+            onClick={handleToggleTheme}
+            aria-label="Toggle studio theme"
+            title={isDarkTheme ? "Switch to Daylight Studio Light" : "Switch to Carbon Studio Dark"}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
+          >
+            {isDarkTheme ? (
+              <Sun className="h-3.5 w-3.5 text-[var(--studio-amber)]" aria-hidden="true" />
+            ) : (
+              <Moon className="h-3.5 w-3.5 text-[var(--studio-cobalt)]" aria-hidden="true" />
+            )}
+          </motion.button>
+
+          {/* Saved History & Auth Actions */}
           {supabaseConfigured && userEmail ? (
-            <div className="flex items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-1.5">
               {onOpenHistory && (
                 <motion.button
                   type="button"
                   whileTap={TACTILE_TAP}
                   onClick={onOpenHistory}
-                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
+                  title="Open Saved Mix History"
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
                   <History className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-                  <span className="hidden sm:inline">Saved Mixes</span>
-                  <span className="rounded-md bg-[var(--studio-mint-soft)] px-1.5 py-0.2 text-[10px] font-semibold text-[var(--studio-mint)] tabular-telemetry">
+                  <span className="hidden xl:inline">History</span>
+                  <span className="rounded bg-[var(--studio-mint-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--studio-mint)] tabular-telemetry">
                     {savedCount}
                   </span>
                 </motion.button>
               )}
               <div
                 title={userEmail}
-                className="hidden items-center gap-1.5 bg-[var(--bg-inset)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hairline-border squircle-inner md:inline-flex"
+                className="hidden h-8 items-center gap-1.5 bg-[var(--bg-inset)] px-2.5 text-xs text-[var(--text-secondary)] hairline-border squircle-inner 2xl:inline-flex"
               >
                 <User className="h-3 w-3 text-[var(--studio-mint)]" aria-hidden="true" />
-                <span className="max-w-[120px] truncate">{userEmail}</span>
+                <span className="max-w-[110px] truncate">{userEmail}</span>
               </div>
               {onSignOut && (
                 <motion.button
@@ -568,26 +613,26 @@ export function StudioHeader({
                   whileTap={TACTILE_TAP}
                   onClick={onSignOut}
                   aria-label="Sign out"
-                  title="Sign out"
-                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hairline-border squircle-inner cursor-pointer transition-colors"
+                  title="Sign out and return to overview"
+                  className="inline-flex h-8 shrink-0 items-center gap-1 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
                   <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span className="hidden lg:inline">Sign Out</span>
+                  <span className="hidden xl:inline">Sign Out</span>
                 </motion.button>
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-1.5">
+            <div className="flex shrink-0 items-center gap-1.5">
               {onOpenSignedOutHistory && (
                 <motion.button
                   type="button"
                   whileTap={TACTILE_TAP}
                   onClick={onOpenSignedOutHistory}
                   title="Sign in to unlock Cloud Mix History & Audio Proxy playback"
-                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
                   <History className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-                  <span className="hidden sm:inline">History</span>
+                  <span className="hidden xl:inline">History</span>
                 </motion.button>
               )}
               {supabaseConfigured && onOpenAuth && (
@@ -595,7 +640,7 @@ export function StudioHeader({
                   type="button"
                   whileTap={TACTILE_TAP}
                   onClick={onOpenAuth}
-                  className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 text-xs font-medium text-[var(--text-primary)] hover:border-[var(--border-active)] hairline-border squircle-inner cursor-pointer transition-colors"
                 >
                   <LogIn className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
                   <span>Sign In</span>
@@ -609,11 +654,12 @@ export function StudioHeader({
               type="button"
               whileTap={TACTILE_TAP}
               onClick={onClearSession}
-              className="inline-flex min-h-[32px] shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--studio-vermilion)] hairline-border hover:border-[var(--studio-vermilion)]/40 squircle-inner cursor-pointer transition-colors"
+              aria-label="Clear Session"
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-elevated)] px-2.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--studio-vermilion)] hairline-border hover:border-[var(--studio-vermilion)]/40 squircle-inner cursor-pointer transition-colors"
               title="Delete ephemeral audio session immediately"
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden sm:inline">Clear Session</span>
+              <span className="hidden xl:inline">Clear</span>
             </motion.button>
           )}
         </div>

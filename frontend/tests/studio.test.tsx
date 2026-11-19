@@ -12,7 +12,9 @@ import { StemsInspector } from "@/components/advanced/StemsInspector";
 import { MentorDrawer } from "@/components/privacy/MentorDrawer";
 import { MentorPrivacyPanel } from "@/components/privacy/MentorPrivacyPanel";
 import { SimpleView } from "@/components/simple/SimpleView";
+import { AdvancedWorkbench } from "@/components/advanced/AdvancedWorkbench";
 import { DspStepTracker } from "@/components/studio/DspStepTracker";
+import { FlawTimelineBar, buildFlawClusters } from "@/components/studio/FlawTimelineBar";
 import { SpinningDiscPlayer } from "@/components/studio/SpinningDiscPlayer";
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
 import { askMentor } from "@/lib/api";
@@ -263,8 +265,13 @@ describe("MixBench UI & Privacy Contracts", () => {
       />
     );
     expect(screen.getByText("DSP Engine Online")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Export JSON report/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Print PDF report/i })).toBeInTheDocument();
+    const exportMenuBtn = screen.getByTestId("header-export-menu-btn");
+    expect(exportMenuBtn).toBeInTheDocument();
+    fireEvent.click(exportMenuBtn);
+    expect(screen.getByRole("menuitem", { name: /Download EQ Preset/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Export JSON report/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Print PDF report/i })).toBeInTheDocument();
+    fireEvent.click(exportMenuBtn);
 
     rerender(
       <StudioHeader
@@ -639,7 +646,123 @@ describe("MixBench UI & Privacy Contracts", () => {
 
     expect(screen.getByTestId("spinning-disc-player")).toBeInTheDocument();
     expect(screen.getByText("club_master.wav")).toBeInTheDocument();
+    const platterImg = screen.getByAltText(/Pressed matte-black studio vinyl platter/i);
+    expect(platterImg).toHaveAttribute("src", "/media/vinyl-platter-macro.webp");
     fireEvent.click(screen.getByRole("button", { name: /Play mix on turntable/i }));
     expect(onTogglePlay).toHaveBeenCalledTimes(1);
+  });
+
+  it("clusters closely spaced FlawTimelineBar markers into a single expandable pill to prevent overlap", () => {
+    const sameTimeFindings: Finding[] = [
+      {
+        ...mockReport.findings[0],
+        evidence_id: "ev_cluster_a",
+        category: "true_peak",
+        severity: "alert",
+        classification: "objective_defect",
+        title: "True Peak Overshoot",
+        timestamp_start_sec: 3,
+        timestamp_end_sec: 5,
+      },
+      {
+        ...mockReport.findings[0],
+        evidence_id: "ev_cluster_b",
+        category: "stereo_phase",
+        severity: "alert",
+        classification: "objective_defect",
+        title: "Wide Sub-Bass Phase",
+        timestamp_start_sec: 3,
+        timestamp_end_sec: 5.2,
+      },
+      {
+        ...mockReport.findings[0],
+        evidence_id: "ev_distant_c",
+        category: "tonal_balance",
+        severity: "caution",
+        classification: "stylistic_choice",
+        title: "Low-Mid Buildup",
+        timestamp_start_sec: 12,
+        timestamp_end_sec: 14,
+      },
+    ];
+
+    const clusters = buildFlawClusters(sameTimeFindings, 16, 4);
+    expect(clusters).toHaveLength(2);
+    expect(clusters[0].markers).toHaveLength(2);
+    expect(clusters[1].markers).toHaveLength(1);
+
+    const onSelectFinding = vi.fn();
+    render(
+      <FlawTimelineBar
+        peaks={mockReport.audio_metadata.waveform_peaks}
+        durationSec={16}
+        findings={sameTimeFindings}
+        onSelectFinding={onSelectFinding}
+      />
+    );
+
+    const clusterPill = screen.getByRole("button", { name: /Inspect 2 flaws near 0:03/i });
+    expect(clusterPill).toHaveTextContent(/2 Flaws · 0:03/i);
+    fireEvent.click(clusterPill);
+    expect(screen.getByText("True Peak Overshoot")).toBeInTheDocument();
+    expect(screen.getByText("Wide Sub-Bass Phase")).toBeInTheDocument();
+  });
+
+  it("renders long 3-minute master profile (frisby master 9.wav: 44.1 kHz, -1.76 dBTP, +0.999 sub phase) cleanly across Simple and Advanced views", () => {
+    const frisbyReport: AnalysisReport = {
+      ...mockReport,
+      audio_metadata: {
+        ...mockReport.audio_metadata,
+        filename: "frisby master 9.wav",
+        duration_sec: 172.1,
+        sample_rate_hz: 44100,
+        bit_depth: 16,
+        bpm: 126,
+        clipping_timestamps_sec: [],
+      },
+      global_metrics: {
+        ...mockReport.global_metrics,
+        integrated_lufs: -11.8,
+        true_peak_dbtp: -1.76,
+        phase_correlation_avg: 0.89,
+        low_end_phase_correlation: 0.999,
+      },
+    };
+
+    const { rerender } = render(
+      <MotionConfig reducedMotion="user">
+        <SimpleView
+          report={frisbyReport}
+          isPlaying={false}
+          activeFindingId={null}
+          onTogglePlay={vi.fn()}
+          onAuditionFinding={vi.fn()}
+          onSelectFinding={vi.fn()}
+          onOpenAdvanced={vi.fn()}
+          onNewUpload={vi.fn()}
+        />
+      </MotionConfig>
+    );
+
+    expect(screen.getAllByText("frisby master 9.wav").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/-1\.76/)).toBeInTheDocument();
+
+    rerender(
+      <MotionConfig reducedMotion="user">
+        <AdvancedWorkbench
+          report={frisbyReport}
+          activeFindingId={null}
+          loopEnabled={false}
+          loopStartSec={0}
+          loopEndSec={0}
+          onSeek={vi.fn()}
+          onSelectFinding={vi.fn()}
+          onAuditionFinding={vi.fn()}
+        />
+      </MotionConfig>
+    );
+
+    expect(screen.getByText(/-1\.76/)).toBeInTheDocument();
+    expect(screen.getByText(/Sub \+1\.00/i)).toBeInTheDocument();
   });
 });

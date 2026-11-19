@@ -70,21 +70,21 @@ export function AdvancedWorkbench({
 
       {/* Five Core Deterministic Telemetry Cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
+        <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
           <div className="text-[11px] font-medium text-[var(--text-secondary)]">Integrated LUFS</div>
-          <div className="mt-1 text-xl font-semibold text-[var(--text-primary)] tabular-telemetry">
+          <div className="mt-1 whitespace-nowrap text-xl font-semibold text-[var(--text-primary)] tabular-telemetry">
             {m.integrated_lufs.toFixed(1)}{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">LUFS</span>
           </div>
-          <div className="mt-1 text-[11px] text-[var(--text-secondary)] tabular-telemetry">
+          <div className="mt-1 truncate text-[11px] text-[var(--text-secondary)] tabular-telemetry">
             ST Max {m.short_term_max_lufs.toFixed(1)} · Mom {m.momentary_max_lufs.toFixed(1)}
           </div>
         </div>
 
-        <div className="bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
+        <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
           <div className="text-[11px] font-medium text-[var(--text-secondary)]">4x True Peak</div>
           <div
-            className={`mt-1 text-xl font-semibold tabular-telemetry ${
+            className={`mt-1 whitespace-nowrap text-xl font-semibold tabular-telemetry ${
               m.true_peak_dbtp > -0.1
                 ? "text-[var(--studio-vermilion)]"
                 : report.context.stage === "unmastered_mix" && m.true_peak_dbtp > -2.5
@@ -96,32 +96,39 @@ export function AdvancedWorkbench({
             {m.true_peak_dbtp.toFixed(2)}{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">dBTP</span>
           </div>
-          <div className="mt-1 text-[11px] text-[var(--text-secondary)] tabular-telemetry">
+          <div className="mt-1 truncate text-[11px] text-[var(--text-secondary)] tabular-telemetry">
             Sample peak {m.sample_peak_dbfs >= 0 ? "+" : ""}
             {m.sample_peak_dbfs.toFixed(2)} dBFS
           </div>
         </div>
 
-        <div className="bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
+        <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
           <div className="text-[11px] font-medium text-[var(--text-secondary)]">PLR / LRA</div>
-          <div className="mt-1 text-xl font-semibold text-[var(--text-primary)] tabular-telemetry">
+          <div className="mt-1 whitespace-nowrap text-xl font-semibold text-[var(--text-primary)] tabular-telemetry">
             {plr.toFixed(1)} <span className="text-xs font-normal text-[var(--text-muted)]">dB</span>
             <span className="mx-1 text-[var(--text-muted)]">/</span>
             {m.loudness_range_lu.toFixed(1)}{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">LU</span>
           </div>
-          <div className="mt-1 text-[11px] text-[var(--text-secondary)] tabular-telemetry">
-            PSR {m.psr_db.toFixed(1)} dB · Crest {m.crest_factor_db.toFixed(1)} dB
+          <div
+            className="mt-1 truncate text-[11px] text-[var(--text-secondary)] tabular-telemetry"
+            title={`PSR ${m.psr_db.toFixed(1)} dB · Crest ${m.crest_factor_db.toFixed(1)} dB${
+              typeof m.transient_punch_db === "number" && m.transient_punch_db > 0
+                ? ` · Punch ${m.transient_punch_db.toFixed(1)} dB`
+                : ""
+            }`}
+          >
+            PSR {m.psr_db.toFixed(1)} · Crest {m.crest_factor_db.toFixed(1)}
             {typeof m.transient_punch_db === "number" && m.transient_punch_db > 0
               ? ` · Punch ${m.transient_punch_db.toFixed(1)} dB`
-              : ""}
+              : " dB"}
           </div>
         </div>
 
-        <div className="bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
+        <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
           <div className="text-[11px] font-medium text-[var(--text-secondary)]">Stereo &amp; Sub Phase</div>
           <div
-            className={`mt-1 text-xl font-semibold tabular-telemetry ${
+            className={`mt-1 whitespace-nowrap text-xl font-semibold tabular-telemetry ${
               m.phase_correlation_avg < 0
                 ? "text-[var(--studio-vermilion)]"
                 : m.phase_correlation_avg < 0.35
@@ -142,28 +149,28 @@ export function AdvancedWorkbench({
               </span>
             )}
           </div>
-          <div className="mt-1 text-[11px] text-[var(--text-secondary)] tabular-telemetry">
+          <div className="mt-1 truncate text-[11px] text-[var(--text-secondary)] tabular-telemetry">
             M/S width {m.stereo_width_ratio.toFixed(2)} · 20–120 Hz bandpass
           </div>
         </div>
 
         <div
-          className="bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner"
+          className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner"
           title={
             spotifyEst?.assumption_note ||
             "Estimated under Spotify Normal (-14 LUFS) target with -1.0 dBTP limiter check."
           }
         >
           <div className="flex items-center justify-between gap-1 text-[11px] font-medium text-[var(--text-secondary)]">
-            <span>Spotify -14 LUFS Est.</span>
+            <span className="truncate">Spotify -14 LUFS Est.</span>
             {spotifyWarning ? (
-              <AlertTriangle className="h-3.5 w-3.5 text-[var(--studio-amber)]" aria-hidden="true" />
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--studio-amber)]" aria-hidden="true" />
             ) : (
-              <CheckCircle2 className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[var(--studio-mint)]" aria-hidden="true" />
             )}
           </div>
           <div
-            className={`mt-1 text-xl font-semibold tabular-telemetry ${
+            className={`mt-1 whitespace-nowrap text-xl font-semibold tabular-telemetry ${
               spotifyWarning ? "text-[var(--studio-amber)]" : "text-[var(--text-primary)]"
             }`}
           >

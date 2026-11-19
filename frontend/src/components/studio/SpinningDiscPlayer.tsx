@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Pause, Play } from "lucide-react";
 import { studioAudioEngine } from "@/audio/StudioAudioEngine";
+import { TACTILE_TAP } from "@/lib/motion";
 import type { GenreType, SeverityType } from "@/types/report";
 
 interface SpinningDiscPlayerProps {
@@ -20,20 +21,20 @@ interface SpinningDiscPlayerProps {
   className?: string;
 }
 
-const HEALTH_ACCENT: Record<SeverityType, { primary: string; glow: string; label: string }> = {
+const HEALTH_ACCENT: Record<SeverityType, { primary: string; soft: string; label: string }> = {
   alert: {
-    primary: "#FF4D3D",
-    glow: "rgba(255, 77, 61, 0.38)",
+    primary: "#E5483A",
+    soft: "rgba(229, 72, 58, 0.14)",
     label: "Needs Attention",
   },
   caution: {
-    primary: "#F5A623",
-    glow: "rgba(245, 166, 35, 0.35)",
+    primary: "#E89B2D",
+    soft: "rgba(232, 155, 45, 0.14)",
     label: "Review Recommended",
   },
   safe: {
-    primary: "#00D9A3",
-    glow: "rgba(0, 217, 163, 0.34)",
+    primary: "#22C58B",
+    soft: "rgba(34, 197, 139, 0.14)",
     label: "Balanced Headroom",
   },
 };
@@ -54,7 +55,6 @@ export function SpinningDiscPlayer({
   const [engineState, setEngineState] = useState(() => studioAudioEngine.getState());
   const containerRef = useRef<HTMLDivElement | null>(null);
   const discRef = useRef<HTMLDivElement | null>(null);
-  const auraRef = useRef<HTMLDivElement | null>(null);
   const isVisibleRef = useRef(true);
 
   const angleRef = useRef(0);
@@ -104,10 +104,8 @@ export function SpinningDiscPlayer({
 
       if (visible) {
         if (playing) {
-          // Smooth direct-drive torque ramp-up
           velocityRef.current += (targetSpeed - velocityRef.current) * Math.min(1, dt * 6.5);
         } else {
-          // Realistic platter inertia deceleration
           velocityRef.current *= Math.pow(0.04, dt);
           if (velocityRef.current < 0.4) {
             velocityRef.current = 0;
@@ -119,14 +117,6 @@ export function SpinningDiscPlayer({
           if (discRef.current) {
             discRef.current.style.transform = `rotate(${angleRef.current.toFixed(2)}deg)`;
           }
-        }
-
-        if (auraRef.current) {
-          const bass = playing ? studioAudioEngine.getSubBassEnergy() : 0;
-          const scale = 1 + bass * 0.14;
-          const opacity = playing ? 0.28 + bass * 0.48 : 0.08;
-          auraRef.current.style.transform = `scale(${scale.toFixed(3)})`;
-          auraRef.current.style.opacity = opacity.toFixed(3);
         }
       }
 
@@ -147,8 +137,10 @@ export function SpinningDiscPlayer({
   }, [engineState.isPlaying]);
 
   const accent = HEALTH_ACCENT[health];
-  const discSize = compact ? "w-44 h-44 sm:w-48 sm:h-48" : "w-52 h-52 sm:w-60 sm:h-60";
-  const genreLabel = String(genre).replace(/_/g, " ").toUpperCase();
+  const discSize = compact
+    ? "w-48 h-48 sm:w-56 sm:h-56"
+    : "w-56 h-56 sm:w-64 sm:h-64";
+  const genreLabel = String(genre).replace(/_/g, " ");
 
   const handlePlayClick = async () => {
     if (onTogglePlay) {
@@ -166,104 +158,105 @@ export function SpinningDiscPlayer({
       data-testid="spinning-disc-player"
       className={`studio-card squircle-outer relative overflow-hidden p-4 sm:p-5 ${className}`}
     >
-      {/* Subtle chassis header */}
-      <div className="mb-3 space-y-1">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
+      {/* Hardware Deck Header — never clips mid-word */}
+      <div className="mb-3 space-y-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <span
               className="h-2 w-2 shrink-0 rounded-full"
-              style={{
-                backgroundColor: accent.primary,
-                boxShadow: engineState.isPlaying ? `0 0 10px ${accent.primary}` : "none",
-              }}
+              style={{ backgroundColor: accent.primary }}
             />
-            <span className="truncate tabular-telemetry text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-              DIRECT-DRIVE · 33.3 RPM
+            <span className="whitespace-nowrap text-[11px] font-medium text-[var(--text-secondary)]">
+              Direct-Drive{" "}
+              <span className="tabular-telemetry text-[var(--text-muted)]">33.3 RPM</span>
             </span>
           </div>
           <span
-            className="shrink-0 rounded-md px-2 py-0.5 tabular-telemetry text-[10px] font-semibold uppercase tracking-wider"
+            className="shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold"
             style={{
-              backgroundColor: `${accent.primary}1F`,
+              backgroundColor: accent.soft,
               color: accent.primary,
-              border: `1px solid ${accent.primary}44`,
+              border: `1px solid ${accent.primary}38`,
             }}
           >
             {accent.label}
           </span>
         </div>
-        <p className="truncate text-sm font-semibold text-[var(--text-primary)]" title={title}>
-          {title}
-        </p>
+
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+          <p
+            className="min-w-0 break-words text-sm font-semibold text-[var(--text-primary)]"
+            title={title}
+          >
+            {title}
+          </p>
+          <span className="shrink-0 text-[11px] capitalize text-[var(--text-muted)]">
+            {genreLabel}
+          </span>
+        </div>
+
         {subtitle ? (
-          <p className="truncate text-xs text-[var(--text-secondary)]" title={subtitle}>
+          <p className="text-xs leading-snug text-[var(--text-secondary)]" title={subtitle}>
             {subtitle}
           </p>
         ) : null}
       </div>
 
-      {/* Platter & Tonearm Stage */}
-      <div className="relative flex items-center justify-center py-2">
-        {/* Sub-bass reactive radial aura */}
-        <div
-          ref={auraRef}
-          aria-hidden="true"
-          className="pointer-events-none absolute h-48 w-48 rounded-full blur-2xl transition-opacity duration-200 will-change-transform"
-          style={{
-            background: `radial-gradient(circle, ${accent.glow} 0%, transparent 72%)`,
-            opacity: engineState.isPlaying ? 0.32 : 0.08,
-          }}
-        />
+      {/* Physical Hardware Platter & Tonearm Stage */}
+      <div className="relative flex items-center justify-center py-3">
+        {/* Machined dark anodized aluminum platter recess */}
+        <div className="relative flex items-center justify-center rounded-full border border-[var(--border-strong)] bg-[#090B0E] p-2.5 shadow-[inset_0_2px_14px_rgba(0,0,0,0.75)]">
+          {/* Strobe bevel ticks ring */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-1 rounded-full border border-dashed border-white/[0.12]"
+          />
 
-        {/* Platter recess ring */}
-        <div className="relative flex items-center justify-center rounded-full border border-[var(--border-strong)] bg-[#090B10] p-2 shadow-[inset_0_2px_12px_rgba(0,0,0,0.7)]">
-          {/* Spinning Vinyl Record */}
+          {/* Photorealistic Pressed Vinyl Record (rotates at 33.3 RPM) */}
           <div
             ref={discRef}
-            className={`relative ${discSize} rounded-full will-change-transform`}
+            className={`relative ${discSize} overflow-hidden rounded-full bg-[#090B0E] will-change-transform`}
             style={{
-              background:
-                "repeating-radial-gradient(circle at center, #12151D 0px, #12151D 2px, #1B202C 3px, #0D1016 4px)",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.08)",
+              boxShadow:
+                "0 12px 28px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.08)",
             }}
           >
-            {/* Anisotropic vinyl sheen */}
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-full"
-              style={{
-                background:
-                  "conic-gradient(from 35deg, rgba(255,255,255,0.14) 0deg, transparent 42deg, transparent 150deg, rgba(255,255,255,0.1) 185deg, transparent 225deg, transparent 330deg, rgba(255,255,255,0.14) 360deg)",
-              }}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/media/vinyl-platter-macro.webp"
+              alt="Pressed matte-black studio vinyl platter"
+              width={1200}
+              height={1200}
+              draggable={false}
+              className="h-full w-full scale-[1.03] select-none object-cover"
             />
 
-            {/* Outer lead-in groove ring */}
-            <div className="pointer-events-none absolute inset-2.5 rounded-full border border-white/10" />
-            <div className="pointer-events-none absolute inset-8 rounded-full border border-white/[0.06]" />
-
-            {/* Color-coded center vinyl label */}
+            {/* Subtle signal ring machined around the brushed titanium spindle hub */}
             <div
-              className="absolute left-1/2 top-1/2 flex h-[38%] w-[38%] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-black/30 text-center shadow-inner"
-              style={{
-                background: `radial-gradient(circle at 35% 30%, ${accent.primary}, #141822 145%)`,
-              }}
-            >
-              <span className="tabular-telemetry text-[8px] font-bold tracking-[0.18em] text-[#0B0D11]/90">
-                MIXBENCH
-              </span>
-              <span className="mt-0.5 max-w-[80%] truncate tabular-telemetry text-[7px] font-semibold uppercase tracking-wider text-[#0B0D11]/75">
-                {genreLabel}
-              </span>
-            </div>
+              aria-hidden="true"
+              className="pointer-events-none absolute left-1/2 top-1/2 h-[39%] w-[39%] -translate-x-1/2 -translate-y-1/2 rounded-full border"
+              style={{ borderColor: `${accent.primary}66` }}
+            />
           </div>
 
-          {/* Center interactive Play/Pause Spindle Hub (stays upright while disc spins) */}
-          <button
+          {/* Stationary top specular studio key light reflection */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-2.5 rounded-full"
+            style={{
+              background:
+                "conic-gradient(from 32deg, rgba(244,241,234,0.09) 0deg, transparent 36deg, transparent 175deg, rgba(232,155,45,0.06) 205deg, transparent 240deg, transparent 360deg)",
+            }}
+          />
+
+          {/* Center Interactive Play/Pause Spindle Hub */}
+          <motion.button
             type="button"
+            whileTap={TACTILE_TAP}
             onClick={() => void handlePlayClick()}
             disabled={isLoadingAudio || (!onTogglePlay && !engineState.hasPrimary)}
             aria-label={engineState.isPlaying ? "Pause playback" : "Play mix on turntable"}
-            className="absolute left-1/2 top-1/2 z-20 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-[#121620]/90 text-[#F5F2EB] shadow-lg backdrop-blur-sm transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+            className="absolute left-1/2 top-1/2 z-20 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-[#090B0E]/88 text-[#F4F1EA] shadow-lg backdrop-blur-sm transition-colors hover:border-white/45 hover:bg-[#11141B] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
           >
             {isLoadingAudio ? (
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-[var(--studio-mint)]" />
@@ -272,65 +265,88 @@ export function SpinningDiscPlayer({
             ) : (
               <Play className="ml-0.5 h-4 w-4 fill-current" />
             )}
-          </button>
+          </motion.button>
 
-          {/* Animated SVG Tonearm */}
+          {/* Animated Brushed Aluminum S-Tonearm */}
           <motion.svg
             viewBox="0 0 120 180"
             aria-hidden="true"
-            className="pointer-events-none absolute -right-4 -top-2 z-10 h-40 w-24 overflow-visible sm:-right-5 sm:h-44 sm:w-28"
+            className="pointer-events-none absolute -right-4 -top-2 z-10 h-44 w-24 overflow-visible sm:-right-5 sm:h-48 sm:w-28"
             initial={false}
             animate={{ rotate: engineState.isPlaying ? 21 : 0 }}
             transition={{ type: "spring", stiffness: 120, damping: 18, mass: 0.9 }}
             style={{ transformOrigin: "82px 26px" }}
           >
-            {/* Gimbal base */}
-            <circle cx="82" cy="26" r="15" fill="#1A1F2B" stroke="#3A4256" strokeWidth="2" />
-            <circle cx="82" cy="26" r="6" fill="#9AA3B5" />
-            {/* Counterweight */}
-            <rect x="76" y="4" width="12" height="10" rx="3" fill="#2A3142" stroke="#4D566E" strokeWidth="1.5" />
-            {/* S-shaped brushed metal tonearm */}
+            <circle cx="82" cy="26" r="15" fill="#141820" stroke="#363D4D" strokeWidth="1.8" />
+            <circle cx="82" cy="26" r="6" fill="#9CA3AF" />
+            <rect
+              x="76"
+              y="4"
+              width="12"
+              height="10"
+              rx="3"
+              fill="#232834"
+              stroke="#4B5563"
+              strokeWidth="1.4"
+            />
             <path
               d="M 82 26 L 82 92 C 82 114, 70 128, 56 144"
               fill="none"
-              stroke="#C9D0DE"
-              strokeWidth="4.2"
+              stroke="#D1D5DB"
+              strokeWidth="4"
               strokeLinecap="round"
             />
             <path
               d="M 82 26 L 82 92 C 82 114, 70 128, 56 144"
               fill="none"
               stroke="#FFFFFF"
-              strokeOpacity="0.4"
-              strokeWidth="1.2"
+              strokeOpacity="0.45"
+              strokeWidth="1.1"
               strokeLinecap="round"
             />
-            {/* Headshell cartridge */}
             <g transform="translate(46, 138) rotate(36)">
-              <rect x="0" y="0" width="12" height="22" rx="2.5" fill="#171B24" stroke="#646F88" strokeWidth="1.3" />
-              <circle cx="6" cy="18" r="2.2" fill={engineState.isPlaying ? accent.primary : "#646F88"} />
+              <rect
+                x="0"
+                y="0"
+                width="12"
+                height="22"
+                rx="2.5"
+                fill="#11141B"
+                stroke="#6B7280"
+                strokeWidth="1.2"
+              />
+              <circle
+                cx="6"
+                cy="18"
+                r="2.2"
+                fill={engineState.isPlaying ? accent.primary : "#6B7280"}
+              />
             </g>
           </motion.svg>
         </div>
       </div>
 
-      {/* Telemetry readout strip */}
-      {(typeof lufs === "number" || typeof truePeak === "number" || typeof bpm === "number") ? (
+      {/* Calibrated Single-Line Telemetry Strip — zero 3-line wrapping */}
+      {typeof lufs === "number" || typeof truePeak === "number" || typeof bpm === "number" ? (
         <div className="mt-3 grid grid-cols-3 gap-2 border-t border-[var(--border-hairline)] pt-3">
-          <div className="studio-inset squircle-inner px-2.5 py-1.5">
-            <div className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
-              Loudness
-            </div>
-            <div className="tabular-telemetry text-xs font-semibold text-[var(--text-primary)]">
-              {typeof lufs === "number" ? `${lufs.toFixed(1)} LUFS` : "—"}
+          <div className="studio-inset squircle-inner min-w-0 px-2.5 py-2">
+            <div className="text-[11px] font-medium text-[var(--text-muted)]">Loudness</div>
+            <div className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold text-[var(--text-primary)]">
+              {typeof lufs === "number" ? (
+                <>
+                  {lufs.toFixed(1)}{" "}
+                  <span className="text-[10px] font-normal text-[var(--text-muted)]">LUFS</span>
+                </>
+              ) : (
+                "—"
+              )}
             </div>
           </div>
-          <div className="studio-inset squircle-inner px-2.5 py-1.5">
-            <div className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
-              True Peak
-            </div>
+
+          <div className="studio-inset squircle-inner min-w-0 px-2.5 py-2">
+            <div className="text-[11px] font-medium text-[var(--text-muted)]">True Peak</div>
             <div
-              className="tabular-telemetry text-xs font-semibold"
+              className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold"
               style={{
                 color:
                   typeof truePeak === "number" && truePeak > -0.2
@@ -338,17 +354,29 @@ export function SpinningDiscPlayer({
                     : "var(--text-primary)",
               }}
             >
-              {typeof truePeak === "number"
-                ? `${truePeak > 0 ? "+" : ""}${truePeak.toFixed(1)} dBTP`
-                : "—"}
+              {typeof truePeak === "number" ? (
+                <>
+                  {truePeak > 0 ? "+" : ""}
+                  {truePeak.toFixed(1)}{" "}
+                  <span className="text-[10px] font-normal text-[var(--text-muted)]">dBTP</span>
+                </>
+              ) : (
+                "—"
+              )}
             </div>
           </div>
-          <div className="studio-inset squircle-inner px-2.5 py-1.5">
-            <div className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
-              Tempo
-            </div>
-            <div className="tabular-telemetry text-xs font-semibold text-[var(--text-primary)]">
-              {typeof bpm === "number" ? `${Math.round(bpm)} BPM` : "—"}
+
+          <div className="studio-inset squircle-inner min-w-0 px-2.5 py-2">
+            <div className="text-[11px] font-medium text-[var(--text-muted)]">Tempo</div>
+            <div className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold text-[var(--text-primary)]">
+              {typeof bpm === "number" ? (
+                <>
+                  {Math.round(bpm)}{" "}
+                  <span className="text-[10px] font-normal text-[var(--text-muted)]">BPM</span>
+                </>
+              ) : (
+                "—"
+              )}
             </div>
           </div>
         </div>
