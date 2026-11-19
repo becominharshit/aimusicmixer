@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from app.ai import generate_mentor_advice
+from app.ai import generate_mentor_advice_async
 from app.core.config import settings
 from app.dsp import (
     AudioIngestionError,
@@ -941,7 +941,7 @@ def update_user_reported_context(
     response_model=MentorResponse,
     dependencies=[Depends(enforce_rate_limit("mentor"))],
 )
-def run_ai_mentor(
+async def run_ai_mentor(
     session_id: str,
     payload: MentorRequest,
 ) -> MentorResponse:
@@ -950,7 +950,7 @@ def run_ai_mentor(
         raise HTTPException(status_code=404, detail="Session expired or not found.")
 
     fallback_proxy = rec.proxy_files.get("proxy.m4a") or rec.proxy_files.get("proxy.wav")
-    advice = generate_mentor_advice(
+    advice = await generate_mentor_advice_async(
         report=rec.primary_report,
         request=payload,
         primary_audio_path=rec.primary_audio_path or fallback_proxy,
@@ -965,7 +965,7 @@ def run_ai_mentor(
     response_model=MentorResponse,
     dependencies=[Depends(enforce_rate_limit("mentor"))],
 )
-def standalone_ai_mentor(payload: MentorStandaloneRequest) -> MentorResponse:
+async def standalone_ai_mentor(payload: MentorStandaloneRequest) -> MentorResponse:
     req = MentorRequest(
         allow_metrics_ai=payload.allow_metrics_ai,
         allow_audio_ai=payload.allow_audio_ai,
@@ -978,7 +978,7 @@ def standalone_ai_mentor(payload: MentorStandaloneRequest) -> MentorResponse:
         if rec is None or rec.primary_report is None:
             raise HTTPException(status_code=404, detail="Session expired or not found.")
         fallback_proxy = rec.proxy_files.get("proxy.m4a") or rec.proxy_files.get("proxy.wav")
-        advice = generate_mentor_advice(
+        advice = await generate_mentor_advice_async(
             report=payload.report or rec.primary_report,
             request=req,
             primary_audio_path=rec.primary_audio_path or fallback_proxy,
@@ -999,7 +999,7 @@ def standalone_ai_mentor(payload: MentorStandaloneRequest) -> MentorResponse:
             question=req.question,
             conversation_history=req.conversation_history,
         )
-    return generate_mentor_advice(report=payload.report, request=req)
+    return await generate_mentor_advice_async(report=payload.report, request=req)
 
 
 @router.get("/sessions/{session_id}/proxy/{proxy_filename}")

@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MotionConfig } from "motion/react";
 import { StudioAudioEngine } from "@/audio/StudioAudioEngine";
 import { BottomTransportDock } from "@/components/BottomTransportDock";
@@ -9,9 +9,11 @@ import { StudioHeader } from "@/components/StudioHeader";
 import { MAX_SINGLE_FILE_BYTES, UploadStage } from "@/components/UploadStage";
 import { RevisionInspector } from "@/components/advanced/RevisionInspector";
 import { StemsInspector } from "@/components/advanced/StemsInspector";
+import { MentorDrawer } from "@/components/privacy/MentorDrawer";
 import { MentorPrivacyPanel } from "@/components/privacy/MentorPrivacyPanel";
 import { SimpleView } from "@/components/simple/SimpleView";
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
+import { askMentor } from "@/lib/api";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { computeTransientPunchDb } from "@/server/dsp/dynamics";
 import { computeStereoMetrics } from "@/server/dsp/stereo";
@@ -457,5 +459,72 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(structure.bpm).not.toBeNull();
     expect(Math.abs((structure.bpm ?? 0) - 120)).toBeLessThanOrEqual(4);
     expect(structure.sections.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("aborts hanging askMentor requests cleanly and recovers MentorDrawer UI state on timeout", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          const abortErr = new DOMException("The operation was aborted.", "AbortError");
+          reject(abortErr);
+        });
+      });
+    });
+
+    try {
+      await expect(
+        askMentor(
+          "sess_timeout_test",
+          {
+            allow_metrics_ai: true,
+            allow_audio_ai: false,
+            allow_training_opt_in: false,
+            question: "Check headroom",
+          },
+          40
+        )
+      ).rejects.toThrow(/timed out/i);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    const onAskMentor = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("AI Mix Mentor timed out after 28 seconds."))
+      .mockResolvedValueOnce(undefined);
+
+    render(
+      <MotionConfig reducedMotion="user">
+        <MentorDrawer
+          open={true}
+          onClose={vi.fn()}
+          report={mockReport}
+          mentorAdvice={null}
+          isAskingMentor={false}
+          onAskMentor={onAskMentor}
+          onSaveDawContext={vi.fn()}
+          onJumpToEvidence={vi.fn()}
+        />
+      </MotionConfig>
+    );
+
+    const submitBtn = screen.getByRole("button", { name: /Run Offline Deterministic Mentor/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mentor-error-notice")).toHaveTextContent(/timed out after 28 seconds/i);
+    });
+    expect(screen.queryByText(/Generating Coaching\.\.\./i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Run Offline Fallback Now/i }));
+    await waitFor(() => {
+      expect(onAskMentor).toHaveBeenCalledTimes(2);
+    });
+    expect(onAskMentor).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        allow_metrics_ai: false,
+        allow_audio_ai: false,
+      })
+    );
   });
 });

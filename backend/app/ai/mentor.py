@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import tempfile
 from pathlib import Path
 
@@ -16,7 +18,10 @@ from app.schemas.report import (
     PrivacyAudit,
 )
 
-GEMINI_REQUEST_TIMEOUT_MS = 25_000
+logger = logging.getLogger(__name__)
+
+GEMINI_REQUEST_TIMEOUT_SEC = 20.0
+GEMINI_REQUEST_TIMEOUT_MS = int(GEMINI_REQUEST_TIMEOUT_SEC * 1000)
 
 
 class MentorLLMOutput(BaseModel):
@@ -156,27 +161,8 @@ def _sanitized_metrics_payload(report: AnalysisReport) -> dict:
     return payload
 
 
-def generate_mentor_advice(
-    report: AnalysisReport,
-    request: MentorRequest,
-    primary_audio_path: Path | None = None,
-    fallback_proxy_path: Path | None = None,
-) -> MentorResponse:
-    """Enforce three-tier consent, timeout, proxy fallback, and evidence-id grounding using stable Gemini generate_content."""
-    # Toggle A must be explicitly enabled before any external Gemini call occurs
-    if not request.allow_metrics_ai:
-        return build_deterministic_mentor_response(report, request)
-
-    if not settings.gemini_api_key.strip():
-        return build_deterministic_mentor_response(
-            report,
-            request,
-            fallback_reason="Offline Mentor active (GEMINI_API_KEY not configured)",
-        )
-
-    valid_ids = _valid_evidence_ids(report)
+def _build_prompts(report: AnalysisReport, request: MentorRequest) -> tuple[str, str]:
     sanitized_json = json.dumps(_sanitized_metrics_payload(report), indent=2)
-
     system_rules = (
         "You are MixBench Mentor, a privacy-first mix and mastering teacher.\n"
         "CRITICAL RULES:\n"
@@ -203,101 +189,211 @@ def generate_mentor_advice(
         f"Artist Question: {request.question.strip() or 'Give me the highest-leverage next steps to improve this mix.'}\n\n"
         f"Structured DSP Report JSON:\n{sanitized_json}"
     )
+    return system_rules, user_prompt
 
-    clip_source = (
-        primary_audio_path
-        if primary_audio_path is not None and primary_audio_path.exists()
-        else (fallback_proxy_path if fallback_proxy_path is not None and fallback_proxy_path.exists() else None)
-    )
-    use_audio = bool(request.allow_audio_ai and clip_source is not None)
+
+def _extract_audio_bytes_and_cleanup(
+    report: AnalysisReport,
+    clip_source: Path,
+) -> tuple[bytes, str, float]:
+    """Extract a 25s clip, load bytes into memory, and immediately unlink all temp files."""
     tmp_paths: list[Path] = []
+    try:
+        clip_start_sec = select_audio_clip_start_sec(report, clip_duration_sec=25.0)
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
+            placeholder_clip = Path(tf.name)
+        tmp_paths.append(placeholder_clip)
+        actual_clip = extract_audio_clip(clip_source, placeholder_clip, start_sec=clip_start_sec, duration_sec=25.0)
+        if actual_clip != placeholder_clip:
+            tmp_paths.append(actual_clip)
+        audio_bytes = actual_clip.read_bytes()
+        mime = "audio/mp3" if actual_clip.suffix.lower() == ".mp3" else "audio/aac"
+        return audio_bytes, mime, clip_start_sec
+    finally:
+        for path in tmp_paths:
+            path.unlink(missing_ok=True)
+
+
+def _invoke_gemini_sync(
+    report: AnalysisReport,
+    request: MentorRequest,
+    clip_source: Path | None,
+    use_audio: bool,
+) -> MentorResponse:
+    """Synchronous Google GenAI SDK invocation executed off the event loop via asyncio.to_thread."""
+    from google import genai
+    from google.genai import types
+
+    valid_ids = _valid_evidence_ids(report)
+    system_rules, user_prompt = _build_prompts(report, request)
+
+    http_options = types.HttpOptions(timeout=GEMINI_REQUEST_TIMEOUT_MS)
+    client = genai.Client(api_key=settings.gemini_api_key.strip(), http_options=http_options)
+
+    contents: object = user_prompt
+    if use_audio and clip_source is not None:
+        audio_bytes, mime, clip_start_sec = _extract_audio_bytes_and_cleanup(report, clip_source)
+        contents = [
+            f"{user_prompt}\n\nAttached is an explicitly consented 25-second snippet starting at {clip_start_sec:.1f}s.",
+            types.Part.from_bytes(data=audio_bytes, mime_type=mime),
+        ]
+
+    # Always use thinking_level="low" so gemini-4-hydrogen latency stays well under 10s
+    config_kwargs: dict[str, object] = {
+        "system_instruction": system_rules,
+        "response_mime_type": "application/json",
+        "response_schema": MentorLLMOutput,
+        "http_options": http_options,
+    }
+    try:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="low")
+    except Exception:
+        # Older google-genai SDK versions may not expose thinking_level on ThinkingConfig
+        pass
+
+    config = types.GenerateContentConfig(**config_kwargs)
+    response = client.models.generate_content(
+        model=settings.gemini_model,
+        contents=contents,
+        config=config,
+    )
+    raw_output = (getattr(response, "text", None) or "").strip() or "{}"
+    parsed = MentorLLMOutput.model_validate_json(raw_output)
+
+    # Verify every evidence_id exists in the deterministic DSP report
+    verified_actions: list[MentorAction] = []
+    for idx, action in enumerate(parsed.prioritized_actions, start=1):
+        if action.evidence_id in valid_ids:
+            action.priority = idx
+            verified_actions.append(action)
+
+    if not verified_actions:
+        return build_deterministic_mentor_response(
+            report,
+            request,
+            fallback_reason="Evidence guardrail switched to deterministic output",
+        )
+
+    mode = "gemini_multimodal_audio" if use_audio else "gemini_metrics_only"
+    retention_note = (
+        "Sent metrics JSON + 25s audio snippet via stateless generate_content. Training opt-in flag tracked independently."
+        if use_audio
+        else "Sent structured numerical DSP JSON only (zero audio bytes transmitted) via stateless generate_content."
+    )
+    return MentorResponse(
+        mode=mode,
+        model_used=settings.gemini_model,
+        fallback_reason=None,
+        summary=parsed.summary,
+        vision_alignment_note=parsed.vision_alignment_note,
+        prioritized_actions=verified_actions,
+        cited_evidence_ids=[a.evidence_id for a in verified_actions],
+        privacy_audit=PrivacyAudit(
+            raw_audio_sent_to_ai=use_audio,
+            external_ai_enabled=True,
+            training_opt_in=bool(request.allow_training_opt_in),
+            retention_policy=retention_note,
+        ),
+    )
+
+
+def _resolve_clip_source(
+    primary_audio_path: Path | None,
+    fallback_proxy_path: Path | None,
+) -> Path | None:
+    if primary_audio_path is not None and primary_audio_path.exists():
+        return primary_audio_path
+    if fallback_proxy_path is not None and fallback_proxy_path.exists():
+        return fallback_proxy_path
+    return None
+
+
+def generate_mentor_advice(
+    report: AnalysisReport,
+    request: MentorRequest,
+    primary_audio_path: Path | None = None,
+    fallback_proxy_path: Path | None = None,
+) -> MentorResponse:
+    """Synchronous mentor entry point preserving backward compatibility for direct unit calls."""
+    if not request.allow_metrics_ai:
+        return build_deterministic_mentor_response(report, request)
+
+    if not settings.gemini_api_key.strip():
+        return build_deterministic_mentor_response(
+            report,
+            request,
+            fallback_reason="Offline Mentor active (GEMINI_API_KEY not configured)",
+        )
+
+    clip_source = _resolve_clip_source(primary_audio_path, fallback_proxy_path)
+    use_audio = bool(request.allow_audio_ai and clip_source is not None)
 
     try:
-        from google import genai
-        from google.genai import types
-
-        http_options = types.HttpOptions(timeout=GEMINI_REQUEST_TIMEOUT_MS)
-        client = genai.Client(api_key=settings.gemini_api_key.strip(), http_options=http_options)
-
-        contents: object = user_prompt
-        if use_audio and clip_source is not None:
-            clip_start_sec = select_audio_clip_start_sec(report, clip_duration_sec=25.0)
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
-                placeholder_clip = Path(tf.name)
-            tmp_paths.append(placeholder_clip)
-            actual_clip = extract_audio_clip(clip_source, placeholder_clip, start_sec=clip_start_sec, duration_sec=25.0)
-            if actual_clip != placeholder_clip:
-                tmp_paths.append(actual_clip)
-            audio_bytes = actual_clip.read_bytes()
-            mime = "audio/mp3" if actual_clip.suffix.lower() == ".mp3" else "audio/aac"
-            contents = [
-                f"{user_prompt}\n\nAttached is an explicitly consented 25-second snippet starting at {clip_start_sec:.1f}s.",
-                types.Part.from_bytes(data=audio_bytes, mime_type=mime),
-            ]
-
-        thinking_level = "medium" if use_audio else "low"
-        config_kwargs: dict[str, object] = {
-            "system_instruction": system_rules,
-            "response_mime_type": "application/json",
-            "response_schema": MentorLLMOutput,
-            "http_options": http_options,
-        }
-        try:
-            config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level=thinking_level)
-        except Exception:
-            # Older google-genai SDK versions may not expose thinking_level on ThinkingConfig
-            pass
-
-        config = types.GenerateContentConfig(**config_kwargs)
-        response = client.models.generate_content(
-            model=settings.gemini_model,
-            contents=contents,
-            config=config,
-        )
-        raw_output = (getattr(response, "text", None) or "").strip() or "{}"
-        parsed = MentorLLMOutput.model_validate_json(raw_output)
-
-        # Verify every evidence_id exists in the deterministic DSP report
-        verified_actions: list[MentorAction] = []
-        for idx, action in enumerate(parsed.prioritized_actions, start=1):
-            if action.evidence_id in valid_ids:
-                action.priority = idx
-                verified_actions.append(action)
-
-        if not verified_actions:
-            return build_deterministic_mentor_response(
-                report,
-                request,
-                fallback_reason="Evidence guardrail switched to deterministic output",
-            )
-
-        mode = "gemini_multimodal_audio" if use_audio else "gemini_metrics_only"
-        retention_note = (
-            "Sent metrics JSON + 25s audio snippet via stateless generate_content. Training opt-in flag tracked independently."
-            if use_audio
-            else "Sent structured numerical DSP JSON only (zero audio bytes transmitted) via stateless generate_content."
-        )
-        return MentorResponse(
-            mode=mode,
-            model_used=settings.gemini_model,
-            fallback_reason=None,
-            summary=parsed.summary,
-            vision_alignment_note=parsed.vision_alignment_note,
-            prioritized_actions=verified_actions,
-            cited_evidence_ids=[a.evidence_id for a in verified_actions],
-            privacy_audit=PrivacyAudit(
-                raw_audio_sent_to_ai=use_audio,
-                external_ai_enabled=True,
-                training_opt_in=bool(request.allow_training_opt_in),
-                retention_policy=retention_note,
-            ),
-        )
+        return _invoke_gemini_sync(report, request, clip_source, use_audio)
     except Exception as exc:
+        logger.warning(
+            "AI Mix Mentor call failed (%s: %s); returning deterministic Offline Mentor fallback.",
+            type(exc).__name__,
+            exc,
+        )
         return build_deterministic_mentor_response(
             report,
             request,
             fallback_reason=f"Offline Mentor fallback ({type(exc).__name__})",
         )
-    finally:
-        for path in tmp_paths:
-            path.unlink(missing_ok=True)
+
+
+async def generate_mentor_advice_async(
+    report: AnalysisReport,
+    request: MentorRequest,
+    primary_audio_path: Path | None = None,
+    fallback_proxy_path: Path | None = None,
+    timeout_sec: float = GEMINI_REQUEST_TIMEOUT_SEC,
+) -> MentorResponse:
+    """
+    Async FastAPI mentor entry point:
+    - Enforces three-tier consent before any network call.
+    - Offloads synchronous Google GenAI SDK work via asyncio.to_thread so the event loop never blocks.
+    - Enforces a strict 20-second timeout with asyncio.wait_for and returns deterministic fallback immediately on timeout/error.
+    """
+    if not request.allow_metrics_ai:
+        return build_deterministic_mentor_response(report, request)
+
+    if not settings.gemini_api_key.strip():
+        return build_deterministic_mentor_response(
+            report,
+            request,
+            fallback_reason="Offline Mentor active (GEMINI_API_KEY not configured)",
+        )
+
+    clip_source = _resolve_clip_source(primary_audio_path, fallback_proxy_path)
+    use_audio = bool(request.allow_audio_ai and clip_source is not None)
+
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(_invoke_gemini_sync, report, request, clip_source, use_audio),
+            timeout=timeout_sec,
+        )
+    except (asyncio.TimeoutError, TimeoutError):
+        logger.warning(
+            "AI Mix Mentor timed out after %.1fs (model=%s, use_audio=%s); returning deterministic Offline Mentor fallback.",
+            timeout_sec,
+            settings.gemini_model,
+            use_audio,
+        )
+        return build_deterministic_mentor_response(
+            report,
+            request,
+            fallback_reason=f"Offline Mentor fallback (Timeout after {int(timeout_sec)}s)",
+        )
+    except Exception as exc:
+        logger.warning(
+            "AI Mix Mentor SDK/API error (%s: %s); returning deterministic Offline Mentor fallback.",
+            type(exc).__name__,
+            exc,
+        )
+        return build_deterministic_mentor_response(
+            report,
+            request,
+            fallback_reason=f"Offline Mentor fallback ({type(exc).__name__})",
+        )

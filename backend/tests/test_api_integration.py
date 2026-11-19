@@ -131,13 +131,15 @@ def test_end_to_end_session_demo_stems_revision_mentor_and_cleanup() -> None:
     assert ctx_report.context.user_reported_context.source_tag == "user_reported_context"
 
     # 6. Offline Mentor with privacy defaults (Toggle A/B/C off)
-    mentor_resp = run_ai_mentor(
-        sid,
-        MentorRequest(
-            allow_metrics_ai=False,
-            allow_audio_ai=False,
-            allow_training_opt_in=False,
-        ),
+    mentor_resp = _run_coro_sync(
+        run_ai_mentor(
+            sid,
+            MentorRequest(
+                allow_metrics_ai=False,
+                allow_audio_ai=False,
+                allow_training_opt_in=False,
+            ),
+        )
     )
     assert mentor_resp.mode == "deterministic_fallback"
     assert mentor_resp.privacy_audit.raw_audio_sent_to_ai is False
@@ -222,13 +224,15 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
         assert exc.value.status_code == 422
 
         # Standalone /api/mentor with allow_metrics_ai=False NEVER sends external API or audio
-        offline_advice = standalone_ai_mentor(
-            MentorStandaloneRequest(
-                report=report,
-                allow_metrics_ai=False,
-                allow_audio_ai=True,
-                allow_training_opt_in=False,
-                question="What should I fix first?",
+        offline_advice = _run_coro_sync(
+            standalone_ai_mentor(
+                MentorStandaloneRequest(
+                    report=report,
+                    allow_metrics_ai=False,
+                    allow_audio_ai=True,
+                    allow_training_opt_in=False,
+                    question="What should I fix first?",
+                )
             )
         )
         assert offline_advice.mode == "deterministic_fallback"
@@ -270,13 +274,15 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
         monkeypatch.setattr(settings, "gemini_api_key", "test-key-123")
         monkeypatch.setattr(real_genai, "Client", FakeClient)
 
-        gemini_resp = standalone_ai_mentor(
-            MentorStandaloneRequest(
-                session_id=report.session_id,
-                allow_metrics_ai=True,
-                allow_audio_ai=False,
-                allow_training_opt_in=False,
-                question="Verify clipping",
+        gemini_resp = _run_coro_sync(
+            standalone_ai_mentor(
+                MentorStandaloneRequest(
+                    session_id=report.session_id,
+                    allow_metrics_ai=True,
+                    allow_audio_ai=False,
+                    allow_training_opt_in=False,
+                    question="Verify clipping",
+                )
             )
         )
         assert gemini_resp.mode == "gemini_metrics_only", gemini_resp.summary
@@ -285,6 +291,7 @@ def test_upload_analyze_and_stems_try_finally_cleanup_and_consent(tmp_path: Path
         assert gemini_resp.privacy_audit.external_ai_enabled is True
         assert captured.get("model") == settings.gemini_model
         assert captured.get("config").thinking_config is not None
+        assert str(captured.get("config").thinking_config.thinking_level).lower().endswith("low")
     finally:
         clear_session(report.session_id)
 
@@ -351,18 +358,58 @@ def test_gemini_api_error_triggers_deterministic_fallback(monkeypatch) -> None:
     monkeypatch.setattr(settings, "gemini_api_key", "test-key-123")
     monkeypatch.setattr(real_genai, "Client", BrokenClient)
 
-    resp = standalone_ai_mentor(
-        MentorStandaloneRequest(
-            report=mock_report,
-            allow_metrics_ai=True,
-            allow_audio_ai=False,
-            allow_training_opt_in=False,
-            question="Help me fix clipping",
+    resp = _run_coro_sync(
+        standalone_ai_mentor(
+            MentorStandaloneRequest(
+                report=mock_report,
+                allow_metrics_ai=True,
+                allow_audio_ai=False,
+                allow_training_opt_in=False,
+                question="Help me fix clipping",
+            )
         )
     )
     assert resp.mode == "deterministic_fallback"
     assert resp.fallback_reason is not None and "RuntimeError" in resp.fallback_reason
     assert "Offline Mentor fallback" in resp.summary
+
+
+def test_gemini_timeout_triggers_deterministic_fallback_without_blocking(monkeypatch) -> None:
+    import time
+    import google.genai as real_genai
+    from app.ai import generate_mentor_advice_async
+
+    mock_report = get_mock_report()
+
+    class HangingModels:
+        def generate_content(self, **kwargs):
+            time.sleep(0.4)
+            return SimpleNamespace(text="{}")
+
+    class HangingClient:
+        def __init__(self, api_key: str, http_options=None) -> None:
+            self.models = HangingModels()
+
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key-123")
+    monkeypatch.setattr(real_genai, "Client", HangingClient)
+
+    t0 = time.monotonic()
+    resp = _run_coro_sync(
+        generate_mentor_advice_async(
+            report=mock_report,
+            request=MentorRequest(
+                allow_metrics_ai=True,
+                allow_audio_ai=False,
+                allow_training_opt_in=False,
+                question="Fix headroom",
+            ),
+            timeout_sec=0.05,
+        )
+    )
+    elapsed = time.monotonic() - t0
+    assert elapsed < 0.35
+    assert resp.mode == "deterministic_fallback"
+    assert resp.fallback_reason is not None and "Timeout" in resp.fallback_reason
 
 
 def test_cors_and_memory_cap_configuration() -> None:

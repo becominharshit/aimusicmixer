@@ -13,7 +13,7 @@ import type {
 import { serverConfig } from "../config";
 import { extractAudioClip } from "../dsp/ingest";
 
-const GEMINI_TIMEOUT_MS = 25_000;
+const GEMINI_TIMEOUT_MS = 20_000;
 
 interface MentorLLMOutput {
   summary: string;
@@ -236,6 +236,10 @@ export async function generateMentorAdvice(
       }
       const audioBytes = await fsp.readFile(actualClipPath);
       const mimeType = actualClipPath.toLowerCase().endsWith(".mp3") ? "audio/mp3" : "audio/aac";
+      // Remove temporary clip files immediately once read into memory
+      for (const p of tmpPaths.splice(0, tmpPaths.length)) {
+        await fsp.rm(p, { force: true }).catch(() => undefined);
+      }
       contents = [
         `${userPrompt}\n\nAttached is an explicitly consented 25-second snippet starting at ${clipStartSec.toFixed(1)}s.`,
         {
@@ -247,48 +251,65 @@ export async function generateMentorAdvice(
       ];
     }
 
-    const response = await ai.models.generateContent({
-      model: serverConfig.geminiModel,
-      contents,
-      config: {
-        systemInstruction: systemRules,
-        responseMimeType: "application/json",
-        thinkingConfig: {
-          thinkingLevel: useAudio ? ThinkingLevel.MEDIUM : ThinkingLevel.LOW,
-        },
-        abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            summary: { type: Type.STRING },
-            vision_alignment_note: { type: Type.STRING },
-            prioritized_actions: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  evidence_id: { type: Type.STRING },
-                  priority: { type: Type.INTEGER },
-                  headline: { type: Type.STRING },
-                  coaching_note: { type: Type.STRING },
-                  daw_experiment: { type: Type.STRING },
-                  verification_step: { type: Type.STRING },
+    const controller = new AbortController();
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timerId = setTimeout(() => {
+        controller.abort();
+        const err = new Error(`AI Mix Mentor timed out after ${GEMINI_TIMEOUT_MS / 1000}s`);
+        err.name = "TimeoutError";
+        reject(err);
+      }, GEMINI_TIMEOUT_MS);
+    });
+
+    let response;
+    try {
+      const generatePromise = ai.models.generateContent({
+        model: serverConfig.geminiModel,
+        contents,
+        config: {
+          systemInstruction: systemRules,
+          responseMimeType: "application/json",
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.LOW,
+          },
+          abortSignal: controller.signal,
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              summary: { type: Type.STRING },
+              vision_alignment_note: { type: Type.STRING },
+              prioritized_actions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    evidence_id: { type: Type.STRING },
+                    priority: { type: Type.INTEGER },
+                    headline: { type: Type.STRING },
+                    coaching_note: { type: Type.STRING },
+                    daw_experiment: { type: Type.STRING },
+                    verification_step: { type: Type.STRING },
+                  },
+                  required: [
+                    "evidence_id",
+                    "priority",
+                    "headline",
+                    "coaching_note",
+                    "daw_experiment",
+                    "verification_step",
+                  ],
                 },
-                required: [
-                  "evidence_id",
-                  "priority",
-                  "headline",
-                  "coaching_note",
-                  "daw_experiment",
-                  "verification_step",
-                ],
               },
             },
+            required: ["summary", "vision_alignment_note", "prioritized_actions"],
           },
-          required: ["summary", "vision_alignment_note", "prioritized_actions"],
         },
-      },
-    });
+      });
+      response = await Promise.race([generatePromise, timeoutPromise]);
+    } finally {
+      if (timerId !== null) clearTimeout(timerId);
+    }
 
     const rawText = (response.text ?? "").trim() || "{}";
     const parsed = JSON.parse(rawText) as MentorLLMOutput;
@@ -335,7 +356,17 @@ export async function generateMentorAdvice(
       },
     };
   } catch (err) {
-    const errName = err instanceof Error ? err.name || "Error" : "Error";
+    const isTimeout =
+      err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+    const errName = isTimeout
+      ? `Timeout after ${Math.round(GEMINI_TIMEOUT_MS / 1000)}s`
+      : err instanceof Error
+        ? err.name || "Error"
+        : "Error";
+    console.warn(
+      `[MixBench Mentor] Live Gemini request failed (${errName}); returning deterministic Offline Mentor fallback.`,
+      err instanceof Error ? err.message : err
+    );
     return buildDeterministicMentorResponse(
       report,
       request,

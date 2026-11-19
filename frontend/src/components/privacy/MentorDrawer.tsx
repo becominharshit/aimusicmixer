@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Sparkles, X } from "lucide-react";
 import { MentorPrivacyPanel } from "@/components/privacy/MentorPrivacyPanel";
@@ -14,7 +14,9 @@ interface MentorDrawerProps {
   report: AnalysisReport;
   mentorAdvice: MentorResponse | null;
   isAskingMentor: boolean;
-  onAskMentor: (req: MentorRequest) => void;
+  mentorError?: string | null;
+  onDismissMentorError?: () => void;
+  onAskMentor: (req: MentorRequest) => void | Promise<void>;
   onSaveDawContext: (ctx: { daw: string; bus_routing: string; plugin_notes: string }) => void;
   onJumpToEvidence: (evidenceId: string) => void;
   privacyPrefs?: PrivacyPreferences;
@@ -29,6 +31,8 @@ export function MentorDrawer({
   report,
   mentorAdvice,
   isAskingMentor,
+  mentorError = null,
+  onDismissMentorError,
   onAskMentor,
   onSaveDawContext,
   onJumpToEvidence,
@@ -37,6 +41,9 @@ export function MentorDrawer({
   privacySaveState = "idle",
   isSignedIn = false,
 }: MentorDrawerProps) {
+  const [localLoading, setLocalLoading] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!open) return;
     const handleEsc = (e: KeyboardEvent) => {
@@ -45,6 +52,31 @@ export function MentorDrawer({
     document.addEventListener("keydown", handleEsc);
     return () => document.removeEventListener("keydown", handleEsc);
   }, [open, onClose]);
+
+  useEffect(() => {
+    setLocalError(null);
+    setLocalLoading(false);
+  }, [report.report_id]);
+
+  const handleAskMentorSafe = async (req: MentorRequest) => {
+    setLocalError(null);
+    onDismissMentorError?.();
+    setLocalLoading(true);
+    try {
+      await onAskMentor(req);
+    } catch (err) {
+      setLocalError(
+        err instanceof Error
+          ? err.message
+          : "AI Mix Mentor request failed. Please retry or use the Offline Deterministic Mentor."
+      );
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
+  const combinedLoading = isAskingMentor || localLoading;
+  const combinedError = mentorError || localError;
 
   return (
     <AnimatePresence>
@@ -99,8 +131,13 @@ export function MentorDrawer({
             <MentorPrivacyPanel
               report={report}
               mentorAdvice={mentorAdvice}
-              isAskingMentor={isAskingMentor}
-              onAskMentor={onAskMentor}
+              isAskingMentor={combinedLoading}
+              mentorError={combinedError}
+              onDismissMentorError={() => {
+                setLocalError(null);
+                onDismissMentorError?.();
+              }}
+              onAskMentor={(req) => void handleAskMentorSafe(req)}
               onSaveDawContext={onSaveDawContext}
               privacyPrefs={privacyPrefs}
               onPrivacyPrefsChange={onPrivacyPrefsChange}

@@ -136,6 +136,7 @@ export default function MixBenchPage() {
   const [isUploadingRevision, setIsUploadingRevision] = useState(false);
   const [revisionError, setRevisionError] = useState<string | null>(null);
   const [isAskingMentor, setIsAskingMentor] = useState(false);
+  const [mentorError, setMentorError] = useState<string | null>(null);
 
   const [audioState, setAudioState] = useState(() => studioAudioEngine.getState());
   const stepTimerRef = useRef<number | null>(null);
@@ -484,6 +485,7 @@ export default function MixBenchPage() {
     setMissingArchivedAudio(false);
     setReferenceMeta(null);
     setMentorAdvice(null);
+    setMentorError(null);
     setStemError(null);
     setRevisionError(null);
     setActiveFindingId(nextReport.findings[0]?.evidence_id ?? null);
@@ -786,11 +788,18 @@ export default function MixBenchPage() {
 
   const handleAskMentor = async (req: MentorRequest) => {
     if (!report) return;
+    setMentorError(null);
     setIsAskingMentor(true);
     try {
       const advice = await askMentor(report.session_id, req);
       setMentorAdvice(advice);
       setReport((prev) => (prev ? { ...prev, privacy_audit: advice.privacy_audit } : prev));
+    } catch (err) {
+      setMentorError(
+        err instanceof Error
+          ? err.message
+          : "AI Mix Mentor request failed. Please retry or use Offline Deterministic Mentor."
+      );
     } finally {
       setIsAskingMentor(false);
     }
@@ -829,6 +838,7 @@ export default function MixBenchPage() {
     setMentorOpen(false);
     setReferenceMeta(null);
     setMentorAdvice(null);
+    setMentorError(null);
     setActiveFindingId(null);
     if (sid) {
       try {
@@ -1248,11 +1258,13 @@ export default function MixBenchPage() {
             report={report}
             mentorAdvice={mentorAdvice}
             isAskingMentor={isAskingMentor}
+            mentorError={mentorError}
+            onDismissMentorError={() => setMentorError(null)}
             privacyPrefs={privacyPrefs}
             onPrivacyPrefsChange={handlePrivacyPrefsChange}
             privacySaveState={privacySaveState}
             isSignedIn={Boolean(supabaseUser)}
-            onAskMentor={(req) => void handleAskMentor(req)}
+            onAskMentor={handleAskMentor}
             onSaveDawContext={(ctx) => void handleSaveDawContext(ctx)}
             onJumpToEvidence={handleJumpEvidence}
           />

@@ -21,6 +21,8 @@ interface MentorPrivacyPanelProps {
   report: AnalysisReport;
   mentorAdvice: MentorResponse | null;
   isAskingMentor: boolean;
+  mentorError?: string | null;
+  onDismissMentorError?: () => void;
   onAskMentor: (req: MentorRequest) => void;
   onSaveDawContext: (ctx: { daw: string; bus_routing: string; plugin_notes: string }) => void;
   onJumpToEvidence: (evidenceId: string) => void;
@@ -34,6 +36,8 @@ export function MentorPrivacyPanel({
   report,
   mentorAdvice,
   isAskingMentor,
+  mentorError = null,
+  onDismissMentorError,
   onAskMentor,
   onSaveDawContext,
   onJumpToEvidence,
@@ -63,6 +67,7 @@ export function MentorPrivacyPanel({
   const [question, setQuestion] = useState("");
   const [conversationHistory, setConversationHistory] = useState<MentorChatTurn[]>([]);
   const lastAdviceRef = useRef<MentorResponse | null>(null);
+  const lastRequestRef = useRef<MentorRequest | null>(null);
   const lastReportIdRef = useRef<string>(report.report_id);
 
   // Reset multi-turn coaching thread when switching to a different report
@@ -71,6 +76,7 @@ export function MentorPrivacyPanel({
       lastReportIdRef.current = report.report_id;
       setConversationHistory([]);
       lastAdviceRef.current = null;
+      lastRequestRef.current = null;
     }
   }, [report.report_id]);
 
@@ -102,7 +108,10 @@ export function MentorPrivacyPanel({
     });
   };
 
-  const submitQuestion = (overrideQuestion?: string) => {
+  const submitQuestion = (
+    overrideQuestion?: string,
+    overrideConsent?: { allowMetricsAi: boolean; allowAudioAi: boolean }
+  ) => {
     const activeQuestion = (overrideQuestion ?? question).trim();
     const nextHistory = activeQuestion
       ? [...conversationHistory.slice(-9), { role: "user" as const, content: activeQuestion }]
@@ -113,13 +122,16 @@ export function MentorPrivacyPanel({
       setQuestion("");
     }
 
-    onAskMentor({
-      allow_metrics_ai: allowMetricsAi,
-      allow_audio_ai: allowAudioAi,
+    const reqPayload: MentorRequest = {
+      allow_metrics_ai: overrideConsent ? overrideConsent.allowMetricsAi : allowMetricsAi,
+      allow_audio_ai: overrideConsent ? overrideConsent.allowAudioAi : allowAudioAi,
       allow_training_opt_in: allowTrainingOptIn,
       question: activeQuestion,
       conversation_history: conversationHistory.slice(-8),
-    });
+    };
+    lastRequestRef.current = reqPayload;
+    onDismissMentorError?.();
+    onAskMentor(reqPayload);
   };
 
   const modeAttribution =
@@ -279,6 +291,50 @@ export function MentorPrivacyPanel({
                   : "Ask Gemini 4 Mentor (Metrics JSON Only)"
                 : "Run Offline Deterministic Mentor"}
           </Button>
+
+          {mentorError && (
+            <div
+              role="alert"
+              data-testid="mentor-error-notice"
+              className="space-y-2 bg-[#FEF7EC] p-3 text-[11px] text-[#B45309] border border-[rgba(180,83,9,0.24)] squircle-inner"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <p className="leading-relaxed break-words">{mentorError}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                <button
+                  type="button"
+                  disabled={isAskingMentor}
+                  onClick={() => {
+                    const lastReq = lastRequestRef.current;
+                    if (lastReq) {
+                      onDismissMentorError?.();
+                      onAskMentor(lastReq);
+                    } else {
+                      submitQuestion();
+                    }
+                  }}
+                  className="bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-semibold text-[#182220] hairline-border hover:border-[rgba(58,114,105,0.45)] squircle-inner cursor-pointer disabled:opacity-50"
+                >
+                  Retry Request
+                </button>
+                <button
+                  type="button"
+                  disabled={isAskingMentor}
+                  onClick={() =>
+                    submitQuestion(lastRequestRef.current?.question ?? question, {
+                      allowMetricsAi: false,
+                      allowAudioAi: false,
+                    })
+                  }
+                  className="bg-[#EBF3F1] px-2.5 py-1 text-[11px] font-semibold text-[#3A7269] hover:bg-[#DFECE9] squircle-inner cursor-pointer disabled:opacity-50"
+                >
+                  Run Offline Fallback Now
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

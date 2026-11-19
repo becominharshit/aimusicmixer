@@ -335,16 +335,44 @@ export async function updateDawContext(
   });
 }
 
+export const MENTOR_REQUEST_TIMEOUT_MS = 28_000;
+
 export async function askMentor(
   sessionId: string,
-  payload: MentorRequest
+  payload: MentorRequest,
+  timeoutMs: number = MENTOR_REQUEST_TIMEOUT_MS
 ): Promise<MentorResponse> {
-  const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/mentor`), {
-    method: "POST",
-    headers: await getOptionalAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
-  return handleResponse<MentorResponse>(res);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(resolveApiUrl(`/api/v1/sessions/${sessionId}/mentor`), {
+      method: "POST",
+      headers: await getOptionalAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    return await handleResponse<MentorResponse>(res);
+  } catch (err) {
+    if (
+      (err instanceof DOMException && err.name === "AbortError") ||
+      (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError"))
+    ) {
+      throw new Error(
+        `AI Mix Mentor timed out after ${Math.round(timeoutMs / 1000)} seconds. Your session is intact — retry or switch to the instant Offline Deterministic Mentor below.`
+      );
+    }
+    if (err instanceof TypeError) {
+      throw new Error(
+        "Could not reach the AI Mix Mentor service due to a network interruption. Retry or run the Offline Deterministic Mentor below."
+      );
+    }
+    throw err instanceof Error
+      ? err
+      : new Error("AI Mix Mentor request failed unexpectedly. Please retry or use Offline Mode.");
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function clearSession(sessionId: string): Promise<void> {
