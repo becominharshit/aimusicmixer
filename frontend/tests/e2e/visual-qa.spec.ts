@@ -61,8 +61,8 @@ async function assertNoTextClipping(locator: Locator, label: string) {
   ).toBeLessThanOrEqual(metrics.clientWidth + 2);
 }
 
-test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
-  test("auth gate: visiting /studio while signed out redirects cleanly to /?signin=1 and opens Sign In modal", async ({
+test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
+  test("auth gate + explicit Sign-Up consent: /studio redirects to /?signin=1 and requires consent checkbox on sign-up", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -73,11 +73,23 @@ test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
     await expect(page.getByTestId("landing-hero")).toBeVisible();
     await expect(page.getByTestId("auth-modal")).toBeVisible({ timeout: 10_000 });
     await expect(
-      page.getByText(/Sign in to launch MixBench Studio and save your mix diagnostics/i)
+      page.getByText(/Sign in to launch Mixit Studio and save your mix diagnostics/i)
     ).toBeVisible();
+
+    if (hasMockAuth) {
+      // Switch to Sign Up and verify explicit consent checkbox is required
+      await page.getByRole("button", { name: /Need an account\? Sign up/i }).click();
+      const createBtn = page.getByRole("button", { name: /Create Account/i });
+      const consentBox = page.getByTestId("signup-consent-checkbox");
+      await expect(consentBox).toBeVisible();
+      await expect(consentBox).not.toBeChecked();
+      await expect(createBtn).toBeDisabled();
+      await consentBox.check();
+      await expect(createBtn).toBeEnabled();
+    }
   });
 
-  test("landing page 1440x900: Veo hero, back-nav opacity===1, media integrity, clustered FlawTimelineBar, and Daylight toggle", async ({
+  test("Swiss Daylight landing page 1440x900: Mixit brand, opacity===1 back-nav, live vinyl+spectrum, cookie banner, accordions", async ({
     page,
   }) => {
     const consoleErrors: string[] = [];
@@ -92,6 +104,13 @@ test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
 
+    // Essential Cookie Consent Banner renders & dismisses cleanly
+    const cookieBanner = page.getByTestId("cookie-consent-banner");
+    await expect(cookieBanner).toBeVisible();
+    await expect(cookieBanner.getByText(/Essential Cookies Only/i)).toBeVisible();
+    await cookieBanner.getByRole("button", { name: /Accept essential cookies/i }).click();
+    await expect(cookieBanner).toBeHidden();
+
     // Hero headline and CTAs render immediately visible at opacity === 1
     const heroHeading = page.locator("h1").first();
     const primaryCta = page.getByTestId("hero-primary-cta");
@@ -104,14 +123,23 @@ test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
     expect(await primaryCta.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
     expect(await demoCta.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
 
-    // Capture full-bleed hero screenshot
+    // Verify official Mixit full logo and bespoke vinyl platter loaded cleanly
+    const brandImg = page.getByAltText(/Mixit audio diagnostics studio logo/i).first();
+    await expect(brandImg).toBeVisible();
+    expect(await brandImg.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(200);
+
+    const vinylImg = page.getByAltText(/Pressed matte-black studio vinyl platter/i);
+    await expect(vinylImg).toBeVisible();
+    expect(await vinylImg.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(200);
+
+    // Capture full-bleed Swiss Neo-Brutalist Hero + live console screenshot
     await page.waitForTimeout(300);
     await saveShot(page, "01-landing-hero-1440.png", false);
 
     // Back-navigation regression guard: / -> /status -> Back to / MUST keep hero at opacity === 1
     await page.getByRole("link", { name: /^Status$/i }).first().click();
     await expect(page).toHaveURL(/\/status$/);
-    await expect(page.getByText(/MixBench System Status/i)).toBeVisible();
+    await expect(page.getByText(/Mixit System Status/i)).toBeVisible();
     await page.goBack();
     await expect(page).toHaveURL(/\/$/);
     await page.waitForTimeout(350);
@@ -119,32 +147,13 @@ test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
     await expect(heroHeading).toBeVisible();
     expect(await heroHeading.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
     expect(await primaryCta.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
-    expect(await demoCta.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
 
-    // Dual-theme toggle works cleanly (Dark default -> Warm Daylight -> Dark)
-    const themeToggle = page.getByTestId("theme-toggle");
-    await expect(themeToggle).toBeVisible();
-    await themeToggle.click();
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    await themeToggle.click();
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    // Verify clickable frequency band zone selector on LiveSpectralGraph + clustered FlawTimelineBar
+    const subZoneBtn = page.getByRole("button", { name: "SUB", exact: true });
+    await subZoneBtn.click();
+    await expect(subZoneBtn).toHaveAttribute("aria-pressed", "true");
+    await subZoneBtn.click();
 
-    // Scroll to Section 2: Interactive Turntable + Live Spectrum + Clustered FlawTimelineBar
-    const demoSection = page.getByTestId("landing-demo-showcase");
-    await demoSection.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(350);
-
-    await expect(page.getByTestId("spinning-disc-player")).toBeVisible();
-    await expect(page.getByTestId("live-spectral-graph")).toBeVisible();
-    await expect(page.getByTestId("flaw-timeline-bar")).toBeVisible();
-
-    // Verify bespoke Nano Banana vinyl platter texture actually loaded
-    const vinylImg = page.getByAltText(/Pressed matte-black studio vinyl platter/i);
-    await expect(vinylImg).toBeVisible();
-    const vinylWidth = await vinylImg.evaluate((img: HTMLImageElement) => img.naturalWidth);
-    expect(vinylWidth).toBeGreaterThan(200);
-
-    // Verify clustered FlawTimelineBar pill (2 Flaws · 0:03) has zero overlap & opens popover
     await assertNoButtonOverlap(
       page.getByTestId("flaw-marker-rail"),
       "Landing FlawTimelineBar pins (1440px)"
@@ -154,18 +163,15 @@ test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
     await clusterPill.click();
     await expect(page.getByText(/Out-of-Phase Sub-Bass/i)).toBeVisible();
     await expect(page.getByText(/Inter-Sample True Peak Overshoot/i)).toBeVisible();
-    await page.waitForTimeout(240);
-    await saveShot(page, "02-landing-demo-deck-1440.png", false);
+    await page.waitForTimeout(220);
+    await saveShot(page, "02-landing-demo-popover-1440.png", false);
+    await page.keyboard.press("Escape");
 
-    // Scroll to Section 3 & verify bespoke Analog Console macro loaded
+    // Scroll to 01/02/03 feature grid + looping hardware visual + bottom accordions
     const proofBand = page.getByTestId("landing-proof-band");
     await proofBand.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(350);
-    const consoleImg = page.getByAltText(/analog mastering console/i);
-    await expect(consoleImg).toBeVisible();
-    const consoleWidth = await consoleImg.evaluate((img: HTMLImageElement) => img.naturalWidth);
-    expect(consoleWidth).toBeGreaterThan(400);
-    await saveShot(page, "03-landing-proof-console-1440.png", false);
+    await page.waitForTimeout(300);
+    await saveShot(page, "03-landing-features-1440.png", false);
 
     // Zero horizontal overflow at 1440px
     const overflow = await page.evaluate(
@@ -178,20 +184,26 @@ test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
     expect(pageErrors, `Unexpected uncaught page errors: ${pageErrors.join(" | ")}`).toEqual([]);
   });
 
-  test("landing page mobile 390x844: zero horizontal overflow and clean stacked layout", async ({
+  test("landing page mobile 390x844: zero horizontal overflow and clean stacked Swiss layout", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
+
+    const cookieBanner = page.getByTestId("cookie-consent-banner");
+    if (await cookieBanner.isVisible()) {
+      await cookieBanner.getByRole("button", { name: /Accept essential cookies/i }).click();
+      await expect(cookieBanner).toBeHidden();
+      await page.waitForTimeout(250);
+    }
 
     const heroHeading = page.locator("h1").first();
     await expect(heroHeading).toBeVisible();
     expect(await heroHeading.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
     await saveShot(page, "04-landing-hero-390.png", false);
 
-    await page.getByTestId("landing-demo-showcase").scrollIntoViewIfNeeded();
-    await page.waitForTimeout(300);
-    await expect(page.getByTestId("spinning-disc-player")).toBeVisible();
+    await page.getByTestId("flaw-timeline-bar").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(250);
     await assertNoButtonOverlap(
       page.getByTestId("flaw-marker-rail"),
       "Landing FlawTimelineBar pins (390px)"
@@ -204,7 +216,7 @@ test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
     expect(overflow).toBeLessThanOrEqual(2);
   });
 
-  test("authenticated /studio workbench (1440x900 & 390x844): single-row header, zero overlap, zero clipping, sign-out -> /", async ({
+  test("authenticated /studio Obsidian console (1440x900 & 390x844): single-row header, PAPER/INK toggle, zero overlap, sign-out -> /", async ({
     page,
   }) => {
     test.skip(!hasMockAuth, "Requires local mock Supabase Auth server (E2E_AUTH_ENABLED=1)");
@@ -223,7 +235,7 @@ test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
 
     // Redirected to / with AuthModal open
     await expect(page.getByTestId("auth-modal")).toBeVisible({ timeout: 10_000 });
-    await page.fill("#auth-email", "engineer@mixbench.studio");
+    await page.fill("#auth-email", "engineer@mixit.studio");
     await page.fill("#auth-password", "studio-pass-123");
     await page.getByRole("button", { name: /Sign In with Email/i }).click();
 
@@ -233,7 +245,24 @@ test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
       timeout: 15_000,
     });
 
-    // Verify StudioHeader is strictly single-row (<= 66px) and Advanced Mix Check never clips trailing "k"
+    // Dismiss cookie banner if visible
+    const cookieBanner = page.getByTestId("cookie-consent-banner");
+    if (await cookieBanner.isVisible()) {
+      await cookieBanner.getByRole("button", { name: /Accept essential cookies/i }).click();
+      await expect(cookieBanner).toBeHidden();
+      await page.waitForTimeout(250);
+    }
+
+    // Verify 1-click PAPER / INK theme toggle works inside /studio
+    const themeToggle = page.getByTestId("theme-toggle");
+    await expect(themeToggle).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await themeToggle.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await themeToggle.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+    // Verify StudioHeader is strictly single-row (<= 68px) and Advanced Mix Check never clips trailing "k"
     const header = page.getByTestId("studio-header");
     const headerBox = await header.boundingBox();
     expect(headerBox).not.toBeNull();
@@ -351,21 +380,26 @@ test.describe("MixBench Commercial Studio Visual & Auth QA", () => {
     expect(pageErrors, `Unexpected uncaught page errors: ${pageErrors.join(" | ")}`).toEqual([]);
   });
 
-  test("diagnostics /status, legal /privacy & /terms, and /share/demo routes return 200 cleanly", async ({
+  test("compliance & diagnostics routes (/status, /privacy, /terms, /cookies, /share/demo) return 200 cleanly", async ({
     page,
   }) => {
     const statusRes = await page.goto("/status");
     expect(statusRes?.status()).toBe(200);
-    await expect(page.getByText(/MixBench System Status/i)).toBeVisible();
+    await expect(page.getByText(/Mixit System Status/i)).toBeVisible();
     await expect(page.getByText(/\/api\/v1\/analyze\/mock/i)).toBeVisible();
 
     const privacyRes = await page.goto("/privacy");
     expect(privacyRes?.status()).toBe(200);
-    await expect(page.getByRole("heading", { name: /MixBench Privacy Policy/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Mixit Privacy Policy/i })).toBeVisible();
 
     const termsRes = await page.goto("/terms");
     expect(termsRes?.status()).toBe(200);
-    await expect(page.getByRole("heading", { name: /MixBench Terms of Use/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Mixit Terms of Use/i })).toBeVisible();
+
+    const cookiesRes = await page.goto("/cookies");
+    expect(cookiesRes?.status()).toBe(200);
+    await expect(page.getByRole("heading", { name: /Mixit Cookie Policy/i })).toBeVisible();
+    await expect(page.getByText(/Strictly Essential Authentication Cookies/i)).toBeVisible();
 
     const shareRes = await page.goto("/share/demo");
     expect(shareRes?.status()).toBe(200);

@@ -1,32 +1,40 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Warm Daylight Studio Light Mode (Architectural Paper) */
+/* Swiss Gallery Daylight Mode ("PAPER" mode inside /studio & architectural reference) */
 :root {
-  --bg-canvas: #F6F3EC;
-  --bg-surface: #EFEAE0;
+  --bg-canvas: #FFFFFF;
+  --bg-surface: #F7F7F5;
   --bg-elevated: #FFFFFF;
-  --bg-elevated-hover: #FAF8F4;
-  --bg-inset: #EAE4D7;
-  --border-hairline: rgba(17, 19, 24, 0.10);
-  --border-strong: rgba(17, 19, 24, 0.18);
-  --border-active: rgba(15, 143, 100, 0.42);
-  --text-primary: #111318;
-  --text-secondary: #4B5260;
-  --text-muted: #666E7E;
+  --bg-elevated-hover: #F4F4F0;
+  --bg-inset: #F1F1ED;
+  --border-hairline: #0A0A0A;
+  --border-subtle: rgba(10, 10, 10, 0.22);
+  --border-strong: #0A0A0A;
+  --border-active: #0A0A0A;
+  --text-primary: #0A0A0A;
+  --text-secondary: #3F3F46;
+  --text-muted: #52525B;
 
-  /* Purposeful Hardware Signal Accents (Daylight-calibrated contrast) */
-  --studio-vermilion: #D1382B;
-  --studio-vermilion-soft: rgba(209, 56, 43, 0.10);
-  --studio-amber: #B8730B;
-  --studio-amber-soft: rgba(184, 115, 11, 0.11);
-  --studio-mint: #0F8F64;
-  --studio-mint-soft: rgba(15, 143, 100, 0.11);
-  --studio-cobalt: #2057D6;
-  --studio-cobalt-soft: rgba(32, 87, 214, 0.11);
+  /* Swiss Neo-Brutalist + Hardware Signal Palette */
+  --swiss-yellow: #FFE01B;
+  --swiss-vermilion: #FF3B1F;
+  --swiss-ink: #0A0A0A;
+  --swiss-paper: #FFFFFF;
 
-  --accent-primary: var(--studio-mint);
-  --accent-soft: var(--studio-mint-soft);
+  --studio-yellow: #FFE01B;
+  --studio-yellow-soft: rgba(255, 224, 27, 0.22);
+  --studio-vermilion: #D9260C;
+  --studio-vermilion-soft: rgba(255, 59, 31, 0.12);
+  --studio-amber: #B45309;
+  --studio-amber-soft: rgba(180, 83, 9, 0.12);
+  --studio-mint: #0F7A53;
+  --studio-mint-soft: rgba(15, 122, 83, 0.12);
+  --studio-cobalt: #1D4ED8;
+  --studio-cobalt-soft: rgba(29, 78, 216, 0.12);
+
+  --accent-primary: var(--swiss-yellow);
+  --accent-soft: var(--studio-yellow-soft);
   --accent-vermilion: var(--studio-vermilion);
   --accent-vermilion-soft: var(--studio-vermilion-soft);
   --accent-amber: var(--studio-amber);
@@ -43,42 +51,46 @@
   --status-alert-soft: var(--studio-vermilion-soft);
 
   --ease-studio: cubic-bezier(0.22, 1, 0.36, 1);
-  --font-instrument-serif: "Instrument Serif";
+  --font-anton: "Anton";
+  --font-barlow: "Barlow Condensed";
   --font-plus-jakarta: "Plus Jakarta Sans";
   --font-jetbrains-mono: "JetBrains Mono";
-  --font-editorial: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
-  --font-display: var(--font-plus-jakarta), "Plus Jakarta Sans", sans-serif;
+  --font-brut: var(--font-anton), "Anton", "Barlow Condensed", sans-serif;
+  --font-condensed: var(--font-barlow), "Barlow Condensed", sans-serif;
+  --font-display: var(--font-barlow), "Barlow Condensed", "Plus Jakarta Sans", sans-serif;
   --font-heading: var(--font-plus-jakarta), "Plus Jakarta Sans", sans-serif;
   --font-sans: var(--font-plus-jakarta), "Plus Jakarta Sans", sans-serif;
   --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", monospace;
 }
 
-/* Deep Matte Carbon-Obsidian Dark Studio Surface (Default) */
+/* Matte Obsidian Dark Studio Console ("INK" mode — Default for /studio) */
 .dark {
-  --bg-canvas: #090B0E;
-  --bg-surface: #0D1015;
-  --bg-elevated: #11141B;
-  --bg-elevated-hover: #171B24;
-  --bg-inset: #0B0D12;
-  --border-hairline: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --border-active: rgba(34, 197, 139, 0.42);
+  --bg-canvas: #0A0C10;
+  --bg-surface: #0E1117;
+  --bg-elevated: #12151C;
+  --bg-elevated-hover: #181C26;
+  --bg-inset: #0A0A0A;
+  --border-hairline: #262B36;
+  --border-subtle: #262B36;
+  --border-strong: #394152;
+  --border-active: #FFE01B;
   --text-primary: #F4F1EA;
-  --text-secondary: #9CA3AF;
-  --text-muted: #6B7280;
+  --text-secondary: #A1A8B8;
+  --text-muted: #7B8394;
 
-  /* Purposeful Hardware Signal Accents */
-  --studio-vermilion: #E5483A;
-  --studio-vermilion-soft: rgba(229, 72, 58, 0.12);
-  --studio-amber: #E89B2D;
-  --studio-amber-soft: rgba(232, 155, 45, 0.13);
+  --studio-yellow: #FFE01B;
+  --studio-yellow-soft: rgba(255, 224, 27, 0.14);
+  --studio-vermilion: #FF3B1F;
+  --studio-vermilion-soft: rgba(255, 59, 31, 0.15);
+  --studio-amber: #F59E0B;
+  --studio-amber-soft: rgba(245, 158, 11, 0.14);
   --studio-mint: #22C58B;
-  --studio-mint-soft: rgba(34, 197, 139, 0.12);
-  --studio-cobalt: #3B82F6;
-  --studio-cobalt-soft: rgba(59, 130, 246, 0.13);
+  --studio-mint-soft: rgba(34, 197, 139, 0.14);
+  --studio-cobalt: #38BDF8;
+  --studio-cobalt-soft: rgba(56, 189, 248, 0.14);
 
-  --accent-primary: var(--studio-mint);
-  --accent-soft: var(--studio-mint-soft);
+  --accent-primary: var(--studio-yellow);
+  --accent-soft: var(--studio-yellow-soft);
   --accent-vermilion: var(--studio-vermilion);
   --accent-vermilion-soft: var(--studio-vermilion-soft);
   --accent-amber: var(--studio-amber);
@@ -108,7 +120,7 @@
     background-color: var(--bg-canvas);
     color: var(--text-primary);
     font-family: var(--font-sans);
-    line-height: 1.6;
+    line-height: 1.55;
     overflow-x: hidden;
   }
 
@@ -119,12 +131,17 @@
   }
 
   ::selection {
-    background-color: var(--studio-mint-soft);
-    color: var(--text-primary);
+    background-color: #FFE01B;
+    color: #0A0A0A;
   }
 
   :focus-visible {
-    outline: 2px solid var(--studio-mint);
+    outline: 2px solid #FF3B1F;
+    outline-offset: 2px;
+  }
+
+  .dark :focus-visible {
+    outline: 2px solid #FFE01B;
     outline-offset: 2px;
   }
 
@@ -139,44 +156,42 @@
 
   ::-webkit-scrollbar-thumb {
     background: var(--border-strong);
-    border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--studio-mint);
+    background: var(--swiss-yellow);
   }
 }
 
-.font-editorial {
-  font-family: var(--font-editorial);
+.font-brut {
+  font-family: var(--font-brut);
   font-weight: 400;
-  letter-spacing: -0.025em;
-  text-wrap: balance;
+  text-transform: uppercase;
+  letter-spacing: -0.015em;
+  line-height: 0.94;
+}
+
+.font-condensed {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .font-display {
-  font-family: var(--font-display);
+  font-family: var(--font-heading);
   letter-spacing: -0.02em;
 }
 
+/* Sharp Swiss Neo-Brutalist architectural radii inside studio */
 .squircle-outer {
-  border-radius: 20px;
+  border-radius: 0px;
 }
 
 .squircle-inner {
-  border-radius: 10px;
+  border-radius: 0px;
 }
 
-@supports (corner-shape: squircle) {
-  .squircle-outer {
-    corner-shape: squircle;
-  }
-  .squircle-inner {
-    corner-shape: squircle;
-  }
-}
-
-/* Strictly reserved for numerical audio telemetry (LUFS, dBTP, Hz, BPM, timecode) */
+/* Strictly reserved for numerical audio telemetry (LUFS, dBTP, Hz, BPM, timecode, evidence_id) */
 .tabular-telemetry {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -210,13 +225,28 @@
 }
 
 .signal-beam-active {
-  background: linear-gradient(90deg, var(--studio-mint), var(--studio-amber), var(--studio-vermilion), var(--studio-mint));
+  background: linear-gradient(90deg, #FFE01B, #FF3B1F, #22C58B, #FFE01B);
   background-size: 200% 100%;
-  animation: signal-beam-flow 2s linear infinite;
+  animation: signal-beam-flow 1.8s linear infinite;
+}
+
+@keyframes swiss-slow-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.swiss-emblem-spin {
+  animation: swiss-slow-spin 22s linear infinite;
+  will-change: transform;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .signal-beam-active {
+  .signal-beam-active,
+  .swiss-emblem-spin {
     animation: none;
   }
 }
@@ -230,7 +260,7 @@
   html,
   body {
     background: #ffffff !important;
-    color: #111318 !important;
+    color: #0a0a0a !important;
     overflow: visible !important;
   }
 

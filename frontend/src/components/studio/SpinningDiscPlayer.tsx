@@ -23,18 +23,18 @@ interface SpinningDiscPlayerProps {
 
 const HEALTH_ACCENT: Record<SeverityType, { primary: string; soft: string; label: string }> = {
   alert: {
-    primary: "#E5483A",
-    soft: "rgba(229, 72, 58, 0.14)",
+    primary: "#FF3B1F",
+    soft: "rgba(255, 59, 31, 0.16)",
     label: "Needs Attention",
   },
   caution: {
-    primary: "#E89B2D",
-    soft: "rgba(232, 155, 45, 0.14)",
+    primary: "#FFE01B",
+    soft: "rgba(255, 224, 27, 0.16)",
     label: "Review Recommended",
   },
   safe: {
     primary: "#22C58B",
-    soft: "rgba(34, 197, 139, 0.14)",
+    soft: "rgba(34, 197, 139, 0.16)",
     label: "Balanced Headroom",
   },
 };
@@ -55,10 +55,13 @@ export function SpinningDiscPlayer({
   const [engineState, setEngineState] = useState(() => studioAudioEngine.getState());
   const containerRef = useRef<HTMLDivElement | null>(null);
   const discRef = useRef<HTMLDivElement | null>(null);
+  const bassGlowRef = useRef<HTMLDivElement | null>(null);
+  const freqBufferRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const isVisibleRef = useRef(true);
 
   const angleRef = useRef(0);
   const velocityRef = useRef(0); // deg/sec (33.3 RPM = 199.8 deg/sec)
+  const bassSmoothRef = useRef(0);
   const isPlayingRef = useRef(engineState.isPlaying);
 
   useEffect(() => {
@@ -118,9 +121,38 @@ export function SpinningDiscPlayer({
             discRef.current.style.transform = `rotate(${angleRef.current.toFixed(2)}deg)`;
           }
         }
+
+        // Compute real-time 20–120 Hz bass energy from AnalyserNode for reactive rim glow
+        let targetBass = 0;
+        if (playing) {
+          const binCount = studioAudioEngine.getSpectrumBinCount();
+          if (!freqBufferRef.current || freqBufferRef.current.length !== binCount) {
+            freqBufferRef.current = new Uint8Array(new ArrayBuffer(binCount));
+          }
+          const { active, sampleRate } = studioAudioEngine.getFrequencyData(freqBufferRef.current);
+          if (active && freqBufferRef.current) {
+            const nyquist = sampleRate * 0.5;
+            const startBin = Math.max(1, Math.floor((20 / nyquist) * binCount));
+            const endBin = Math.min(binCount - 1, Math.max(startBin, Math.ceil((120 / nyquist) * binCount)));
+            let sum = 0;
+            for (let b = startBin; b <= endBin; b += 1) {
+              sum += freqBufferRef.current[b];
+            }
+            targetBass = sum / Math.max(1, endBin - startBin + 1) / 255;
+          }
+        }
+
+        bassSmoothRef.current += (targetBass - bassSmoothRef.current) * Math.min(1, dt * 14);
+        if (bassGlowRef.current) {
+          const energy = bassSmoothRef.current;
+          const opacity = playing ? Math.min(0.95, 0.16 + energy * 0.85) : Math.max(0, energy * 0.5);
+          const scale = 1 + energy * 0.06;
+          bassGlowRef.current.style.opacity = opacity.toFixed(3);
+          bassGlowRef.current.style.transform = `scale(${scale.toFixed(3)})`;
+        }
       }
 
-      if (playing || velocityRef.current > 0.4) {
+      if (playing || velocityRef.current > 0.4 || bassSmoothRef.current > 0.01) {
         rafId = window.requestAnimationFrame(tick);
       } else {
         rafId = 0;
@@ -138,7 +170,7 @@ export function SpinningDiscPlayer({
 
   const accent = HEALTH_ACCENT[health];
   const discSize = compact
-    ? "w-48 h-48 sm:w-56 sm:h-56"
+    ? "w-44 h-44 sm:w-52 sm:h-52"
     : "w-56 h-56 sm:w-64 sm:h-64";
   const genreLabel = String(genre).replace(/_/g, " ");
 
@@ -156,7 +188,7 @@ export function SpinningDiscPlayer({
     <div
       ref={containerRef}
       data-testid="spinning-disc-player"
-      className={`studio-card squircle-outer relative overflow-hidden p-4 sm:p-5 ${className}`}
+      className={`relative overflow-hidden border border-[#262B36] bg-[#0A0A0A] p-4 text-[#F4F1EA] sm:p-5 ${className}`}
     >
       {/* Hardware Deck Header — never clips mid-word */}
       <div className="mb-3 space-y-1.5">
@@ -166,17 +198,17 @@ export function SpinningDiscPlayer({
               className="h-2 w-2 shrink-0 rounded-full"
               style={{ backgroundColor: accent.primary }}
             />
-            <span className="whitespace-nowrap text-[11px] font-medium text-[var(--text-secondary)]">
+            <span className="whitespace-nowrap text-[11px] font-semibold text-[#A1A8B8]">
               Direct-Drive{" "}
-              <span className="tabular-telemetry text-[var(--text-muted)]">33.3 RPM</span>
+              <span className="tabular-telemetry text-[#F4F1EA]">33.3 RPM</span>
             </span>
           </div>
           <span
-            className="shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold"
+            className="shrink-0 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em]"
             style={{
               backgroundColor: accent.soft,
               color: accent.primary,
-              border: `1px solid ${accent.primary}38`,
+              border: `1px solid ${accent.primary}55`,
             }}
           >
             {accent.label}
@@ -185,40 +217,52 @@ export function SpinningDiscPlayer({
 
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
           <p
-            className="min-w-0 break-words text-sm font-semibold text-[var(--text-primary)]"
+            className="min-w-0 break-words text-sm font-bold text-[#F4F1EA]"
             title={title}
           >
             {title}
           </p>
-          <span className="shrink-0 text-[11px] capitalize text-[var(--text-muted)]">
+          <span className="shrink-0 text-[11px] font-medium capitalize text-[#A1A8B8]">
             {genreLabel}
           </span>
         </div>
 
         {subtitle ? (
-          <p className="text-xs leading-snug text-[var(--text-secondary)]" title={subtitle}>
+          <p className="text-xs leading-snug text-[#A1A8B8]" title={subtitle}>
             {subtitle}
           </p>
         ) : null}
       </div>
 
-      {/* Physical Hardware Platter & Tonearm Stage */}
+      {/* Physical Hardware Platter, Bass-Reactive Radial Rim Glow & Tonearm Stage */}
       <div className="relative flex items-center justify-center py-3">
-        {/* Machined dark anodized aluminum platter recess */}
-        <div className="relative flex items-center justify-center rounded-full border border-[var(--border-strong)] bg-[#090B0E] p-2.5 shadow-[inset_0_2px_14px_rgba(0,0,0,0.75)]">
+        {/* Bass-reactive 20–120 Hz vibrant rim halo (GPU transform/opacity only) */}
+        <div
+          ref={bassGlowRef}
+          aria-hidden="true"
+          className="pointer-events-none absolute h-60 w-60 rounded-full opacity-0 will-change-transform sm:h-68 sm:w-68"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(255,59,31,0.34) 44%, rgba(255,224,27,0.22) 60%, rgba(34,197,139,0.14) 74%, transparent 82%)",
+            filter: "blur(10px)",
+          }}
+        />
+
+        {/* Machined matte-obsidian platter recess */}
+        <div className="relative flex items-center justify-center rounded-full border border-[#2D3340] bg-[#050608] p-2.5">
           {/* Strobe bevel ticks ring */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-1 rounded-full border border-dashed border-white/[0.12]"
+            className="pointer-events-none absolute inset-1 rounded-full border border-dashed border-white/[0.15]"
           />
 
           {/* Photorealistic Pressed Vinyl Record (rotates at 33.3 RPM) */}
           <div
             ref={discRef}
-            className={`relative ${discSize} overflow-hidden rounded-full bg-[#090B0E] will-change-transform`}
+            className={`relative ${discSize} overflow-hidden rounded-full bg-[#0A0A0A] will-change-transform`}
             style={{
               boxShadow:
-                "0 12px 28px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.08)",
+                "0 12px 28px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.1)",
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -231,11 +275,11 @@ export function SpinningDiscPlayer({
               className="h-full w-full scale-[1.03] select-none object-cover"
             />
 
-            {/* Subtle signal ring machined around the brushed titanium spindle hub */}
+            {/* Machined signal ring around titanium hub */}
             <div
               aria-hidden="true"
               className="pointer-events-none absolute left-1/2 top-1/2 h-[39%] w-[39%] -translate-x-1/2 -translate-y-1/2 rounded-full border"
-              style={{ borderColor: `${accent.primary}66` }}
+              style={{ borderColor: `${accent.primary}80` }}
             />
           </div>
 
@@ -245,7 +289,7 @@ export function SpinningDiscPlayer({
             className="pointer-events-none absolute inset-2.5 rounded-full"
             style={{
               background:
-                "conic-gradient(from 32deg, rgba(244,241,234,0.09) 0deg, transparent 36deg, transparent 175deg, rgba(232,155,45,0.06) 205deg, transparent 240deg, transparent 360deg)",
+                "conic-gradient(from 32deg, rgba(244,241,234,0.09) 0deg, transparent 36deg, transparent 175deg, rgba(255,224,27,0.08) 205deg, transparent 240deg, transparent 360deg)",
             }}
           />
 
@@ -256,10 +300,10 @@ export function SpinningDiscPlayer({
             onClick={() => void handlePlayClick()}
             disabled={isLoadingAudio || (!onTogglePlay && !engineState.hasPrimary)}
             aria-label={engineState.isPlaying ? "Pause playback" : "Play mix on turntable"}
-            className="absolute left-1/2 top-1/2 z-20 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-[#090B0E]/88 text-[#F4F1EA] shadow-lg backdrop-blur-sm transition-colors hover:border-white/45 hover:bg-[#11141B] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+            className="absolute left-1/2 top-1/2 z-20 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-[#FFE01B] bg-[#0A0A0A]/92 text-[#FFE01B] transition-colors hover:bg-[#FFE01B] hover:text-[#0A0A0A] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
           >
             {isLoadingAudio ? (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-[var(--studio-mint)]" />
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#FFE01B]/30 border-t-[#FFE01B]" />
             ) : engineState.isPlaying ? (
               <Pause className="h-4 w-4 fill-current" />
             ) : (
@@ -277,22 +321,22 @@ export function SpinningDiscPlayer({
             transition={{ type: "spring", stiffness: 120, damping: 18, mass: 0.9 }}
             style={{ transformOrigin: "82px 26px" }}
           >
-            <circle cx="82" cy="26" r="15" fill="#141820" stroke="#363D4D" strokeWidth="1.8" />
-            <circle cx="82" cy="26" r="6" fill="#9CA3AF" />
+            <circle cx="82" cy="26" r="15" fill="#141820" stroke="#394152" strokeWidth="1.8" />
+            <circle cx="82" cy="26" r="6" fill="#A1A8B8" />
             <rect
               x="76"
               y="4"
               width="12"
               height="10"
-              rx="3"
+              rx="2"
               fill="#232834"
-              stroke="#4B5563"
+              stroke="#525B70"
               strokeWidth="1.4"
             />
             <path
               d="M 82 26 L 82 92 C 82 114, 70 128, 56 144"
               fill="none"
-              stroke="#D1D5DB"
+              stroke="#E5E7EB"
               strokeWidth="4"
               strokeLinecap="round"
             />
@@ -310,7 +354,7 @@ export function SpinningDiscPlayer({
                 y="0"
                 width="12"
                 height="22"
-                rx="2.5"
+                rx="1.5"
                 fill="#11141B"
                 stroke="#6B7280"
                 strokeWidth="1.2"
@@ -318,8 +362,8 @@ export function SpinningDiscPlayer({
               <circle
                 cx="6"
                 cy="18"
-                r="2.2"
-                fill={engineState.isPlaying ? accent.primary : "#6B7280"}
+                r="2.4"
+                fill={engineState.isPlaying ? "#FFE01B" : "#6B7280"}
               />
             </g>
           </motion.svg>
@@ -328,14 +372,16 @@ export function SpinningDiscPlayer({
 
       {/* Calibrated Single-Line Telemetry Strip — zero 3-line wrapping */}
       {typeof lufs === "number" || typeof truePeak === "number" || typeof bpm === "number" ? (
-        <div className="mt-3 grid grid-cols-3 gap-2 border-t border-[var(--border-hairline)] pt-3">
-          <div className="studio-inset squircle-inner min-w-0 px-2.5 py-2">
-            <div className="text-[11px] font-medium text-[var(--text-muted)]">Loudness</div>
-            <div className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold text-[var(--text-primary)]">
+        <div className="mt-3 grid grid-cols-3 gap-1.5 border-t border-[#262B36] pt-3">
+          <div className="min-w-0 border border-[#262B36] bg-[#12151C] px-2 py-2">
+            <div className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.04em] text-[#A1A8B8]">
+              Loudness
+            </div>
+            <div className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold text-[#F4F1EA]">
               {typeof lufs === "number" ? (
                 <>
                   {lufs.toFixed(1)}{" "}
-                  <span className="text-[10px] font-normal text-[var(--text-muted)]">LUFS</span>
+                  <span className="text-[10px] font-normal text-[#A1A8B8]">LUFS</span>
                 </>
               ) : (
                 "—"
@@ -343,22 +389,22 @@ export function SpinningDiscPlayer({
             </div>
           </div>
 
-          <div className="studio-inset squircle-inner min-w-0 px-2.5 py-2">
-            <div className="text-[11px] font-medium text-[var(--text-muted)]">True Peak</div>
+          <div className="min-w-0 border border-[#262B36] bg-[#12151C] px-2 py-2">
+            <div className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.04em] text-[#A1A8B8]">
+              True Peak
+            </div>
             <div
               className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold"
               style={{
                 color:
-                  typeof truePeak === "number" && truePeak > -0.2
-                    ? "var(--studio-vermilion)"
-                    : "var(--text-primary)",
+                  typeof truePeak === "number" && truePeak > -0.2 ? "#FF3B1F" : "#F4F1EA",
               }}
             >
               {typeof truePeak === "number" ? (
                 <>
                   {truePeak > 0 ? "+" : ""}
                   {truePeak.toFixed(1)}{" "}
-                  <span className="text-[10px] font-normal text-[var(--text-muted)]">dBTP</span>
+                  <span className="text-[10px] font-normal text-[#A1A8B8]">dBTP</span>
                 </>
               ) : (
                 "—"
@@ -366,13 +412,15 @@ export function SpinningDiscPlayer({
             </div>
           </div>
 
-          <div className="studio-inset squircle-inner min-w-0 px-2.5 py-2">
-            <div className="text-[11px] font-medium text-[var(--text-muted)]">Tempo</div>
-            <div className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold text-[var(--text-primary)]">
+          <div className="min-w-0 border border-[#262B36] bg-[#12151C] px-2 py-2">
+            <div className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.04em] text-[#A1A8B8]">
+              Tempo
+            </div>
+            <div className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold text-[#F4F1EA]">
               {typeof bpm === "number" ? (
                 <>
                   {Math.round(bpm)}{" "}
-                  <span className="text-[10px] font-normal text-[var(--text-muted)]">BPM</span>
+                  <span className="text-[10px] font-normal text-[#A1A8B8]">BPM</span>
                 </>
               ) : (
                 "—"

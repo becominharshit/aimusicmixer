@@ -1183,9 +1183,9 @@ export function StudioWorkbench() {
   if (!authChecked || !supabaseUser) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg-canvas)] text-[var(--text-secondary)]">
-        <div className="flex items-center gap-3 rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-5 py-3 text-xs font-medium">
-          <span className="h-2 w-2 rounded-full bg-[var(--studio-mint)] animate-pulse" />
-          <span>Verifying MixBench Studio session…</span>
+        <div className="flex items-center gap-3 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-5 py-3 text-xs font-semibold">
+          <span className="h-2 w-2 rounded-full bg-[#FFE01B] animate-pulse" />
+          <span>Verifying Mixit Studio session…</span>
         </div>
       </div>
     );
@@ -1539,23 +1539,29 @@ export function StudioWorkbench() {
       <footer className="no-print border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)] py-4 text-[11px] text-[var(--text-muted)]">
         <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-3 px-4 sm:px-6">
           <span>
-            MixBench Studio · Deterministic DSP Truth · Zero-Audio-by-Default · 60-min ephemeral processing
+            Mixit Studio · Deterministic DSP Truth · Zero-Audio-by-Default · 60-min ephemeral processing
           </span>
           <nav aria-label="Legal and diagnostics links" className="flex items-center gap-4">
-            <Link href="/status" className="font-medium text-[var(--accent-mint)] hover:underline">
+            <Link href="/status" className="font-semibold text-[var(--studio-mint)] hover:underline">
               System Status
             </Link>
             <Link
               href="/privacy"
-              className="font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              className="font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             >
               Privacy Policy
             </Link>
             <Link
               href="/terms"
-              className="font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              className="font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             >
               Terms of Use
+            </Link>
+            <Link
+              href="/cookies"
+              className="font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            >
+              Cookie Policy
             </Link>
           </nav>
         </div>

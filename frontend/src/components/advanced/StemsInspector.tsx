@@ -210,7 +210,7 @@ export function StemsInspector({
             <span>Stem Matrix Locked — Stereo Mix Only</span>
           </div>
           <p className="max-w-2xl text-xs leading-relaxed text-[var(--text-secondary)]">
-            MixBench enforces <strong className="text-[var(--text-primary)]">zero AI stem separation</strong>. Instrument-level overlap and
+            Mixit enforces <strong className="text-[var(--text-primary)]">zero AI stem separation</strong>. Instrument-level overlap and
             per-track headroom cannot be fabricated from a stereo mixdown. Upload 2–8 aligned original
             stems from your DAW (bar 1 bounce, up to 350 MB total) to unlock sample-rate, channel,
             duration alignment checks and pairwise overlap / phase interaction diagnostics.

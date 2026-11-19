@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
 import { MotionConfig } from "motion/react";
+import { CookieConsentBanner } from "@/components/compliance/CookieConsentBanner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MixBench — Deterministic Mix & Mastering Diagnostics Studio",
+  title: "Mixit — Deterministic Audio DSP & Mastering Diagnostics Studio",
   description:
-    "Hear every mix flaw and prove every fix with deterministic ITU-R BS.1770 loudness, 4x True Peak, 20–120 Hz sub-bass phase DSP, and privacy-first Gemini 4 Hydrogen studio coaching.",
+    "Hear every mix flaw and prove every fix with Mixit. Deterministic ITU-R BS.1770 loudness, 4x True Peak, 20–120 Hz sub-bass phase DSP, live 48-band spectrum, and privacy-first Gemini 4 Hydrogen coaching.",
 };
 
 const themeInitScript = `
 (function() {
   try {
-    var saved = window.localStorage.getItem("mixbench_theme");
+    var saved = window.localStorage.getItem("mixit_theme") || window.localStorage.getItem("mixbench_theme");
     var root = document.documentElement;
     if (saved === "light") {
       root.classList.remove("dark");
@@ -37,12 +38,15 @@ export default function RootLayout({
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
         />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-screen bg-[var(--bg-canvas)] text-[var(--text-primary)] antialiased transition-colors duration-200">
-        <MotionConfig reducedMotion="user">{children}</MotionConfig>
+        <MotionConfig reducedMotion="user">
+          {children}
+          <CookieConsentBanner />
+        </MotionConfig>
       </body>
     </html>
   );

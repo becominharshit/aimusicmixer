@@ -15,7 +15,9 @@ import { SimpleView } from "@/components/simple/SimpleView";
 import { AdvancedWorkbench } from "@/components/advanced/AdvancedWorkbench";
 import { DspStepTracker } from "@/components/studio/DspStepTracker";
 import { FlawTimelineBar, buildFlawClusters } from "@/components/studio/FlawTimelineBar";
+import { LiveSpectralGraph } from "@/components/studio/LiveSpectralGraph";
 import { SpinningDiscPlayer } from "@/components/studio/SpinningDiscPlayer";
+import { CookieConsentBanner } from "@/components/compliance/CookieConsentBanner";
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
 import { askMentor } from "@/lib/api";
 import { analyzePcmChannelsLocal } from "@/lib/clientWebAudioDsp";
@@ -764,5 +766,29 @@ describe("MixBench UI & Privacy Contracts", () => {
 
     expect(screen.getByText(/-1\.76/)).toBeInTheDocument();
     expect(screen.getByText(/Sub \+1\.00/i)).toBeInTheDocument();
+  });
+
+  it("renders essential-only CookieConsentBanner and clickable LiveSpectralGraph frequency zones", () => {
+    window.localStorage.removeItem("mixit_cookie_consent_v1");
+
+    render(
+      <>
+        <CookieConsentBanner />
+        <LiveSpectralGraph spectralBands={mockReport.spectral_bands} />
+      </>
+    );
+
+    expect(screen.getByTestId("cookie-consent-banner")).toBeInTheDocument();
+    expect(screen.getByText(/Essential Cookies Only/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Cookie Policy/i })).toHaveAttribute("href", "/cookies");
+
+    fireEvent.click(screen.getByRole("button", { name: /Accept essential cookies/i }));
+    expect(window.localStorage.getItem("mixit_cookie_consent_v1")).toBe("essential_accepted");
+
+    const subBtn = screen.getByRole("button", { name: "SUB" });
+    expect(subBtn).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(subBtn);
+    expect(subBtn).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/20–60 Hz/i)).toBeInTheDocument();
   });
 });

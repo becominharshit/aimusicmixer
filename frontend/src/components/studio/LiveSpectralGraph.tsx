@@ -17,6 +17,17 @@ const MIN_HZ = 20;
 const MAX_HZ = 20000;
 const BAND_CENTERS_HZ = [40, 120, 420, 1600, 5000, 12500];
 
+const BAND_ZONES = [
+  { id: "sub", label: "SUB", minHz: 20, maxHz: 60, color: "#FF3B1F" },
+  { id: "low", label: "LOW", minHz: 60, maxHz: 250, color: "#F59E0B" },
+  { id: "low_mid", label: "LOW-MID", minHz: 250, maxHz: 800, color: "#FFE01B" },
+  { id: "high_mid", label: "HIGH-MID", minHz: 800, maxHz: 3000, color: "#22C58B" },
+  { id: "presence", label: "PRESENCE", minHz: 3000, maxHz: 8000, color: "#38BDF8" },
+  { id: "air", label: "AIR", minHz: 8000, maxHz: 20000, color: "#818CF8" },
+] as const;
+
+type BandZoneId = (typeof BAND_ZONES)[number]["id"];
+
 function hzToX(hz: number, width: number): number {
   const ratio =
     Math.log10(Math.max(MIN_HZ, Math.min(MAX_HZ, hz)) / MIN_HZ) /
@@ -28,12 +39,13 @@ function dbToNorm(db: number): number {
   return Math.max(0.06, Math.min(0.95, (db + 54) / 48));
 }
 
-function barColorForIndex(i: number, total: number): string {
-  const t = i / Math.max(1, total - 1);
-  if (t < 0.2) return "#E5483A"; // Sub/Low Vermilion
-  if (t < 0.42) return "#E89B2D"; // Low-Mid Analog Amber
-  if (t < 0.78) return "#22C58B"; // Mids/Presence Calibrated Sage
-  return "#3B82F6"; // Air Cobalt
+function barColorForFreq(fc: number): string {
+  if (fc < 60) return "#FF3B1F"; // Swiss Vermilion sub
+  if (fc < 250) return "#F59E0B"; // Analog Amber low
+  if (fc < 800) return "#FFE01B"; // Signal Yellow low-mid
+  if (fc < 3200) return "#22C58B"; // Acid Mint mids
+  if (fc < 8500) return "#38BDF8"; // Electric Cobalt presence
+  return "#818CF8"; // Bright air harmonics
 }
 
 export function LiveSpectralGraph({
@@ -49,22 +61,12 @@ export function LiveSpectralGraph({
   const freqBufferRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(() => studioAudioEngine.getState().isPlaying);
-  const [themeRevision, setThemeRevision] = useState(0);
+  const [activeZoneId, setActiveZoneId] = useState<BandZoneId | null>(null);
 
   useEffect(() => {
     const sync = () => setIsPlaying(studioAudioEngine.getState().isPlaying);
     sync();
     return studioAudioEngine.subscribe(sync);
-  }, []);
-
-  useEffect(() => {
-    if (typeof MutationObserver === "undefined") return;
-    const observer = new MutationObserver(() => setThemeRevision((r) => r + 1));
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -79,6 +81,11 @@ export function LiveSpectralGraph({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  const selectedZone = BAND_ZONES.find((z) => z.id === activeZoneId) ?? null;
+  const selectedBandInfo = selectedZone
+    ? spectralBands.find((b) => b.band === selectedZone.id) ?? null
+    : null;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -105,23 +112,31 @@ export function LiveSpectralGraph({
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, width, height);
 
-      const isDark = document.documentElement.classList.contains("dark");
-      const bg = isDark ? "#0B0D12" : "#EAE4D7";
-      const grid = isDark ? "rgba(255,255,255,0.06)" : "rgba(17,19,24,0.08)";
-      const labelColor = isDark ? "#6B7280" : "#5D6575";
+      // Pure #0A0A0A hardware analyzer screen always
       const padBottom = 20;
       const plotH = Math.max(40, height - padBottom - 8);
       const plotTop = 8;
 
-      ctx.fillStyle = bg;
+      ctx.fillStyle = "#0A0A0A";
       ctx.fillRect(0, 0, width, height);
+
+      // Highlight selected clickable frequency zone if active
+      if (selectedZone) {
+        const zx1 = hzToX(selectedZone.minHz, width);
+        const zx2 = hzToX(selectedZone.maxHz, width);
+        ctx.fillStyle = "rgba(255, 224, 27, 0.10)";
+        ctx.fillRect(zx1, plotTop, Math.max(4, zx2 - zx1), plotH);
+        ctx.strokeStyle = "rgba(255, 224, 27, 0.65)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(zx1 + 0.5, plotTop + 0.5, Math.max(4, zx2 - zx1 - 1), plotH - 1);
+      }
 
       // Log-frequency grid ticks
       const ticks = [60, 250, 1000, 4000, 16000];
-      ctx.strokeStyle = grid;
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
       ctx.lineWidth = 1;
       ctx.font = "10px 'JetBrains Mono', monospace";
-      ctx.fillStyle = labelColor;
+      ctx.fillStyle = "#8C95A6";
       ctx.textAlign = "center";
 
       for (const hz of ticks) {
@@ -169,10 +184,10 @@ export function LiveSpectralGraph({
         }
         ctx.lineTo(0, lowerPoints[0].y);
         ctx.closePath();
-        ctx.fillStyle = isDark ? "rgba(34, 197, 139, 0.08)" : "rgba(15, 143, 100, 0.10)";
+        ctx.fillStyle = "rgba(34, 197, 139, 0.11)";
         ctx.fill();
 
-        ctx.strokeStyle = isDark ? "rgba(34, 197, 139, 0.42)" : "rgba(15, 143, 100, 0.45)";
+        ctx.strokeStyle = "rgba(34, 197, 139, 0.58)";
         ctx.lineWidth = 1.25;
         ctx.setLineDash([4, 3]);
         ctx.beginPath();
@@ -240,21 +255,22 @@ export function LiveSpectralGraph({
           peaks[i] = Math.max(level, peaks[i] - 0.014);
         }
 
+        const inSelectedZone =
+          !selectedZone || (fc >= selectedZone.minHz && fc <= selectedZone.maxHz);
+
         const barH = Math.max(3, level * plotH);
         const x = i * slotW + 1;
         const y = plotTop + plotH - barH;
-        const color = barColorForIndex(i, BAR_COUNT);
+        const color = barColorForFreq(fc);
 
         ctx.fillStyle = color;
-        ctx.globalAlpha = active ? 0.92 : 0.65;
-        ctx.beginPath();
-        ctx.roundRect(x, y, barW, barH, [2, 2, 0, 0]);
-        ctx.fill();
+        ctx.globalAlpha = inSelectedZone ? (active ? 0.96 : 0.84) : 0.24;
+        ctx.fillRect(x, y, barW, barH);
 
-        // Falling peak cap
+        // Crisp peak-hold cap
         const capY = plotTop + plotH - Math.max(3, peaks[i] * plotH) - 2;
-        ctx.globalAlpha = active ? 0.95 : 0.45;
-        ctx.fillStyle = isDark ? "#F4F1EA" : "#111318";
+        ctx.globalAlpha = inSelectedZone ? (active ? 1 : 0.65) : 0.2;
+        ctx.fillStyle = "#F4F1EA";
         ctx.fillRect(x, Math.max(plotTop, capY), barW, 2);
       }
 
@@ -270,34 +286,32 @@ export function LiveSpectralGraph({
     return () => {
       if (rafId) window.cancelAnimationFrame(rafId);
     };
-  }, [isPlaying, spectralBands, height, themeRevision]);
+  }, [isPlaying, spectralBands, height, selectedZone]);
 
   return (
     <div
       ref={containerRef}
       data-testid="live-spectral-graph"
-      className={`studio-card squircle-outer p-3.5 sm:p-4 ${className}`}
+      className={`border border-[#262B36] bg-[#0A0A0A] p-3.5 text-[#F4F1EA] sm:p-4 ${className}`}
     >
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-[var(--studio-mint)]" aria-hidden="true" />
-          <span className="text-xs font-semibold text-[var(--text-primary)]">
-            {compact ? "Live Spectrum" : "48-Band Live Spectral Analyzer"}
+          <Activity className="h-4 w-4 text-[#FFE01B]" aria-hidden="true" />
+          <span className="text-xs font-bold uppercase tracking-[0.04em] text-[#F4F1EA]">
+            {compact ? "48-Band Spectrum" : "48-Band Live Spectral Analyzer"}
           </span>
-          <span className="tabular-telemetry text-[11px] text-[var(--text-muted)]">
-            20 Hz–20 kHz
-          </span>
+          <span className="tabular-telemetry text-[11px] text-[#A1A8B8]">20 Hz–20 kHz</span>
         </div>
         <div className="flex items-center gap-2.5">
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
-            <span className="h-1.5 w-3 rounded-xs bg-[var(--studio-mint)]/45 border border-[var(--studio-mint)]" />
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-[#A1A8B8]">
+            <span className="h-1.5 w-3 border border-[#22C58B] bg-[#22C58B]/45" />
             Genre Envelope
           </span>
           <span
-            className={`tabular-telemetry rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+            className={`tabular-telemetry px-1.5 py-0.5 text-[10px] font-bold uppercase ${
               isPlaying
-                ? "bg-[var(--studio-mint-soft)] text-[var(--studio-mint)]"
-                : "bg-[var(--bg-inset)] text-[var(--text-muted)]"
+                ? "bg-[#FFE01B] text-[#0A0A0A]"
+                : "border border-[#262B36] bg-[#12151C] text-[#A1A8B8]"
             }`}
           >
             {isPlaying ? "60 FPS LIVE" : "MEASURED"}
@@ -307,9 +321,53 @@ export function LiveSpectralGraph({
 
       <canvas
         ref={canvasRef}
+        role="img"
+        aria-label="48-Band Live Spectral Analyzer from 20 Hz to 20 kHz"
         style={{ height }}
-        className="block w-full rounded-xl border border-[var(--border-hairline)]"
+        className="block w-full border border-[#262B36]"
       />
+
+      {/* Clickable Frequency Band Zone Selectors */}
+      <div
+        className="mt-2.5 flex flex-wrap items-center justify-between gap-1.5"
+        role="group"
+        aria-label="Frequency band zone selectors"
+      >
+        <div className="flex flex-wrap items-center gap-1">
+          {BAND_ZONES.map((zone) => {
+            const isSelected = activeZoneId === zone.id;
+            return (
+              <button
+                key={zone.id}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => setActiveZoneId((prev) => (prev === zone.id ? null : zone.id))}
+                className={`inline-flex items-center gap-1 border px-2 py-0.5 tabular-telemetry text-[10px] font-bold uppercase tracking-[0.04em] transition-colors cursor-pointer ${
+                  isSelected
+                    ? "border-[#FFE01B] bg-[#FFE01B] text-[#0A0A0A]"
+                    : "border-[#262B36] bg-[#12151C] text-[#A1A8B8] hover:border-[#F4F1EA] hover:text-[#F4F1EA]"
+                }`}
+              >
+                <span
+                  className="h-1.5 w-1.5 shrink-0"
+                  style={{ backgroundColor: isSelected ? "#0A0A0A" : zone.color }}
+                  aria-hidden="true"
+                />
+                {zone.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedZone ? (
+          <span className="tabular-telemetry text-[10px] text-[#FFE01B]">
+            {selectedZone.minHz}–{selectedZone.maxHz >= 1000 ? `${selectedZone.maxHz / 1000}k` : selectedZone.maxHz} Hz
+            {selectedBandInfo
+              ? ` · ${selectedBandInfo.energy_db.toFixed(1)} dB (${selectedBandInfo.delta_vs_genre_median_db >= 0 ? "+" : ""}${selectedBandInfo.delta_vs_genre_median_db.toFixed(1)} vs target)`
+              : ""}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

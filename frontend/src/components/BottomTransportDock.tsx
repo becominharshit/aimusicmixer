@@ -144,8 +144,8 @@ export function BottomTransportDock({
     <div
       role="region"
       data-testid="bottom-transport-dock"
-      aria-label="Persistent MixBench Transport and Mix Translation Lab"
-      className="no-print sticky bottom-0 left-0 right-0 z-30 border-t border-[var(--border-hairline)] bg-[var(--bg-elevated)]/95 backdrop-blur-md"
+      aria-label="Persistent Mixit Transport and Mix Translation Lab"
+      className="no-print sticky bottom-0 left-0 right-0 z-30 border-t border-[var(--border-hairline)] bg-[var(--bg-elevated)]"
     >
       {/* Top 60fps interactive progress hairline */}
       <div
@@ -155,6 +155,15 @@ export function BottomTransportDock({
         aria-valuemin={0}
         aria-valuemax={Math.round(durationSec)}
         aria-valuenow={0}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight") {
+            e.preventDefault();
+            onSeek(Math.min(durationSec, studioAudioEngine.getCurrentTimeSec() + 5));
+          } else if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            onSeek(Math.max(0, studioAudioEngine.getCurrentTimeSec() - 5));
+          }
+        }}
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(rect.width, 1)));
@@ -164,7 +173,7 @@ export function BottomTransportDock({
       >
         <div
           ref={progressBarRef}
-          className="h-full w-full origin-left bg-[var(--studio-mint)]"
+          className="h-full w-full origin-left bg-[#FFE01B]"
           style={{ transform: "scaleX(0)", willChange: "transform" }}
         />
       </div>
@@ -195,7 +204,7 @@ export function BottomTransportDock({
           </Button>
           <span
             ref={timecodeRef}
-            className="min-w-[98px] shrink-0 whitespace-nowrap bg-[var(--bg-inset)] px-2.5 py-1 text-center text-[11px] font-medium text-[var(--text-primary)] tabular-telemetry squircle-inner sm:min-w-[112px] sm:text-xs"
+            className="min-w-[98px] shrink-0 whitespace-nowrap border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2.5 py-1 text-center text-[11px] font-semibold text-[var(--text-primary)] tabular-telemetry sm:min-w-[112px] sm:text-xs"
           >
             00:00.0 / {formatTimecode(durationSec, true)}
           </span>
@@ -206,8 +215,9 @@ export function BottomTransportDock({
             disabled={!hasPrimary}
             onClick={onToggleLoop}
             aria-pressed={loopEnabled}
+            aria-label={loopEnabled ? "Disable loop window" : "Enable loop window"}
             title="Loop selected problem window"
-            className="shrink-0 whitespace-nowrap justify-center"
+            className="shrink-0 justify-center whitespace-nowrap"
           >
             <Repeat className="h-3.5 w-3.5 shrink-0 text-[var(--studio-mint)]" aria-hidden="true" />
             <span className="hidden sm:inline">{loopEnabled ? "Looping" : "Loop Window"}</span>
@@ -225,7 +235,9 @@ export function BottomTransportDock({
               className="shrink-0 whitespace-nowrap"
             >
               <Wand2
-                className={`h-3.5 w-3.5 shrink-0 ${autoFixEnabled ? "text-[#090B0E]" : "text-[var(--studio-mint)]"}`}
+                className={`h-3.5 w-3.5 shrink-0 ${
+                  autoFixEnabled ? "text-[#0A0A0A]" : "text-[var(--studio-mint)]"
+                }`}
                 aria-hidden="true"
               />
               <span className="sm:hidden">{autoFixEnabled ? "Fix On" : "Auto-Fix"}</span>
@@ -240,7 +252,7 @@ export function BottomTransportDock({
         <div className="flex max-w-full flex-wrap items-center gap-2">
           <div
             data-testid="dock-source-group"
-            className="relative inline-flex shrink-0 flex-nowrap items-center gap-0.5 rounded-[10px] bg-[var(--bg-inset)] p-0.5 hairline-border"
+            className="relative inline-flex shrink-0 flex-nowrap items-center gap-0.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
           >
             {sources.map((src) => {
               const active = activeSource === src.id;
@@ -251,11 +263,11 @@ export function BottomTransportDock({
                   disabled={!src.enabled}
                   whileTap={src.enabled ? TACTILE_TAP : undefined}
                   onClick={() => onChangeSource(src.id)}
-                  className={`relative z-10 shrink-0 whitespace-nowrap rounded-[8px] px-2.5 py-1 text-[11px] font-medium ${
+                  className={`relative z-10 shrink-0 whitespace-nowrap px-2.5 py-1 text-[11px] font-bold ${
                     !src.enabled
                       ? "cursor-not-allowed text-[var(--text-muted)]/50"
                       : active
-                        ? "cursor-pointer text-[var(--text-primary)]"
+                        ? "cursor-pointer text-[#0A0A0A]"
                         : "cursor-pointer text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   }`}
                 >
@@ -263,7 +275,7 @@ export function BottomTransportDock({
                     <motion.span
                       layoutId="dock-source-pill"
                       transition={STUDIO_SPRING}
-                      className="pointer-events-none absolute inset-0 -z-10 rounded-[8px] bg-[var(--bg-elevated)] hairline-border"
+                      className="pointer-events-none absolute inset-0 -z-10 bg-[#FFE01B]"
                     />
                   )}
                   {src.label}
@@ -273,10 +285,10 @@ export function BottomTransportDock({
           </div>
 
           {(hasReference || hasRevised) && (
-            <div className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap bg-[var(--bg-inset)] px-2.5 py-1 text-[11px] hairline-border squircle-inner">
+            <div className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2.5 py-1 text-[11px]">
               <Scale className="h-3 w-3 shrink-0 text-[var(--studio-mint)]" aria-hidden="true" />
-              <span className="font-medium text-[var(--text-primary)]">Match LUFS</span>
-              <span className="text-[var(--text-secondary)] tabular-telemetry">
+              <span className="font-semibold text-[var(--text-primary)]">Match LUFS</span>
+              <span className="tabular-telemetry text-[var(--text-secondary)]">
                 {loudnessOffsetDb >= 0 ? "+" : ""}
                 {loudnessOffsetDb.toFixed(1)} dB
               </span>
@@ -291,7 +303,7 @@ export function BottomTransportDock({
           {/* Stereo <-> Mono Fold (Keyboard shortcut: M) */}
           <div
             data-testid="dock-stereo-group"
-            className="relative inline-flex shrink-0 flex-nowrap items-center gap-0.5 rounded-[10px] bg-[var(--bg-inset)] p-0.5 hairline-border"
+            className="relative inline-flex shrink-0 flex-nowrap items-center gap-0.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
           >
             {(
               [
@@ -307,9 +319,9 @@ export function BottomTransportDock({
                   whileTap={TACTILE_TAP}
                   title="Keyboard shortcut: M"
                   onClick={() => onChangeStereo(opt.id)}
-                  className={`relative z-10 shrink-0 whitespace-nowrap rounded-[8px] px-2.5 py-1 text-[11px] font-medium cursor-pointer ${
+                  className={`relative z-10 shrink-0 whitespace-nowrap px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
                     active
-                      ? "text-[var(--text-primary)]"
+                      ? "text-[#0A0A0A]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   }`}
                 >
@@ -317,7 +329,7 @@ export function BottomTransportDock({
                     <motion.span
                       layoutId="dock-stereo-pill"
                       transition={STUDIO_SPRING}
-                      className="pointer-events-none absolute inset-0 -z-10 rounded-[8px] bg-[var(--bg-elevated)] hairline-border"
+                      className="pointer-events-none absolute inset-0 -z-10 bg-[#FFE01B]"
                     />
                   )}
                   <span className="hidden md:inline">{opt.label}</span>
@@ -332,7 +344,7 @@ export function BottomTransportDock({
         <div className="flex max-w-full flex-wrap items-center gap-2">
           <div
             data-testid="dock-device-group"
-            className="relative inline-flex shrink-0 flex-nowrap items-center gap-0.5 rounded-[10px] bg-[var(--bg-inset)] p-0.5 hairline-border"
+            className="relative inline-flex shrink-0 flex-nowrap items-center gap-0.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
           >
             {devices.map((dev) => {
               const active = deviceProfile === dev.id;
@@ -344,9 +356,9 @@ export function BottomTransportDock({
                   whileTap={TACTILE_TAP}
                   onClick={() => onChangeDevice(dev.id)}
                   title={`${dev.label} (${dev.sub}) — Approximate generic translation check`}
-                  className={`relative z-10 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-2.5 py-1 text-left cursor-pointer ${
+                  className={`relative z-10 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-left cursor-pointer ${
                     active
-                      ? "text-[var(--text-primary)]"
+                      ? "text-[#0A0A0A]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   }`}
                 >
@@ -354,13 +366,22 @@ export function BottomTransportDock({
                     <motion.span
                       layoutId="dock-device-pill"
                       transition={STUDIO_SPRING}
-                      className="pointer-events-none absolute inset-0 -z-10 rounded-[8px] bg-[var(--bg-elevated)] hairline-border"
+                      className="pointer-events-none absolute inset-0 -z-10 bg-[#FFE01B]"
                     />
                   )}
-                  <DevIcon className="h-3 w-3 shrink-0 text-[var(--studio-mint)]" aria-hidden="true" />
-                  <span className="text-[11px] font-medium sm:hidden">{dev.shortLabel}</span>
-                  <span className="hidden text-[11px] font-medium sm:inline">{dev.label}</span>
-                  <span className="hidden text-[10px] text-[var(--text-muted)] 2xl:inline">
+                  <DevIcon
+                    className={`h-3 w-3 shrink-0 ${
+                      active ? "text-[#0A0A0A]" : "text-[var(--studio-mint)]"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span className="text-[11px] font-bold sm:hidden">{dev.shortLabel}</span>
+                  <span className="hidden text-[11px] font-bold sm:inline">{dev.label}</span>
+                  <span
+                    className={`hidden text-[10px] 2xl:inline ${
+                      active ? "text-[#0A0A0A]/80" : "text-[var(--text-muted)]"
+                    }`}
+                  >
                     {dev.sub}
                   </span>
                 </motion.button>

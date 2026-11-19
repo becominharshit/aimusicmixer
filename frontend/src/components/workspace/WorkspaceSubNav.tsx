@@ -72,9 +72,9 @@ export function WorkspaceSubNav({
       <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2.5 px-3 py-2.5 sm:px-6">
         <nav
           role="tablist"
-          aria-label="MixBench workflow sections"
+          aria-label="Mixit workflow sections"
           data-testid="workspace-subnav"
-          className="relative inline-flex max-w-full flex-nowrap items-center gap-1 overflow-x-auto rounded-[12px] bg-[var(--bg-inset)] p-1 hairline-border lg:overflow-visible"
+          className="relative inline-flex max-w-full flex-nowrap items-center gap-0.5 overflow-x-auto border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5 lg:overflow-visible"
         >
           {tabs.map((tab) => {
             const active = activeTab === tab.id;
@@ -87,9 +87,9 @@ export function WorkspaceSubNav({
                 aria-selected={active}
                 whileTap={TACTILE_TAP}
                 onClick={() => onChangeTab(tab.id)}
-                className={`relative z-10 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-3.5 py-1.5 text-xs font-medium cursor-pointer transition-colors ${
+                className={`relative z-10 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold cursor-pointer transition-colors ${
                   active
-                    ? "text-[var(--text-primary)]"
+                    ? "text-[#0A0A0A]"
                     : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 }`}
               >
@@ -97,16 +97,21 @@ export function WorkspaceSubNav({
                   <motion.span
                     layoutId="workspace-subnav-pill"
                     transition={STUDIO_SPRING}
-                    className="pointer-events-none absolute inset-0 -z-10 rounded-[8px] bg-[var(--bg-elevated)] border border-[var(--border-active)]"
+                    className="pointer-events-none absolute inset-0 -z-10 bg-[#FFE01B]"
                   />
                 )}
-                <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--studio-mint)]" aria-hidden="true" />
+                <Icon
+                  className={`h-3.5 w-3.5 shrink-0 ${
+                    active ? "text-[#0A0A0A]" : "text-[var(--studio-mint)]"
+                  }`}
+                  aria-hidden="true"
+                />
                 <span>{tab.label}</span>
                 {tab.badge && (
                   <span
-                    className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-telemetry ${
+                    className={`shrink-0 px-1.5 py-0.5 tabular-telemetry text-[10px] font-bold ${
                       active
-                        ? "bg-[var(--studio-mint-soft)] text-[var(--studio-mint)]"
+                        ? "bg-[#0A0A0A] text-[#FFE01B]"
                         : "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
                     }`}
                   >
@@ -122,11 +127,11 @@ export function WorkspaceSubNav({
           type="button"
           whileTap={TACTILE_TAP}
           onClick={onOpenMentor}
-          className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap bg-[var(--studio-mint)] px-3.5 py-1.5 text-xs font-semibold text-[#090B0E] hover:brightness-105 squircle-inner cursor-pointer transition-[filter,transform]"
+          className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-[#0A0A0A] bg-[#FFE01B] px-3.5 py-1.5 text-xs font-extrabold uppercase tracking-[0.04em] text-[#0A0A0A] transition-colors hover:bg-[#FF3B1F] hover:text-[#0A0A0A] cursor-pointer"
         >
           <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>AI Mix Mentor</span>
-          <span className="shrink-0 rounded-md bg-black/15 px-2 py-0.5 text-[10px] font-semibold text-[#090B0E]">
+          <span className="shrink-0 bg-[#0A0A0A] px-2 py-0.5 text-[10px] font-bold text-[#FFE01B]">
             {mentorBadge}
           </span>
         </motion.button>

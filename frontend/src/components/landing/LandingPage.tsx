@@ -1,911 +1,954 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, useReducedMotion } from "motion/react";
-import {
-  Activity,
-  ArrowRight,
-  Clock,
-  Disc3,
-  Lock,
-  Moon,
-  Pause,
-  Play,
-  ShieldCheck,
-  Sliders,
-  Sparkles,
-  Sun,
-} from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowDown, ArrowRight, ArrowUpRight, Pause, Play, Plus } from "lucide-react";
 import { studioAudioEngine } from "@/audio/StudioAudioEngine";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { MixitLogo } from "@/components/brand/MixitLogo";
 import { KineticHeadline } from "@/components/motion/KineticHeadline";
-import { MagneticButton } from "@/components/motion/MagneticButton";
 import { FlawTimelineBar } from "@/components/studio/FlawTimelineBar";
 import { LiveSpectralGraph } from "@/components/studio/LiveSpectralGraph";
 import { SpinningDiscPlayer } from "@/components/studio/SpinningDiscPlayer";
-import { STUDIO_EASE, TACTILE_TAP, VIEWPORT_REVEAL } from "@/lib/motion";
-import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getCurrentStudioTheme, toggleStudioTheme } from "@/lib/theme";
-import type { Finding, SpectralBand } from "@/types/report";
-
-const LANDING_DEMO_URL = "/demo/demo-flawed-v1.wav";
-const LANDING_DEMO_DURATION = 12;
+import { checkBackendHealth } from "@/lib/api";
+import { STUDIO_EASE, TACTILE_TAP } from "@/lib/motion";
+import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import type { BackendHealth, Finding, SpectralBand } from "@/types/report";
 
 const DEMO_SPECTRAL_BANDS: SpectralBand[] = [
-  {
-    band: "sub",
-    range_hz: "20–60 Hz",
-    energy_db: -18.2,
-    delta_vs_genre_median_db: 3.1,
-    genre_target_low_db: -23,
-    genre_target_high_db: -19,
-  },
-  {
-    band: "low",
-    range_hz: "60–250 Hz",
-    energy_db: -15.4,
-    delta_vs_genre_median_db: 2.2,
-    genre_target_low_db: -20,
-    genre_target_high_db: -16,
-  },
-  {
-    band: "low_mid",
-    range_hz: "250–800 Hz",
-    energy_db: -19.8,
-    delta_vs_genre_median_db: 2.9,
-    genre_target_low_db: -25,
-    genre_target_high_db: -20.5,
-  },
-  {
-    band: "high_mid",
-    range_hz: "800–3k Hz",
-    energy_db: -23.1,
-    delta_vs_genre_median_db: -0.9,
-    genre_target_low_db: -25,
-    genre_target_high_db: -20,
-  },
-  {
-    band: "presence",
-    range_hz: "3k–8k Hz",
-    energy_db: -27.5,
-    delta_vs_genre_median_db: -1.6,
-    genre_target_low_db: -29,
-    genre_target_high_db: -24,
-  },
-  {
-    band: "air",
-    range_hz: "8k–20k Hz",
-    energy_db: -34.2,
-    delta_vs_genre_median_db: -2.4,
-    genre_target_low_db: -35,
-    genre_target_high_db: -29,
-  },
+  { band: "sub", range_hz: "20–60 Hz", energy_db: -18.2, delta_vs_genre_median_db: 3.1, genre_target_low_db: -24, genre_target_high_db: -19 },
+  { band: "low", range_hz: "60–250 Hz", energy_db: -15.6, delta_vs_genre_median_db: 2.2, genre_target_low_db: -20, genre_target_high_db: -16 },
+  { band: "low_mid", range_hz: "250–800 Hz", energy_db: -20.1, delta_vs_genre_median_db: 0.4, genre_target_low_db: -23, genre_target_high_db: -18 },
+  { band: "high_mid", range_hz: "800–3k Hz", energy_db: -23.4, delta_vs_genre_median_db: -0.6, genre_target_low_db: -25, genre_target_high_db: -20 },
+  { band: "presence", range_hz: "3k–8k Hz", energy_db: -27.8, delta_vs_genre_median_db: -1.4, genre_target_low_db: -29, genre_target_high_db: -24 },
+  { band: "air", range_hz: "8k–20k Hz", energy_db: -34.2, delta_vs_genre_median_db: -2.1, genre_target_low_db: -35, genre_target_high_db: -29 },
 ];
 
-// Deterministic waveform contour matching the 12s flawed stereo demo
-const DEMO_WAVEFORM_PEAKS: number[][] = Array.from({ length: 120 }, (_, idx) => {
-  const t = idx / 120;
-  const bar = Math.sin(idx * 0.55) * 0.16 + Math.cos(idx * 1.15) * 0.12;
-  const sectionEnv = t < 0.18 ? 0.52 : t < 0.72 ? 0.88 : 0.72;
-  const peak = Math.min(0.98, Math.max(0.18, sectionEnv + bar + (idx % 8 === 0 ? 0.14 : 0)));
-  return [-peak, peak];
-});
-
-// Includes two closely spaced flaws at 0:03 to demonstrate clean non-overlapping clustering
 const DEMO_FINDINGS: Finding[] = [
   {
-    evidence_id: "ev_sub_phase_demo",
-    category: "stereo_phase",
+    evidence_id: "ev_demo_sub_01",
     severity: "alert",
     classification: "objective_defect",
     confidence: "measured",
+    category: "stereo_phase",
     band_name: "sub",
     title: "Out-of-Phase Sub-Bass (< 120 Hz)",
+    measured_value: "+0.18 sub correlation",
     timestamp_start_sec: 3,
     timestamp_end_sec: 5,
-    measured_value: "+0.18 sub correlation",
-    what_happened: "Low-end stereo energy below 120 Hz partially cancels in mono.",
-    why_it_matters: "Club systems and phones lose low-end weight when summed.",
-    listen_prompt: "Toggle Mono (M) during 0:03–0:05 to hear bass collapse.",
-    what_to_try: "High-pass the Side channel at 100 Hz (12 dB/oct).",
-    recheck_target: "Confirm 20–120 Hz correlation rises above +0.70.",
+    what_happened: "Stereo sub harmonics cancel when summed to club mono.",
+    why_it_matters: "Bass weight collapses on mono club systems and smartphones.",
+    listen_prompt: "Loop 0:03–0:05 and press M to compare mono.",
+    what_to_try: "High-pass side channel at 100 Hz (12 dB/oct).",
+    recheck_target: "Verify sub correlation rises above +0.75 on v2.",
   },
   {
-    evidence_id: "ev_true_peak_demo",
-    category: "true_peak",
+    evidence_id: "ev_demo_peak_02",
     severity: "alert",
     classification: "objective_defect",
     confidence: "measured",
-    band_name: "low",
+    category: "true_peak",
     title: "Inter-Sample True Peak Overshoot",
-    timestamp_start_sec: 3,
-    timestamp_end_sec: 5.2,
     measured_value: "+0.62 dBTP",
-    what_happened: "4x oversampled reconstruction exceeds 0.0 dBTP on kick hits.",
-    why_it_matters: "Streaming AAC/Ogg encoders clip hot inter-sample peaks.",
-    listen_prompt: "Audition 0:03–0:05 for transient crunch.",
-    what_to_try: "Pull master bus gain down 2.0 dB or set limiter ceiling to -1.0 dBTP.",
-    recheck_target: "Verify True Peak <= -1.0 dBTP on v2.",
+    timestamp_start_sec: 3,
+    timestamp_end_sec: 5.1,
+    what_happened: "4x oversampled true peak exceeds 0 dBFS on kick transients.",
+    why_it_matters: "AAC/Opus streaming encoders introduce brittle clipping.",
+    listen_prompt: "Audition 0:03–0:05 on Laptop translation mode.",
+    what_to_try: "Lower limiter output ceiling to -1.0 dBTP.",
+    recheck_target: "Confirm 0 clipping markers in v2 revision.",
   },
   {
-    evidence_id: "ev_low_mid_mud_demo",
-    category: "tonal_balance",
+    evidence_id: "ev_demo_mud_03",
     severity: "caution",
     classification: "stylistic_choice",
     confidence: "measured",
-    band_name: "low_mid",
-    title: "Low-Mid Buildup Around 250–500 Hz",
-    timestamp_start_sec: 7.5,
+    category: "tonal_balance",
+    band_name: "low",
+    title: "Low-Mid Buildup (180–260 Hz)",
+    measured_value: "+2.4 dB vs genre median",
+    timestamp_start_sec: 8.5,
     timestamp_end_sec: 10.5,
-    measured_value: "+2.9 dB vs electronic median",
-    what_happened: "Pad fundamentals stack over bass harmonics in the chorus.",
-    why_it_matters: "Masks snare snap and clouds laptop/phone translation.",
-    listen_prompt: "Compare 0:07–0:10 with and without a 2.0 dB cut at 280 Hz.",
-    what_to_try: "Dip 280 Hz by 1.5–2.5 dB (Q 1.4) on synth bus.",
-    recheck_target: "Bring 250–800 Hz within +/-1.5 dB of reference envelope.",
+    what_happened: "Synth pads mask kick fundamentals in the chorus.",
+    why_it_matters: "Reduces punch clarity on small speakers.",
+    listen_prompt: "Toggle Smartphone curve during 0:08–0:10.",
+    what_to_try: "Apply -1.8 dB bell dip at 215 Hz (Q 1.4).",
+    recheck_target: "Confirm clearer snare body after adjustment.",
   },
 ];
 
-const DEMO_CLIP_TIMESTAMPS = [3.1, 3.6, 4.1, 4.8];
+const DEMO_PEAKS: number[][] = Array.from({ length: 96 }, (_, i) => {
+  const pulse = Math.sin(i * 0.42) * 0.24 + Math.cos(i * 0.19) * 0.18;
+  const hit = i % 8 === 0 ? 0.34 : i % 4 === 0 ? 0.16 : 0;
+  const amp = Math.min(0.98, Math.max(0.18, 0.46 + pulse + hit));
+  return [-amp, amp];
+});
 
-const PROOF_PILLARS = [
+interface FeatureRow {
+  num: string;
+  title: string;
+  sub: string;
+  tag: string;
+  kind: "telemetry" | "hardware" | "mentor";
+}
+
+const FEATURE_ROWS: FeatureRow[] = [
   {
-    icon: Activity,
-    accent: "var(--studio-mint)",
-    title: "Deterministic ITU-R BS.1770 & 20–120 Hz Phase",
-    body: "Polyphase 4x oversampled True Peak, gated integrated loudness, PLR/PSR transient punch, and 4th-order Butterworth sub-bass phase correlation computed strictly in calibrated Python DSP—never estimated by an LLM.",
+    num: "01",
+    title: "DETERMINISTIC DSP & 20–120 HZ PHASE",
+    sub: "ITU-R BS.1770 LUFS · 4x True Peak · Butterworth Sub Phase",
+    tag: "PYTHON DSP",
+    kind: "telemetry",
   },
   {
-    icon: Sliders,
-    accent: "var(--studio-amber)",
-    title: "Live v1 → v2 Audible A/B & Corrective EQ",
-    body: "Audition level-matched Mix A vs. Reference B, collapse to mono on a single keystroke, test smartphone and laptop translation curves, toggle corrective peaking EQ live, and prove every improvement on revision v2.",
+    num: "02",
+    title: "LIVE V1 → V2 AUDIBLE A/B & EQ AUDITION",
+    sub: "Auto-Fix Preview · Device Curves · Aligned Original Stems",
+    tag: "WEB AUDIO ENGINE",
+    kind: "hardware",
   },
   {
-    icon: Sparkles,
-    accent: "var(--studio-vermilion)",
-    title: "Privacy-First gemini-4-hydrogen Mix Mentor",
-    body: "Opt-in studio coaching anchored strictly to measured evidence_id telemetry with 35s server resilience, interactive DAW repair checklists, and instant offline deterministic fallback.",
+    num: "03",
+    title: "PRIVACY-FIRST GEMINI 4 MENTOR",
+    sub: "Zero-Audio Default · Evidence-ID Anchored · DAW Repair Checklist",
+    tag: "OPT-IN AI",
+    kind: "mentor",
   },
 ];
 
-const PRIVACY_GUARANTEES = [
+const SPEC_ACCORDIONS = [
   {
-    icon: ShieldCheck,
-    title: "Zero Audio Sent by Default",
-    body: "All three AI consent switches default to OFF across browser UI, API contracts, and PostgreSQL rows. Deterministic DSP never leaves ephemeral compute.",
+    num: "01",
+    title: "ZERO-AUDIO PRIVACY",
+    body: "Deterministic Python DSP runs locally per session with a 60-minute TTL. All three AI consent toggles default strictly OFF.",
   },
   {
-    icon: Clock,
-    title: "60-Minute Ephemeral Processing",
-    body: "Uploaded WAV, FLAC, MP3, and AIFF mixdowns expire automatically after 60 minutes—or unlink immediately when you press Clear Session.",
+    num: "02",
+    title: "4X TRUE PEAK & STEMS",
+    body: "Polyphase 4x inter-sample True Peak, 20–120 Hz bandpass phase, transient punch, BPM sections, and aligned multi-stem inspection.",
   },
   {
-    icon: Lock,
-    title: "Private Per-User Cloud History",
-    body: "Row-Level Security (auth.uid() = user_id) and signed private mix-proxies storage keep every saved report private unless you explicitly generate a client review link.",
+    num: "03",
+    title: "CLOUD MIX VAULT",
+    body: "Private Supabase history protected by PostgreSQL Row-Level Security with read-only client review links and v1 → v2 delta tracking.",
+  },
+  {
+    num: "04",
+    title: "FREE GLOBAL ACCESS",
+    body: "100% free mastering workbench with zero subscriptions, zero third-party ad trackers, and strictly essential auth cookies.",
   },
 ];
 
 export function LandingPage() {
   const router = useRouter();
-  const prefersReduced = useReducedMotion();
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const hardwareVideoRef = useRef<HTMLVideoElement | null>(null);
+  const featureGridRef = useRef<HTMLElement | null>(null);
+  const authSucceededRef = useRef(false);
 
-  const heroSectionRef = useRef<HTMLElement | null>(null);
-  const heroVideoRef = useRef<HTMLVideoElement | null>(null);
-  const demoSectionRef = useRef<HTMLElement | null>(null);
-  const consoleParallaxRef = useRef<HTMLDivElement | null>(null);
-  const lenisRef = useRef<{ scrollTo: (target: HTMLElement | string, opts?: { offset?: number }) => void } | null>(null);
-
-  const [isDarkTheme, setIsDarkTheme] = useState(true);
-  const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authInitialError, setAuthInitialError] = useState<string | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authPromptReason, setAuthPromptReason] = useState<string | null>(null);
-
+  const [signinRedirectTriggered, setSigninRedirectTriggered] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [demoLoading, setDemoLoading] = useState(false);
-  const [demoError, setDemoError] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(() => studioAudioEngine.getState().isPlaying);
-  const [selectedFindingTitle, setSelectedFindingTitle] = useState<string | null>(null);
+  const [demoPlaying, setDemoPlaying] = useState(false);
+  const [demoLoaded, setDemoLoaded] = useState(false);
+  const [activeFeatureIdx, setActiveFeatureIdx] = useState<number>(1); // 02 Vermilion highlighted by default
+  const [openAccordion, setOpenAccordion] = useState<string | null>("01");
+  const [health, setHealth] = useState<BackendHealth | null>(null);
+  const [healthOnline, setHealthOnline] = useState<boolean | null>(null);
 
-  // Sync theme + audio engine state
-  useEffect(() => {
-    setIsDarkTheme(getCurrentStudioTheme() === "dark");
-    const syncAudio = () => setIsPlaying(studioAudioEngine.getState().isPlaying);
-    syncAudio();
-    return studioAudioEngine.subscribe(syncAudio);
-  }, []);
+  const supabaseReady = isSupabaseConfigured();
 
-  // Check Supabase auth state (keeps "/" accessible when authenticated with "Enter Studio" CTA)
+  // Check current Supabase session so signed-in users see "ENTER STUDIO ↗" directly
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
-
     let active = true;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      setSignedInEmail(data.session?.user?.email ?? null);
-    });
-
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (active) setUserEmail(data.user?.email ?? null);
+      })
+      .catch(() => {});
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSignedInEmail(session?.user?.email ?? null);
+      setUserEmail(session?.user?.email ?? null);
     });
-
     return () => {
       active = false;
       subscription.unsubscribe();
     };
   }, []);
 
-  // Handle /?signin=1 (from middleware auth gate) and /?auth_error=...
+  // Poll live backend health once for the Signal Yellow ticker pill
+  useEffect(() => {
+    let active = true;
+    checkBackendHealth()
+      .then((res) => {
+        if (!active) return;
+        setHealth(res);
+        setHealthOnline(true);
+      })
+      .catch(() => {
+        if (active) setHealthOnline(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Honor /?signin=1 redirect from middleware auth gate (pure client read keeps / 100% static SSR)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const wantsSignIn = params.get("signin");
-    const authError = params.get("auth_error");
-
-    if (authError) {
-      setAuthInitialError(authError);
-      setAuthPromptReason("Sign in to launch MixBench Studio and save your mix diagnostics.");
-      setAuthOpen(true);
-    } else if (wantsSignIn === "1") {
-      setAuthInitialError(null);
-      setAuthPromptReason("Sign in to launch MixBench Studio and save your mix diagnostics.");
-      setAuthOpen(true);
-    }
-
-    if (wantsSignIn || authError) {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("signin");
-      url.searchParams.delete("auth_error");
-      window.history.replaceState({}, "", url.toString());
+    if (params.get("signin") === "1") {
+      setSigninRedirectTriggered(true);
+      setAuthPromptReason("Sign in to launch Mixit Studio and save your mix diagnostics.");
+      setAuthModalOpen(true);
     }
   }, []);
 
-  // Auto-pause Veo looping hero video when off-screen or when reduced motion is enabled
+  // Sync play state from shared Web Audio engine
   useEffect(() => {
-    const video = heroVideoRef.current;
-    const heroEl = heroSectionRef.current;
-    if (!video || !heroEl) return;
+    const sync = () => setDemoPlaying(studioAudioEngine.getState().isPlaying);
+    sync();
+    return studioAudioEngine.subscribe(sync);
+  }, []);
 
-    if (prefersReduced) {
+  // Auto-pause looping studio hardware video when off-screen (IntersectionObserver)
+  useEffect(() => {
+    const video = hardwareVideoRef.current;
+    if (!video || typeof IntersectionObserver === "undefined") return;
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
       video.pause();
-      return;
-    }
-
-    if (typeof IntersectionObserver === "undefined") {
-      void video.play().catch(() => {});
       return;
     }
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const visible = entries[0]?.isIntersecting ?? true;
-        if (visible) {
+        const isVisible = entries[0]?.isIntersecting ?? false;
+        if (isVisible) {
           void video.play().catch(() => {});
         } else {
           video.pause();
         }
       },
-      { threshold: 0.05 }
+      { threshold: 0.1 }
     );
-    observer.observe(heroEl);
+    observer.observe(video);
     return () => observer.disconnect();
-  }, [prefersReduced]);
+  }, []);
 
-  // Lenis smooth scroll + subtle GSAP ScrollTrigger parallax on Section 3 console image ONLY.
-  // Hero elements are NEVER touched by ScrollTrigger/opacity:0 so back-nav is 100% immune.
+  // Lenis smooth scrolling + subtle GSAP ScrollTrigger hardware pacing (guaranteed cleanup; NEVER touches hero opacity!)
   useEffect(() => {
-    if (typeof window === "undefined" || prefersReduced) return;
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return;
 
-    let cancelled = false;
     let rafId = 0;
-    let cleanupLenis: (() => void) | null = null;
-    let cleanupGsap: (() => void) | null = null;
+    let lenisInstance: { raf: (t: number) => void; destroy: () => void } | null = null;
+    let gsapCleanup: (() => void) | null = null;
+    let cancelled = false;
 
     void (async () => {
       try {
-        const [{ default: Lenis }, gsapModule, scrollTriggerModule] = await Promise.all([
+        const [{ default: Lenis }, gsapMod, scrollTriggerMod] = await Promise.all([
           import("lenis"),
           import("gsap"),
           import("gsap/ScrollTrigger"),
         ]);
         if (cancelled) return;
 
-        const gsap = gsapModule.default || gsapModule.gsap;
-        const ScrollTrigger = scrollTriggerModule.ScrollTrigger;
+        const gsap = gsapMod.gsap;
+        const ScrollTrigger = scrollTriggerMod.ScrollTrigger;
         gsap.registerPlugin(ScrollTrigger);
 
-        // Clear any stale triggers from prior route transitions and refresh immediately
-        ScrollTrigger.getAll().forEach((t) => t.kill());
-
         const lenis = new Lenis({
-          duration: 1.05,
+          duration: 1.0,
+          easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
           smoothWheel: true,
-          wheelMultiplier: 0.9,
         });
-        lenisRef.current = lenis;
-        lenis.on("scroll", ScrollTrigger.update);
+        lenisInstance = lenis;
 
         const raf = (time: number) => {
+          if (cancelled) return;
           lenis.raf(time);
           rafId = window.requestAnimationFrame(raf);
         };
         rafId = window.requestAnimationFrame(raf);
-        cleanupLenis = () => {
-          window.cancelAnimationFrame(rafId);
-          lenis.destroy();
-          lenisRef.current = null;
-        };
 
-        if (consoleParallaxRef.current) {
-          const ctx = gsap.context(() => {
+        const ctx = gsap.context(() => {
+          if (hardwareVideoRef.current && featureGridRef.current) {
             gsap.fromTo(
-              consoleParallaxRef.current,
-              { yPercent: -3 },
+              hardwareVideoRef.current,
+              { scale: 1.08 },
               {
-                yPercent: 3,
+                scale: 1.0,
                 ease: "none",
                 scrollTrigger: {
-                  trigger: consoleParallaxRef.current,
+                  trigger: featureGridRef.current,
                   start: "top bottom",
                   end: "bottom top",
-                  scrub: true,
+                  scrub: 0.6,
                 },
               }
             );
-          });
-          ScrollTrigger.refresh();
-          cleanupGsap = () => {
-            ctx.revert();
-            ScrollTrigger.getAll().forEach((t) => t.kill());
-          };
-        }
+          }
+        }, rootRef);
+
+        ScrollTrigger.refresh();
+        gsapCleanup = () => {
+          ctx.revert();
+          ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
+        };
       } catch {
-        // Non-fatal in headless or test environments
+        // Native browser scroll remains active
       }
     })();
 
     return () => {
       cancelled = true;
-      cleanupGsap?.();
-      cleanupLenis?.();
+      if (rafId) window.cancelAnimationFrame(rafId);
+      if (lenisInstance) lenisInstance.destroy();
+      if (gsapCleanup) gsapCleanup();
     };
-  }, [prefersReduced]);
+  }, []);
 
-  const handleToggleTheme = () => {
-    const next = toggleStudioTheme();
-    setIsDarkTheme(next === "dark");
-  };
-
-  const handleLaunchStudio = () => {
-    if (signedInEmail) {
+  const handleEnterStudio = useCallback(() => {
+    if (userEmail) {
       router.push("/studio");
       return;
     }
-    setAuthInitialError(null);
-    setAuthPromptReason("Sign in to launch MixBench Studio and save your mix diagnostics.");
-    setAuthOpen(true);
-  };
+    setAuthPromptReason("Sign in to launch Mixit Studio and save your mix diagnostics.");
+    setAuthModalOpen(true);
+  }, [userEmail, router]);
 
-  const ensureDemoLoaded = async (): Promise<boolean> => {
-    if (studioAudioEngine.getSlotLoaded("primary")) return true;
-    setDemoLoading(true);
-    setDemoError(null);
-    try {
-      await studioAudioEngine.loadSlot("primary", LANDING_DEMO_URL, -8.4);
-      return true;
-    } catch {
-      setDemoError("Demo audio could not be decoded in this browser.");
-      return false;
-    } finally {
-      setDemoLoading(false);
-    }
-  };
-
-  const handleToggleDemoVinyl = async () => {
-    if (studioAudioEngine.getState().isPlaying) {
-      studioAudioEngine.pause();
+  const handleToggleDemoVinyl = useCallback(async () => {
+    if (demoLoading) return;
+    if (!demoLoaded && !studioAudioEngine.getState().hasPrimary) {
+      setDemoLoading(true);
+      try {
+        await studioAudioEngine.loadSlot("primary", "/demo/demo-flawed-v1.wav", -8.4);
+        setDemoLoaded(true);
+        await studioAudioEngine.play();
+      } catch {
+        // Keep interactive preview responsive even if browser blocks autoplay
+      } finally {
+        setDemoLoading(false);
+      }
       return;
     }
-    const ok = await ensureDemoLoaded();
-    if (ok) {
-      await studioAudioEngine.play();
+    await studioAudioEngine.togglePlay();
+  }, [demoLoaded, demoLoading]);
+
+  const handleHeroPlayDemo = () => {
+    const deck = document.getElementById("demo-deck");
+    if (deck) {
+      deck.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
+    void handleToggleDemoVinyl();
   };
 
-  const handlePreviewDemoCta = async () => {
-    if (demoSectionRef.current) {
-      if (lenisRef.current && !prefersReduced) {
-        lenisRef.current.scrollTo(demoSectionRef.current, { offset: -72 });
-      } else {
-        demoSectionRef.current.scrollIntoView({ behavior: prefersReduced ? "auto" : "smooth" });
-      }
-    }
-    if (!studioAudioEngine.getState().isPlaying) {
-      const ok = await ensureDemoLoaded();
-      if (ok) {
-        await studioAudioEngine.play();
-      }
-    }
-  };
-
-  const handleSelectDemoFinding = async (finding: Finding) => {
-    setSelectedFindingTitle(finding.title);
-    const ok = await ensureDemoLoaded();
-    if (ok) {
-      await studioAudioEngine.auditionRange(
-        finding.timestamp_start_sec,
-        Math.max(finding.timestamp_start_sec + 2.5, finding.timestamp_end_sec)
-      );
-    }
-  };
+  const engineStatusLabel =
+    healthOnline === false
+      ? "ENGINE: BROWSER DSP FALLBACK · READY"
+      : `ENGINE: ${(health?.gemini_model || "GEMINI 4 HYDROGEN").toUpperCase()} · ONLINE`;
 
   return (
-    <div className="min-h-screen bg-[var(--bg-canvas)] text-[var(--text-primary)]">
-      {/* Editorial Top Navigation Bar (strictly single-row h-16) */}
-      <header className="fixed top-0 left-0 right-0 z-40 border-b border-white/[0.08] bg-[#090B0E]/82 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-4 px-5 sm:px-8">
-          <Link href="/" className="flex shrink-0 items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center bg-[#22C58B] text-[#090B0E] squircle-inner">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="M4 12h2.5l2-6 3 12 2.5-9 2 3H20"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-            <span className="font-display text-base font-bold tracking-[-0.02em] text-[#F4F1EA]">
-              MixBench
-            </span>
-          </Link>
+    <div
+      ref={rootRef}
+      className="min-h-screen bg-[#FFFFFF] text-[#0A0A0A] selection:bg-[#FFE01B] selection:text-[#0A0A0A]"
+    >
+      {/* Architectural Outer Swiss Frame */}
+      <div className="mx-auto max-w-[1440px] border-x-[1.5px] border-[#0A0A0A] bg-[#FFFFFF]">
+        {/* ROW 1 — Compartmentalized Grid Topbar */}
+        <header
+          data-testid="landing-topbar"
+          className="sticky top-0 z-40 border-b-[1.5px] border-[#0A0A0A] bg-[#FFFFFF]"
+        >
+          <div className="grid grid-cols-[1fr_auto] items-stretch md:grid-cols-[auto_1fr_auto_auto_auto_auto]">
+            {/* Brand Cell: Full MIXIT. Logo */}
+            <Link
+              href="/"
+              aria-label="Mixit Home"
+              className="flex h-16 items-center border-r-[1.5px] border-[#0A0A0A] px-4 transition-colors hover:bg-[#F7F7F5] sm:px-6"
+            >
+              <MixitLogo variant="full" tone="light" heightClass="h-7 sm:h-8" />
+            </Link>
 
-          <nav
-            aria-label="Landing sections"
-            className="hidden items-center gap-7 text-sm font-medium text-[#9CA3AF] md:flex"
-          >
-            <a href="#demo-showcase" className="transition-colors hover:text-[#F4F1EA]">
-              Demo Deck
+            {/* Studio Descriptor Cell */}
+            <div className="hidden items-center border-r-[1.5px] border-[#0A0A0A] px-4 text-[10px] font-bold uppercase leading-[1.2] tracking-[0.08em] text-[#0A0A0A] md:flex">
+              <span>
+                AUDIO DSP
+                <br />
+                STUDIO
+              </span>
+            </div>
+
+            {/* Concise Anchor Cells */}
+            <a
+              href="#features"
+              className="hidden items-center justify-center border-r-[1.5px] border-[#0A0A0A] px-5 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFFFFF] md:flex"
+            >
+              Features
             </a>
-            <a href="#architecture" className="transition-colors hover:text-[#F4F1EA]">
-              Architecture
-            </a>
-            <a href="#privacy" className="transition-colors hover:text-[#F4F1EA]">
+            <Link
+              href="/privacy"
+              className="hidden items-center justify-center border-r-[1.5px] border-[#0A0A0A] px-5 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFFFFF] md:flex"
+            >
               Privacy
-            </a>
-            <Link href="/status" className="transition-colors hover:text-[#F4F1EA]">
+            </Link>
+            <Link
+              href="/status"
+              className="hidden items-center justify-center border-r-[1.5px] border-[#0A0A0A] px-5 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFFFFF] md:flex"
+            >
               Status
             </Link>
-          </nav>
 
-          <div className="flex shrink-0 items-center gap-2">
+            {/* Solid Signal Yellow CTA Cell */}
             <motion.button
               type="button"
-              data-testid="theme-toggle"
               whileTap={TACTILE_TAP}
-              onClick={handleToggleTheme}
-              aria-label="Toggle studio theme"
-              title={isDarkTheme ? "Switch to Warm Daylight Light" : "Switch to Carbon Studio Dark"}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-white/[0.12] bg-[#11141B]/90 text-[#F4F1EA] transition-colors hover:border-white/25 cursor-pointer"
+              onClick={handleEnterStudio}
+              aria-label={userEmail ? "Enter Mixit Studio" : "Sign in to enter Mixit Studio"}
+              className="flex h-16 items-center justify-center gap-2 bg-[#FFE01B] px-4 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer sm:px-6"
             >
-              {isDarkTheme ? (
-                <Sun className="h-4 w-4 text-[#E89B2D]" aria-hidden="true" />
-              ) : (
-                <Moon className="h-4 w-4 text-[#9CA3AF]" aria-hidden="true" />
-              )}
+              <span>{userEmail ? "Enter Studio" : "Enter Studio"}</span>
+              <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
             </motion.button>
-
-            {signedInEmail ? (
-              <Link
-                href="/studio"
-                data-testid="nav-enter-studio"
-                className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-[10px] bg-[#22C58B] px-4 text-xs font-semibold text-[#090B0E] transition-[filter,transform] hover:brightness-105 active:scale-[0.98]"
-              >
-                <span>Enter Studio</span>
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </Link>
-            ) : (
-              <motion.button
-                type="button"
-                data-testid="nav-signin-btn"
-                whileTap={TACTILE_TAP}
-                onClick={handleLaunchStudio}
-                className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-[10px] bg-[#F4F1EA] px-4 text-xs font-semibold text-[#090B0E] transition-colors hover:bg-white cursor-pointer"
-              >
-                <span>Sign In</span>
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </motion.button>
-            )}
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main>
-        {/* SECTION 1 — Full-Bleed Cinema Hero (100svh) */}
+        {/* ROW 2 — Asymmetric Breathable Hero (opacity: 1 immediately on mount & back-nav) */}
         <section
-          ref={heroSectionRef}
           data-testid="landing-hero"
-          className="relative flex min-h-[100svh] items-center overflow-hidden bg-[#090B0E] pt-16 text-[#F4F1EA]"
+          className="grid grid-cols-1 border-b-[1.5px] border-[#0A0A0A] lg:grid-cols-12"
         >
-          {/* Full-Bleed Veo Macro Vinyl Loop (zero audio, zero CLS poster, auto-paused off-screen) */}
-          <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-            <video
-              ref={heroVideoRef}
-              poster="/media/hero-studio-poster.webp"
-              autoPlay={!prefersReduced}
-              loop
-              muted
-              playsInline
-              preload="metadata"
-              aria-hidden="true"
-              className="h-full w-full object-cover object-center opacity-75"
-            >
-              <source src="/media/hero-studio-loop.webm" type="video/webm" />
-              <source src="/media/hero-studio-loop.mp4" type="video/mp4" />
-            </video>
-            {/* >= 85% contrast dark editorial scrim behind typography */}
-            <div
-              aria-hidden="true"
-              className="absolute inset-0"
-              style={{
-                background:
-                  "linear-gradient(95deg, rgba(9,11,14,0.94) 0%, rgba(9,11,14,0.84) 48%, rgba(9,11,14,0.42) 100%)",
-              }}
-            />
-            <div
-              aria-hidden="true"
-              className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#090B0E] to-transparent"
-            />
-          </div>
-
-          <div className="relative z-10 mx-auto w-full max-w-[1280px] px-5 py-20 sm:px-8 sm:py-28">
-            <div className="max-w-2xl space-y-7">
-              {/* Quiet Hardware Signal Tag (non-monospace editorial sans) */}
-              <div
-                className="inline-flex items-center gap-2.5 rounded-full border border-white/[0.12] bg-[#11141B]/75 px-3.5 py-1.5 backdrop-blur-sm"
-                style={{ opacity: 1 }}
-              >
-                <span className="h-2 w-2 rounded-full bg-[#22C58B]" />
-                <span className="text-xs font-medium text-[#D6D2C9]">
-                  Deterministic Mastering Diagnostics
-                </span>
-              </div>
-
-              {/* Instrument Serif Kinetic Headline — guaranteed opacity: 1 across back-navigation */}
+          {/* Left Hero Column */}
+          <div className="flex flex-col justify-between gap-8 border-b-[1.5px] border-[#0A0A0A] p-6 sm:p-10 lg:col-span-6 lg:border-b-0 lg:border-r-[1.5px] lg:p-12">
+            <div className="space-y-6">
               <KineticHeadline
-                as="h1"
-                lines={["Hear every mix flaw.", "Prove every fix."]}
-                className="font-editorial text-[clamp(2.85rem,6.4vw,5.4rem)] leading-[1.03] tracking-[-0.025em] text-[#F4F1EA]"
+                lines={["HEAR EVERY", "FLAW. PROVE", "EVERY FIX."]}
+                className="font-brut text-[clamp(3.25rem,6.4vw,6.25rem)] leading-[0.91] tracking-[-0.015em] text-[#0A0A0A]"
               />
 
-              <p
-                className="max-w-[50ch] text-base leading-[1.68] text-[#C5C2BA] sm:text-lg"
-                style={{ opacity: 1 }}
-              >
-                Calibrated ITU-R BS.1770 loudness, 4x oversampled True Peak, and 20–120 Hz sub-bass
-                phase telemetry paired with live v1 to v2 auditioning—before your track leaves the
-                DAW.
-              </p>
-
-              {/* Two Clean Primary Actions (zero cluttered metric boxes) */}
-              <div
-                data-testid="hero-cta-group"
-                className="flex flex-wrap items-center gap-3.5 pt-1"
-                style={{ opacity: 1 }}
-              >
-                <MagneticButton
-                  data-testid="hero-primary-cta"
-                  onClick={handleLaunchStudio}
-                  className="inline-flex h-12 items-center gap-2.5 rounded-[12px] bg-[#22C58B] px-6 text-sm font-semibold text-[#090B0E] transition-[filter] hover:brightness-105 cursor-pointer"
-                >
-                  <span>{signedInEmail ? "Enter Studio" : "Sign In to Launch Studio"}</span>
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </MagneticButton>
-
-                <motion.button
-                  type="button"
-                  data-testid="hero-preview-demo-cta"
-                  whileTap={TACTILE_TAP}
-                  onClick={() => void handlePreviewDemoCta()}
-                  className="inline-flex h-12 items-center gap-2.5 rounded-[12px] border border-white/[0.16] bg-[#11141B]/80 px-5 text-sm font-medium text-[#F4F1EA] backdrop-blur-sm transition-colors hover:border-white/30 hover:bg-[#171B24] cursor-pointer"
-                >
-                  <Disc3
-                    className={`h-4 w-4 text-[#E89B2D] ${isPlaying ? "animate-spin" : ""}`}
-                    aria-hidden="true"
-                  />
-                  <span>{isPlaying ? "Listening to Demo Vinyl" : "Preview Demo Vinyl"}</span>
-                </motion.button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* SECTION 2 — Interactive Turntable & Live Spectrum Showcase */}
-        <section
-          id="demo-showcase"
-          ref={demoSectionRef}
-          data-testid="landing-demo-showcase"
-          className="border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)] py-20 sm:py-28"
-        >
-          <div className="mx-auto max-w-[1280px] space-y-10 px-5 sm:px-8">
-            <motion.div
-              initial={prefersReduced ? false : { opacity: 0, y: 14 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={VIEWPORT_REVEAL}
-              transition={{ duration: 0.45, ease: STUDIO_EASE }}
-              className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end"
-            >
-              <div className="max-w-2xl space-y-3">
-                <p className="text-xs font-semibold text-[var(--studio-amber)]">
-                  Live Interactive Preview
-                </p>
-                <h2 className="font-editorial text-[clamp(2.1rem,4.2vw,3.4rem)] leading-[1.06] text-[var(--text-primary)]">
-                  Touch the telemetry before you upload.
-                </h2>
-                <p className="max-w-[58ch] text-base leading-[1.65] text-[var(--text-secondary)]">
-                  Press the center spindle to spin our flawed electronic stereo demo, inspect the
-                  60 fps 48-band FFT spectrum against its genre envelope, and click any clustered
-                  flaw badge to loop the exact problem window.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2.5">
-                <motion.button
-                  type="button"
-                  whileTap={TACTILE_TAP}
-                  onClick={() => void handleToggleDemoVinyl()}
-                  disabled={demoLoading}
-                  className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-4 text-xs font-semibold text-[var(--text-primary)] transition-colors hover:border-[var(--border-active)] cursor-pointer disabled:opacity-50"
-                >
-                  {isPlaying ? (
-                    <>
-                      <Pause className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-                      <span>Pause Demo</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-                      <span>Spin Demo Track</span>
-                    </>
-                  )}
-                </motion.button>
-
-                {selectedFindingTitle ? (
-                  <span className="rounded-[10px] border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-secondary)]">
-                    Auditioning: <strong className="text-[var(--text-primary)]">{selectedFindingTitle}</strong>
-                  </span>
-                ) : null}
-              </div>
-            </motion.div>
-
-            {demoError ? (
-              <p className="text-xs font-medium text-[var(--studio-vermilion)]">{demoError}</p>
-            ) : null}
-
-            {/* Spacious 12-Column Studio Hardware Stage */}
-            <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-12">
-              <div className="lg:col-span-5">
-                <SpinningDiscPlayer
-                  title="demo-flawed-v1.wav"
-                  subtitle="Click center spindle to spin 44.1 kHz stereo demo"
-                  genre="electronic"
-                  health="alert"
-                  lufs={-8.4}
-                  truePeak={0.6}
-                  bpm={124}
-                  isLoadingAudio={demoLoading}
-                  onTogglePlay={handleToggleDemoVinyl}
+              <div className="flex items-start gap-2.5 pt-1">
+                <span
+                  aria-hidden="true"
+                  className="mt-1.5 h-3 w-3 shrink-0 border border-[#0A0A0A] bg-[#FFE01B]"
                 />
-              </div>
-
-              <div className="flex flex-col gap-5 lg:col-span-7">
-                <LiveSpectralGraph spectralBands={DEMO_SPECTRAL_BANDS} height={186} />
-                <FlawTimelineBar
-                  peaks={DEMO_WAVEFORM_PEAKS}
-                  durationSec={LANDING_DEMO_DURATION}
-                  clippingTimestamps={DEMO_CLIP_TIMESTAMPS}
-                  findings={DEMO_FINDINGS}
-                  bpm={124}
-                  height={126}
-                  onSelectFinding={(f) => void handleSelectDemoFinding(f)}
-                />
+                <p className="max-w-md text-sm font-semibold uppercase tracking-[0.04em] text-[#0A0A0A] sm:text-base">
+                  Deterministic DSP. Live 48-Band Spectrum. Privacy-First AI.
+                </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border-hairline)] pt-6">
-              <p className="text-sm text-[var(--text-secondary)]">
-                Ready to inspect your own 24-bit WAV, FLAC, or AIFF mixdown with private cloud
-                history and v1 → v2 revision checks?
-              </p>
-              <button
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <motion.button
                 type="button"
-                onClick={handleLaunchStudio}
-                className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--studio-mint)] hover:underline cursor-pointer"
+                data-testid="hero-primary-cta"
+                whileTap={TACTILE_TAP}
+                onClick={handleEnterStudio}
+                className="inline-flex h-12 items-center gap-2.5 border-[1.5px] border-[#0A0A0A] bg-[#FFE01B] px-6 text-xs font-extrabold uppercase tracking-[0.08em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer"
               >
-                <span>{signedInEmail ? "Open MixBench Studio" : "Sign In to Upload Your Mix"}</span>
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </button>
+                <span>{userEmail ? "Enter Studio" : "Launch Studio"}</span>
+                <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+              </motion.button>
+
+              <motion.button
+                type="button"
+                data-testid="hero-preview-demo-cta"
+                whileTap={TACTILE_TAP}
+                onClick={handleHeroPlayDemo}
+                aria-label={demoPlaying ? "Pause demo vinyl playback" : "Play demo vinyl mix"}
+                className="inline-flex h-12 items-center gap-2.5 border-[1.5px] border-[#0A0A0A] bg-[#FFFFFF] px-6 text-xs font-extrabold uppercase tracking-[0.08em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFFFFF] cursor-pointer"
+              >
+                {demoPlaying ? (
+                  <>
+                    <Pause className="h-4 w-4 fill-current" aria-hidden="true" />
+                    <span>Pause Demo Vinyl</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+                    <span>Play Demo Vinyl</span>
+                  </>
+                )}
+              </motion.button>
             </div>
           </div>
-        </section>
 
-        {/* SECTION 3 — Scroll-Choreographed 3-Pillar Proof Band */}
-        <section
-          id="architecture"
-          data-testid="landing-proof-band"
-          className="border-t border-[var(--border-hairline)] bg-[var(--bg-surface)] py-20 sm:py-28"
-        >
-          <div className="mx-auto grid max-w-[1280px] grid-cols-1 items-center gap-12 px-5 sm:px-8 lg:grid-cols-12">
-            {/* Editorial Hardware Photograph (Nano Banana Analog Mastering Console Macro) */}
-            <div className="lg:col-span-6">
-              <div className="overflow-hidden rounded-[24px] border border-[var(--border-hairline)] bg-[#090B0E]">
-                <div ref={consoleParallaxRef} className="will-change-transform">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/media/studio-console-macro.webp"
-                    alt="Matte obsidian and brushed aluminum analog mastering console with glowing amber VU meter"
-                    width={1920}
-                    height={1080}
-                    loading="lazy"
-                    className="block aspect-[16/11] w-full scale-[1.06] object-cover"
+          {/* Right Hero Column: Spec + Vermilion Rotating Emblem + Pure #0A0A0A Interactive Audio Console */}
+          <div id="demo-deck" data-testid="landing-demo-showcase" className="flex flex-col lg:col-span-6">
+            {/* Top Strip: 1-Sentence Spec + Solid Vermilion Rotating Wireframe Emblem */}
+            <div className="grid grid-cols-[1fr_auto] border-b-[1.5px] border-[#0A0A0A]">
+              <div className="flex flex-col justify-between gap-3 p-5 sm:p-6">
+                <p className="max-w-sm text-xs font-bold uppercase leading-[1.4] tracking-[0.04em] text-[#0A0A0A]">
+                  CALIBRATED ITU-R BS.1770, 4X TRUE PEAK &amp; 20–120 HZ PHASE DIAGNOSTICS.
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="tabular-telemetry text-[11px] font-bold uppercase text-[#3F3F46]">
+                    LIVE DEMO DECK · 44.1 KHZ WAV
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleDemoVinyl()}
+                    aria-label={demoPlaying ? "Pause live demo track" : "Spin live demo track"}
+                    className="inline-flex h-7 w-7 items-center justify-center border-[1.5px] border-[#0A0A0A] bg-[#FFFFFF] text-[#0A0A0A] transition-colors hover:bg-[#FFE01B] cursor-pointer"
+                  >
+                    {demoPlaying ? (
+                      <Pause className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Solid Swiss Vermilion Rotating Wireframe / Waveform Emblem */}
+              <div
+                aria-hidden="true"
+                className="flex w-24 items-center justify-center border-l-[1.5px] border-[#0A0A0A] bg-[#FF3B1F] p-4 sm:w-28"
+              >
+                <svg
+                  viewBox="0 0 80 80"
+                  className="swiss-emblem-spin h-16 w-16 text-[#0A0A0A]"
+                  fill="none"
+                >
+                  <circle cx="40" cy="40" r="34" stroke="currentColor" strokeWidth="2.2" />
+                  <ellipse cx="40" cy="40" rx="18" ry="34" stroke="currentColor" strokeWidth="1.8" />
+                  <ellipse cx="40" cy="40" rx="34" ry="16" stroke="currentColor" strokeWidth="1.8" />
+                  <line x1="40" y1="6" x2="40" y2="74" stroke="currentColor" strokeWidth="1.8" />
+                  <line x1="6" y1="40" x2="74" y2="40" stroke="currentColor" strokeWidth="1.8" />
+                  <circle cx="40" cy="40" r="5" fill="currentColor" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Pure #0A0A0A Hardware Instrument Inset — Playable Right on Landing Page */}
+            <div className="flex flex-1 flex-col gap-3 bg-[#0A0A0A] p-4 sm:p-5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
+                <div className="sm:col-span-5">
+                  <SpinningDiscPlayer
+                    title="demo-flawed-v1.wav"
+                    subtitle="Click spindle to spin stereo demo"
+                    genre="electronic"
+                    health="alert"
+                    lufs={-8.4}
+                    truePeak={0.62}
+                    bpm={124}
+                    compact
+                    isLoadingAudio={demoLoading}
+                    onTogglePlay={handleToggleDemoVinyl}
+                    className="h-full"
+                  />
+                </div>
+                <div className="flex flex-col justify-between gap-3 sm:col-span-7">
+                  <LiveSpectralGraph
+                    spectralBands={DEMO_SPECTRAL_BANDS}
+                    height={146}
+                    compact
+                  />
+                  <FlawTimelineBar
+                    peaks={DEMO_PEAKS}
+                    durationSec={12}
+                    clippingTimestamps={[3.4, 4.1, 4.8]}
+                    findings={DEMO_FINDINGS}
+                    height={76}
                   />
                 </div>
               </div>
             </div>
-
-            {/* Three Scannable Engineering Pillars */}
-            <div className="space-y-8 lg:col-span-6">
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-[var(--studio-mint)]">
-                  Signal-First Engineering
-                </p>
-                <h2 className="font-editorial text-[clamp(2rem,3.8vw,3.15rem)] leading-[1.08] text-[var(--text-primary)]">
-                  Built around deterministic signal truth.
-                </h2>
-              </div>
-
-              <div className="divide-y divide-[var(--border-hairline)] border-y border-[var(--border-hairline)]">
-                {PROOF_PILLARS.map((pillar) => {
-                  const Icon = pillar.icon;
-                  return (
-                    <motion.div
-                      key={pillar.title}
-                      initial={prefersReduced ? false : { opacity: 0, y: 12 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={VIEWPORT_REVEAL}
-                      transition={{ duration: 0.4, ease: STUDIO_EASE }}
-                      className="flex items-start gap-4 py-6"
-                    >
-                      <div
-                        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[var(--border-hairline)] bg-[var(--bg-elevated)]"
-                        style={{ color: pillar.accent }}
-                      >
-                        <Icon className="h-4 w-4" aria-hidden="true" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <h3 className="text-base font-semibold text-[var(--text-primary)]">
-                          {pillar.title}
-                        </h3>
-                        <p className="text-sm leading-[1.65] text-[var(--text-secondary)]">
-                          {pillar.body}
-                        </p>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </div>
           </div>
         </section>
 
-        {/* SECTION 4 — Built for Artists, Not Data Brokers (Open-Canvas Verification Strip) */}
+        {/* ROW 3 — Full-Width Status Ticker Strip */}
         <section
-          id="privacy"
-          data-testid="landing-privacy-strip"
-          className="border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)] py-20 sm:py-24"
+          aria-label="Engine status strip"
+          className="grid grid-cols-1 border-b-[1.5px] border-[#0A0A0A] md:grid-cols-[auto_1fr_auto]"
         >
-          <div className="mx-auto max-w-[1280px] space-y-12 px-5 sm:px-8">
-            <div className="max-w-2xl space-y-3">
-              <p className="text-xs font-semibold text-[var(--studio-mint)]">
-                Artist Ownership Guarantee
-              </p>
-              <h2 className="font-editorial text-[clamp(2rem,3.8vw,3.15rem)] leading-[1.08] text-[var(--text-primary)]">
-                Built for artists, not data brokers.
-              </h2>
-              <p className="text-base leading-[1.65] text-[var(--text-secondary)]">
-                Your unreleased masters remain 100% yours. Every external AI capability is strictly
-                opt-in and audited transparently in every session report.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-8 border-t border-[var(--border-hairline)] pt-8 md:grid-cols-3 md:gap-10">
-              {PRIVACY_GUARANTEES.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div key={item.title} className="space-y-3">
-                    <Icon className="h-5 w-5 text-[var(--studio-mint)]" aria-hidden="true" />
-                    <h3 className="text-base font-semibold text-[var(--text-primary)]">
-                      {item.title}
-                    </h3>
-                    <p className="text-sm leading-[1.65] text-[var(--text-secondary)]">
-                      {item.body}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
+          <div className="flex items-center justify-center border-b-[1.5px] border-[#0A0A0A] px-5 py-3 tabular-telemetry text-xs font-extrabold text-[#0A0A0A] md:border-b-0 md:border-r-[1.5px]">
+            (2026)
           </div>
-        </section>
 
-        {/* SECTION 5 — Clean Final CTA */}
-        <section
-          data-testid="landing-final-cta"
-          className="border-t border-[var(--border-hairline)] bg-[var(--bg-surface)] py-24 sm:py-28"
-        >
-          <div className="mx-auto flex max-w-2xl flex-col items-center space-y-6 px-5 text-center sm:px-8">
-            <h2 className="font-editorial text-[clamp(2.2rem,4.4vw,3.6rem)] leading-[1.06] text-[var(--text-primary)]">
-              Bring calibrated truth to your next mixdown.
-            </h2>
-            <p className="max-w-[46ch] text-base leading-[1.65] text-[var(--text-secondary)]">
-              Sign in to unlock full stereo mix diagnostics, aligned stem overlap matrices,
-              level-matched Reference A/B, and private session history.
+          <div className="flex items-center justify-between gap-4 border-b-[1.5px] border-[#0A0A0A] px-5 py-4 md:border-b-0 md:border-r-[1.5px] sm:px-8">
+            <p className="text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] sm:text-sm">
+              MATHEMATICAL DSP TRUTH. ZERO AUDIO SENT BY DEFAULT.
             </p>
-            <MagneticButton
-              data-testid="final-enter-studio-cta"
-              onClick={handleLaunchStudio}
-              className="inline-flex h-12 items-center gap-2.5 rounded-[12px] bg-[var(--studio-mint)] px-7 text-sm font-semibold text-[#090B0E] transition-[filter] hover:brightness-105 cursor-pointer"
-            >
-              <span>Enter MixBench Studio</span>
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </MagneticButton>
+            <ArrowRight className="h-4 w-4 shrink-0 text-[#0A0A0A]" aria-hidden="true" />
+          </div>
+
+          <Link
+            href="/status"
+            data-testid="landing-engine-status-pill"
+            className="flex items-center justify-between gap-3 bg-[#FFE01B] px-5 py-4 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] sm:px-6"
+          >
+            <span className="tabular-telemetry">{engineStatusLabel}</span>
+            <span
+              aria-hidden="true"
+              className="h-2.5 w-2.5 shrink-0 rounded-full bg-current"
+            />
+          </Link>
+        </section>
+
+        {/* ROW 4 — Numbered 01 / 02 / 03 Interactive Feature Grid + Looping Studio Hardware Video */}
+        <section
+          id="features"
+          ref={featureGridRef}
+          data-testid="landing-proof-band"
+          className="grid grid-cols-1 border-b-[1.5px] border-[#0A0A0A] lg:grid-cols-12"
+        >
+          {/* Left Rail */}
+          <div className="flex flex-col justify-between gap-6 border-b-[1.5px] border-[#0A0A0A] p-6 lg:col-span-3 lg:border-b-0 lg:border-r-[1.5px] lg:p-8">
+            <div className="space-y-4">
+              <div className="text-xs font-extrabold uppercase leading-snug tracking-[0.08em] text-[#0A0A0A]">
+                SELECTED
+                <br />
+                CAPABILITIES
+              </div>
+              <ArrowDown className="h-4 w-4 text-[#0A0A0A]" aria-hidden="true" />
+            </div>
+
+            <div className="space-y-3">
+              <div className="border-[1.5px] border-[#0A0A0A] bg-[#0A0A0A] p-3 text-[#F4F1EA]">
+                <div className="tabular-telemetry text-[10px] font-bold uppercase tracking-[0.08em] text-[#FFE01B]">
+                  REFERENCE BENCHMARK
+                </div>
+                <div className="mt-1 tabular-telemetry text-xs font-semibold">
+                  44.1 kHz · -1.76 dBTP · +0.999 SUB
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleEnterStudio}
+                className="inline-flex w-full items-center justify-between border-[1.5px] border-[#0A0A0A] bg-[#FFFFFF] px-4 py-3 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#FFE01B] cursor-pointer"
+              >
+                <span>Open Workbench</span>
+                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+
+          {/* Right 01 / 02 / 03 Rows */}
+          <div className="divide-y-[1.5px] divide-[#0A0A0A] lg:col-span-9">
+            {FEATURE_ROWS.map((row, idx) => {
+              const isHighlighted = activeFeatureIdx === idx;
+              return (
+                <div
+                  key={row.num}
+                  onMouseEnter={() => setActiveFeatureIdx(idx)}
+                  onFocus={() => setActiveFeatureIdx(idx)}
+                  onClick={() => setActiveFeatureIdx(idx)}
+                  className={`grid grid-cols-1 transition-colors duration-150 md:grid-cols-12 ${
+                    isHighlighted
+                      ? "bg-[#FF3B1F] text-[#0A0A0A]"
+                      : "bg-[#FFFFFF] text-[#0A0A0A] hover:bg-[#F7F7F5]"
+                  }`}
+                >
+                  {/* Number + Title Cell */}
+                  <div className="flex items-center gap-5 border-b-[1.5px] border-[#0A0A0A] p-5 sm:gap-7 sm:p-7 md:col-span-7 md:border-b-0 md:border-r-[1.5px]">
+                    <span className="font-brut shrink-0 text-6xl leading-none text-[#0A0A0A] sm:text-7xl">
+                      {row.num}
+                    </span>
+                    <div className="min-w-0 space-y-1.5">
+                      <span
+                        className={`inline-block border border-[#0A0A0A] px-2 py-0.5 tabular-telemetry text-[10px] font-bold uppercase tracking-[0.08em] ${
+                          isHighlighted
+                            ? "bg-[#FFE01B] text-[#0A0A0A]"
+                            : "bg-[#F7F7F5] text-[#0A0A0A]"
+                        }`}
+                      >
+                        {row.tag}
+                      </span>
+                      <h2 className="font-condensed text-2xl font-extrabold leading-tight text-[#0A0A0A] sm:text-[26px]">
+                        {row.title}
+                      </h2>
+                      <p className="text-xs font-semibold text-[#0A0A0A]/85">{row.sub}</p>
+                    </div>
+                  </div>
+
+                  {/* Right Visual Preview Pane */}
+                  <div className="relative overflow-hidden bg-[#0A0A0A] md:col-span-5">
+                    {row.kind === "hardware" ? (
+                      <div className="relative h-48 w-full overflow-hidden md:h-full md:min-h-[180px]">
+                        <video
+                          ref={hardwareVideoRef}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          preload="metadata"
+                          poster="/media/studio-hardware-poster.webp"
+                          aria-label="Slow-motion close-up of analog mastering rotary knobs and brushed steel VU meter"
+                          className="h-full w-full object-cover"
+                        >
+                          <source src="/media/studio-hardware-loop.mp4" type="video/mp4" />
+                        </video>
+                        <div className="pointer-events-none absolute bottom-2.5 left-2.5 border border-[#FFE01B] bg-[#0A0A0A]/88 px-2 py-0.5 tabular-telemetry text-[10px] font-bold uppercase text-[#FFE01B]">
+                          LIVE A/B · AUTO-FIX EQ
+                        </div>
+                      </div>
+                    ) : row.kind === "telemetry" ? (
+                      <div className="flex h-full min-h-[168px] flex-col justify-between p-5 text-[#F4F1EA]">
+                        <div className="flex items-center justify-between tabular-telemetry text-[10px] font-bold uppercase text-[#A1A8B8]">
+                          <span>DSP TELEMETRY</span>
+                          <span className="text-[#22C58B]">SHA-256 CACHED</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 py-2">
+                          <div className="border border-[#262B36] bg-[#12151C] p-2.5">
+                            <div className="text-[9px] uppercase text-[#A1A8B8]">LUFS</div>
+                            <div className="mt-1 tabular-telemetry text-base font-bold text-[#F4F1EA]">
+                              -14.4
+                            </div>
+                          </div>
+                          <div className="border border-[#262B36] bg-[#12151C] p-2.5">
+                            <div className="text-[9px] uppercase text-[#A1A8B8]">4X PEAK</div>
+                            <div className="mt-1 tabular-telemetry text-base font-bold text-[#FFE01B]">
+                              -1.76
+                            </div>
+                          </div>
+                          <div className="border border-[#262B36] bg-[#12151C] p-2.5">
+                            <div className="text-[9px] uppercase text-[#A1A8B8]">SUB PHASE</div>
+                            <div className="mt-1 tabular-telemetry text-base font-bold text-[#22C58B]">
+                              +0.999
+                            </div>
+                          </div>
+                        </div>
+                        <div className="tabular-telemetry text-[10px] text-[#A1A8B8]">
+                          20–120 HZ BUTTERWORTH BANDPASS · 0 CLIPS
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex h-full min-h-[168px] flex-col justify-between p-5 text-[#F4F1EA]">
+                        <div className="flex items-center justify-between tabular-telemetry text-[10px] font-bold uppercase text-[#A1A8B8]">
+                          <span>GEMINI 4 HYDROGEN</span>
+                          <span className="text-[#FFE01B]">OPT-IN ONLY</span>
+                        </div>
+                        <div className="space-y-2 py-2 text-xs">
+                          <div className="flex items-center justify-between border border-[#262B36] bg-[#12151C] px-3 py-2">
+                            <span className="tabular-telemetry text-[#FFE01B]">ev_sub_phase_01</span>
+                            <span className="font-semibold text-[#F4F1EA]">Mono &lt; 100 Hz</span>
+                          </div>
+                          <div className="flex items-center justify-between border border-[#262B36] bg-[#12151C] px-3 py-2">
+                            <span className="tabular-telemetry text-[#22C58B]">ev_true_peak_02</span>
+                            <span className="font-semibold text-[#F4F1EA]">Ceiling -1.0 dBTP</span>
+                          </div>
+                        </div>
+                        <div className="tabular-telemetry text-[10px] text-[#A1A8B8]">
+                          ZERO RAW AUDIO TRANSMITTED BY DEFAULT
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
-      </main>
 
-      {/* Global Legal & System Diagnostics Footer */}
-      <footer className="border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)] py-7 text-xs text-[var(--text-muted)]">
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-4 px-5 sm:px-8">
-          <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full bg-[var(--studio-mint)]" />
-            <span className="font-medium text-[var(--text-secondary)]">MixBench Studio</span>
-            <span>· Deterministic Audio DSP Workbench</span>
+        {/* ROW 5 — Bottom Split: Signal Yellow Geometric Emblem + Expandable + Accordions */}
+        <section className="grid grid-cols-1 border-b-[1.5px] border-[#0A0A0A] lg:grid-cols-12">
+          {/* Left: Signal Yellow Emblem Block + BUILT FOR REAL MIXES. */}
+          <div className="grid grid-cols-1 border-b-[1.5px] border-[#0A0A0A] sm:grid-cols-[180px_1fr] lg:col-span-5 lg:border-b-0 lg:border-r-[1.5px]">
+            <div className="flex flex-col items-center justify-between gap-4 border-b-[1.5px] border-[#0A0A0A] bg-[#FFE01B] p-6 sm:border-b-0 sm:border-r-[1.5px]">
+              <MixitLogo variant="mark" heightClass="h-11" />
+              <svg
+                viewBox="0 0 100 100"
+                aria-hidden="true"
+                className="swiss-emblem-spin h-20 w-20 text-[#0A0A0A]"
+              >
+                <rect x="42" y="6" width="16" height="88" fill="currentColor" />
+                <rect x="6" y="42" width="88" height="16" fill="currentColor" />
+                <rect
+                  x="42"
+                  y="6"
+                  width="16"
+                  height="88"
+                  fill="currentColor"
+                  transform="rotate(45 50 50)"
+                />
+                <rect
+                  x="42"
+                  y="6"
+                  width="16"
+                  height="88"
+                  fill="currentColor"
+                  transform="rotate(-45 50 50)"
+                />
+              </svg>
+              <span className="tabular-telemetry text-[10px] font-extrabold uppercase tracking-[0.1em] text-[#0A0A0A]">
+                MIXIT · DSP
+              </span>
+            </div>
+
+            <div className="flex flex-col justify-between gap-6 p-6 sm:p-8">
+              <div className="space-y-3">
+                <h2 className="font-brut text-5xl leading-[0.92] text-[#0A0A0A]">
+                  BUILT FOR
+                  <br />
+                  REAL MIXES.
+                </h2>
+                <p className="text-xs font-semibold leading-relaxed text-[#3F3F46]">
+                  Measured in deterministic Python DSP.
+                  <br />
+                  Verified live in browser Web Audio.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleEnterStudio}
+                className="inline-flex w-fit items-center gap-2 text-xs font-extrabold uppercase tracking-[0.08em] text-[#0A0A0A] underline decoration-[1.5px] underline-offset-4 hover:text-[#FF3B1F] cursor-pointer"
+              >
+                <span>Launch Studio</span>
+                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </div>
           </div>
-          <nav aria-label="Legal and status links" className="flex flex-wrap items-center gap-6">
-            <Link
-              href="/privacy"
-              className="font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-            >
-              Privacy Policy
-            </Link>
-            <Link
-              href="/terms"
-              className="font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-            >
-              Terms of Use
-            </Link>
-            <Link
-              href="/status"
-              className="font-medium text-[var(--studio-mint)] hover:underline"
-            >
-              System Status
-            </Link>
-          </nav>
-        </div>
-      </footer>
 
+          {/* Narrow Vertical Rail */}
+          <div className="hidden flex-col items-center justify-between border-r-[1.5px] border-[#0A0A0A] py-6 lg:col-span-1 lg:flex">
+            <span className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#0A0A0A] [writing-mode:vertical-rl]">
+              ARCHITECTURE
+            </span>
+            <ArrowRight className="h-4 w-4 text-[#0A0A0A]" aria-hidden="true" />
+          </div>
+
+          {/* Right: 4 Expandable + Accordion Rows */}
+          <div className="divide-y-[1.5px] divide-[#0A0A0A] lg:col-span-6">
+            {SPEC_ACCORDIONS.map((item) => {
+              const isOpen = openAccordion === item.num;
+              return (
+                <div key={item.num} className="bg-[#FFFFFF]">
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => setOpenAccordion((prev) => (prev === item.num ? null : item.num))}
+                    className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-[#F7F7F5] cursor-pointer"
+                  >
+                    <div className="flex items-center gap-5">
+                      <span className="tabular-telemetry text-xs font-extrabold text-[#3F3F46]">
+                        {item.num}
+                      </span>
+                      <span className="font-condensed text-xl font-extrabold tracking-[0.03em] text-[#0A0A0A]">
+                        {item.title}
+                      </span>
+                    </div>
+                    <Plus
+                      className={`h-4 w-4 shrink-0 text-[#0A0A0A] transition-transform duration-200 ${
+                        isOpen ? "rotate-45 text-[#FF3B1F]" : ""
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {isOpen ? (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: STUDIO_EASE }}
+                        className="overflow-hidden"
+                      >
+                        <p className="border-t border-[#0A0A0A]/15 bg-[#F7F7F5] px-6 py-4 pl-14 text-xs font-medium leading-relaxed text-[#3F3F46]">
+                          {item.body}
+                        </p>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ROW 6 — Clean 3-Column Swiss Grid Footer */}
+        <footer className="grid grid-cols-1 divide-y-[1.5px] divide-[#0A0A0A] md:grid-cols-12 md:divide-x-[1.5px] md:divide-y-0">
+          {/* Column 1: Solid Vermilion CTA Block */}
+          <motion.button
+            type="button"
+            whileTap={TACTILE_TAP}
+            onClick={handleEnterStudio}
+            className="flex items-center justify-between gap-4 bg-[#FF3B1F] p-6 text-left text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer md:col-span-4 sm:p-8"
+          >
+            <span className="font-condensed text-2xl font-extrabold leading-tight uppercase">
+              READY TO CHECK
+              <br />
+              YOUR MIX?
+            </span>
+            <ArrowUpRight className="h-6 w-6 shrink-0" aria-hidden="true" />
+          </motion.button>
+
+          {/* Column 2: Full Brand Lockup & Legal Links */}
+          <div className="flex flex-col justify-between gap-4 p-6 md:col-span-5 sm:p-8">
+            <MixitLogo variant="full" tone="light" heightClass="h-6" />
+            <nav
+              aria-label="Legal and status links"
+              className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A]"
+            >
+              <Link href="/privacy" className="hover:text-[#FF3B1F] hover:underline">
+                Privacy
+              </Link>
+              <Link href="/terms" className="hover:text-[#FF3B1F] hover:underline">
+                Terms
+              </Link>
+              <Link href="/cookies" className="hover:text-[#FF3B1F] hover:underline">
+                Cookies
+              </Link>
+              <Link href="/status" className="hover:text-[#FF3B1F] hover:underline">
+                Status
+              </Link>
+            </nav>
+          </div>
+
+          {/* Column 3: Global Launch Pledge */}
+          <div className="flex flex-col justify-between gap-3 p-6 md:col-span-3 sm:p-8">
+            <span className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#0A0A0A]">
+              MIXIT STUDIO · 100% FREE
+            </span>
+            <p className="tabular-telemetry text-[11px] font-semibold uppercase leading-relaxed text-[#3F3F46]">
+              ZERO AD TRACKERS.
+              <br />
+              ESSENTIAL COOKIES ONLY.
+            </p>
+          </div>
+        </footer>
+      </div>
+
+      {/* Auth Modal for Sign In / Sign Up -> /studio */}
       <AuthModal
-        open={authOpen}
-        onOpenChange={setAuthOpen}
-        initialError={authInitialError}
+        open={authModalOpen}
+        onAuthSuccess={() => {
+          authSucceededRef.current = true;
+          setSigninRedirectTriggered(false);
+        }}
+        onOpenChange={(open) => {
+          setAuthModalOpen(open);
+          if (open) {
+            authSucceededRef.current = false;
+          } else if (signinRedirectTriggered && !authSucceededRef.current) {
+            setSigninRedirectTriggered(false);
+            router.replace("/");
+          }
+        }}
         promptReason={authPromptReason}
         redirectTo="/studio"
+        initialError={
+          !supabaseReady && signinRedirectTriggered
+            ? "Sign-in is required to enter Mixit Studio. Configure Supabase Auth keys to activate account sessions."
+            : null
+        }
       />
     </div>
   );

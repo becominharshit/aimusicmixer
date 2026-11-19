@@ -14,11 +14,11 @@ export const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <DialogPrimitive.Portal>
-    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px]" />
+    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/65" />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 bg-[var(--bg-elevated)] text-[var(--text-primary)] p-6 border border-[var(--border-strong)] squircle-outer shadow-2xl focus:outline-none",
+        "fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 bg-[var(--bg-elevated)] text-[var(--text-primary)] p-6 border-[1.5px] border-[var(--border-strong)] rounded-none focus:outline-none",
         className
       )}
       {...props}
@@ -26,7 +26,7 @@ export const DialogContent = React.forwardRef<
       {children}
       <DialogPrimitive.Close
         aria-label="Close dialog"
-        className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-inset)] hover:text-[var(--text-primary)] squircle-inner cursor-pointer"
+        className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:bg-[var(--bg-inset)] hover:text-[var(--text-primary)] cursor-pointer"
       >
         <X className="h-4 w-4" />
       </DialogPrimitive.Close>
@@ -41,7 +41,7 @@ export const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold text-[var(--text-primary)]", className)}
+    className={cn("text-lg font-bold text-[var(--text-primary)]", className)}
     {...props}
   />
 ));

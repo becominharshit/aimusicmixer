@@ -59,7 +59,7 @@ test("full studio journey: Auth Gate -> Sign In -> /studio -> Try Flawed Demo ->
   await expect(page.getByTestId("stereo-vectorscope")).toBeVisible();
 
   // 3. Toggle Stereo -> Mono and Device Lab -> Smartphone in Persistent Bottom Transport Dock
-  const dock = page.getByRole("region", { name: /Persistent MixBench Transport/i });
+  const dock = page.getByRole("region", { name: /Persistent Mixit Transport/i });
   await dock.getByRole("button", { name: /Mono/i }).click();
   await dock.getByRole("button", { name: /Smartphone/i }).click();
 

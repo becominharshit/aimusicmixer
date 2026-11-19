@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertCircle, ArrowLeft, CheckCircle2, ShieldCheck } from "lucide-react";
+import { MixitLogo } from "@/components/brand/MixitLogo";
 import { fetchSharedAnalysisByToken, type SavedAnalysisRecord } from "@/lib/supabase/storage";
 import { formatTimecode } from "@/lib/utils";
 
@@ -38,16 +39,19 @@ export default function SharedReviewPage() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-canvas)] text-[var(--text-primary)]">
-      <header className="border-b border-[var(--border-hairline)] bg-[var(--bg-canvas)]/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--accent-mint)] hover:underline"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-            Open MixBench Workbench
-          </Link>
-          <span className="inline-flex items-center gap-1.5 bg-[var(--accent-mint-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent-mint)] squircle-inner">
+      <header className="border-b border-[var(--border-hairline)] bg-[var(--bg-canvas)]/95">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.06em] text-[var(--text-primary)] hover:border-[var(--border-active)]"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              Open Mixit
+            </Link>
+            <MixitLogo variant="full" tone="auto" heightClass="h-6" className="hidden sm:inline-flex" />
+          </div>
+          <span className="inline-flex items-center gap-1.5 border border-[#0A0A0A] bg-[#FFE01B] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0A0A0A]">
             <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
             Read-Only Client Review
           </span>
@@ -56,12 +60,12 @@ export default function SharedReviewPage() {
 
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
         {loading ? (
-          <div className="bg-[var(--bg-elevated)] p-8 text-center text-sm text-[var(--text-secondary)] hairline-border squircle-outer">
+          <div className="bg-[var(--bg-elevated)] p-8 text-center text-sm text-[var(--text-secondary)] hairline-border">
             Loading shared mix report…
           </div>
         ) : !report || !record ? (
-          <div className="bg-[var(--bg-elevated)] p-8 text-center hairline-border squircle-outer space-y-3">
-            <div className="mx-auto flex h-10 w-10 items-center justify-center bg-[var(--accent-amber-soft)] text-[var(--accent-amber)] squircle-inner">
+          <div className="bg-[var(--bg-elevated)] p-8 text-center hairline-border space-y-3">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]">
               <AlertCircle className="h-5 w-5" aria-hidden="true" />
             </div>
             <h1 className="text-lg font-bold text-[var(--text-primary)]">
@@ -74,20 +78,20 @@ export default function SharedReviewPage() {
             <div className="pt-2">
               <Link
                 href="/"
-                className="inline-flex items-center gap-2 bg-[var(--accent-vermilion)] px-4 py-2 text-xs font-semibold text-white hover:brightness-110 squircle-inner"
+                className="inline-flex items-center gap-2 border border-[#0A0A0A] bg-[#FFE01B] px-4 py-2 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-[#FFE01B]"
               >
-                Launch MixBench Studio
+                Launch Mixit Studio
               </Link>
             </div>
           </div>
         ) : (
           <div className="space-y-5">
-            <div className="bg-[var(--bg-elevated)] p-6 hairline-border squircle-outer space-y-2">
+            <div className="bg-[var(--bg-elevated)] p-6 hairline-border space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h1 className="font-[family-name:var(--font-heading)] text-xl font-bold tracking-[-0.02em] text-[var(--text-primary)]">
+                <h1 className="text-xl font-bold tracking-[-0.02em] text-[var(--text-primary)]">
                   {record.track_name}
                 </h1>
-                <span className="bg-[var(--accent-mint-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--accent-mint)] tabular-telemetry squircle-inner">
+                <span className="bg-[var(--accent-mint-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--accent-mint)] tabular-telemetry">
                   {record.version_label} · {report.context.genre} · {report.context.stage}
                 </span>
               </div>
@@ -102,20 +106,20 @@ export default function SharedReviewPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
+              <div className="bg-[var(--bg-elevated)] p-4 hairline-border">
                 <div className="text-[11px] text-[var(--text-secondary)]">Integrated Loudness</div>
                 <div className="mt-1 text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
                   {report.global_metrics.integrated_lufs.toFixed(1)} LUFS
                 </div>
               </div>
-              <div className="bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
+              <div className="bg-[var(--bg-elevated)] p-4 hairline-border">
                 <div className="text-[11px] text-[var(--text-secondary)]">4x True Peak</div>
                 <div className="mt-1 text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
                   {report.global_metrics.true_peak_dbtp >= 0 ? "+" : ""}
                   {report.global_metrics.true_peak_dbtp.toFixed(2)} dBTP
                 </div>
               </div>
-              <div className="bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
+              <div className="bg-[var(--bg-elevated)] p-4 hairline-border">
                 <div className="text-[11px] text-[var(--text-secondary)]">PLR / Transient Punch</div>
                 <div className="mt-1 text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
                   {(report.global_metrics.plr_db ?? 0).toFixed(1)} dB
@@ -125,7 +129,7 @@ export default function SharedReviewPage() {
                     : ""}
                 </div>
               </div>
-              <div className="bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
+              <div className="bg-[var(--bg-elevated)] p-4 hairline-border">
                 <div className="text-[11px] text-[var(--text-secondary)]">Stereo &amp; Sub Phase</div>
                 <div className="mt-1 text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
                   {report.global_metrics.phase_correlation_avg >= 0 ? "+" : ""}
@@ -141,12 +145,12 @@ export default function SharedReviewPage() {
               {report.findings.map((finding) => (
                 <article
                   key={finding.evidence_id}
-                  className="bg-[var(--bg-elevated)] p-5 hairline-border squircle-outer space-y-2"
+                  className="bg-[var(--bg-elevated)] p-5 hairline-border space-y-2"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold capitalize squircle-inner ${
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold capitalize ${
                           finding.severity === "alert"
                             ? "bg-[var(--accent-vermilion-soft)] text-[var(--accent-vermilion)]"
                             : finding.severity === "caution"
@@ -159,7 +163,7 @@ export default function SharedReviewPage() {
                         )}
                         {finding.severity}
                       </span>
-                      <span className="bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] tabular-telemetry squircle-inner">
+                      <span className="bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] tabular-telemetry">
                         {finding.evidence_id}
                       </span>
                     </div>

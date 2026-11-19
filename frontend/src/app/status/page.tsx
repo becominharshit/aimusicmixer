@@ -13,6 +13,7 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
+import { MixitLogo } from "@/components/brand/MixitLogo";
 import { resolveApiUrl } from "@/lib/api";
 import type { BackendHealth } from "@/types/report";
 
@@ -69,7 +70,12 @@ export default function SystemStatusPage() {
     const targets: Array<{ id: string; label: string; path: string; method: "GET" | "POST" }> = [
       { id: "health", label: "Primary Health Endpoint", path: "/health", method: "GET" },
       { id: "api_health", label: "API Health Alias", path: "/api/health", method: "GET" },
-      { id: "mock_contract", label: "Deterministic Contract Probe", path: "/api/v1/analyze/mock", method: "GET" },
+      {
+        id: "mock_contract",
+        label: "Deterministic Contract Probe",
+        path: "/api/v1/analyze/mock",
+        method: "GET",
+      },
     ];
 
     const results: EndpointProbe[] = await Promise.all(
@@ -126,21 +132,21 @@ export default function SystemStatusPage() {
   const allHealthy = probes.every((p) => p.status === "ok");
 
   return (
-    <div className="min-h-screen bg-[var(--bg-canvas)] text-[var(--text-primary)]">
-      <header className="sticky top-0 z-30 border-b border-[var(--border-hairline)] bg-[var(--bg-canvas)]/90 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-[#0A0C10] text-[#F4F1EA]">
+      <header className="sticky top-0 z-30 border-b border-[#262B36] bg-[#0A0C10]/95">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-4">
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--studio-mint)] hover:text-[var(--text-primary)]"
+              className="inline-flex items-center gap-1.5 border border-[#262B36] bg-[#12151C] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.06em] text-[#F4F1EA] transition-colors hover:border-[#FFE01B] hover:text-[#FFE01B]"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to MixBench
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              Back to Mixit
             </Link>
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-[var(--studio-mint)]" />
-              <span className="font-display text-sm font-bold tracking-tight">
-                MixBench System Status &amp; Contract
+            <div className="hidden items-center gap-2.5 sm:flex">
+              <MixitLogo variant="full" tone="dark" heightClass="h-6" />
+              <span className="border-l border-[#262B36] pl-2.5 text-xs font-bold uppercase tracking-[0.08em] text-[#A1A8B8]">
+                System Status &amp; Contract
               </span>
             </div>
           </div>
@@ -149,153 +155,159 @@ export default function SystemStatusPage() {
             type="button"
             onClick={() => void runProbes()}
             disabled={running}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)] transition-colors hover:border-[var(--studio-mint)] disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 border border-[#FFE01B] bg-[#FFE01B] px-3.5 py-1.5 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#F4F1EA] disabled:opacity-50 cursor-pointer"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${running ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${running ? "animate-spin" : ""}`} aria-hidden="true" />
             {running ? "Probing…" : "Re-run Live Probes"}
           </button>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
-        {/* Overall Banner */}
-        <section className="studio-card squircle-outer flex flex-wrap items-center justify-between gap-4 p-5">
+        <section className="flex flex-wrap items-center justify-between gap-4 border border-[#262B36] bg-[#12151C] p-5">
           <div className="flex items-center gap-3">
             <span
-              className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+              className={`flex h-10 w-10 items-center justify-center border ${
                 allHealthy
-                  ? "bg-[var(--studio-mint-soft)] text-[var(--studio-mint)]"
-                  : "bg-[var(--studio-amber-soft)] text-[var(--studio-amber)]"
+                  ? "border-[#22C58B] bg-[#22C58B]/15 text-[#22C58B]"
+                  : "border-[#FFE01B] bg-[#FFE01B]/15 text-[#FFE01B]"
               }`}
             >
-              {allHealthy ? <CheckCircle2 className="h-5 w-5" /> : <Activity className="h-5 w-5" />}
+              {allHealthy ? (
+                <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+              ) : (
+                <Activity className="h-5 w-5" aria-hidden="true" />
+              )}
             </span>
             <div>
-              <h1 className="font-display text-xl font-bold text-[var(--text-primary)]">
-                {allHealthy ? "All Deterministic DSP & API Systems Operational" : "Inspecting Live Telemetry"}
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#FFE01B]">
+                Mixit System Status
+              </p>
+              <h1 className="font-condensed text-2xl font-extrabold tracking-tight text-[#F4F1EA]">
+                {allHealthy
+                  ? "All Deterministic DSP & API Systems Operational"
+                  : "Inspecting Live Telemetry"}
               </h1>
-              <p className="text-xs text-[var(--text-secondary)]">
+              <p className="text-xs text-[#A1A8B8]">
                 Real-time contract diagnostics, FFmpeg readiness, concurrency semaphore, and Gemini 4 Hydrogen routing.
               </p>
             </div>
           </div>
           {lastCheckedAt ? (
-            <span className="tabular-telemetry rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-3 py-1 text-xs text-[var(--text-secondary)]">
+            <span className="tabular-telemetry border border-[#262B36] bg-[#0A0A0A] px-3 py-1 text-xs text-[#A1A8B8]">
               Last checked {lastCheckedAt}
             </span>
           ) : null}
         </section>
 
-        {/* Key Runtime Telemetry Cards */}
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="studio-card squircle-outer p-4">
-            <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+          <div className="border border-[#262B36] bg-[#12151C] p-4">
+            <div className="flex items-center justify-between text-xs text-[#A1A8B8]">
               <span className="uppercase tracking-wider">API Round-Trip</span>
-              <Activity className="h-4 w-4 text-[var(--studio-mint)]" />
+              <Activity className="h-4 w-4 text-[#22C58B]" aria-hidden="true" />
             </div>
-            <div className="mt-2 tabular-telemetry text-2xl font-bold text-[var(--text-primary)]">
+            <div className="mt-2 tabular-telemetry text-2xl font-bold text-[#F4F1EA]">
               {typeof primaryLatency === "number" ? `${primaryLatency} ms` : "—"}
             </div>
-            <p className="mt-1 text-[11px] text-[var(--text-secondary)]">Measured live from browser</p>
+            <p className="mt-1 text-[11px] text-[#A1A8B8]">Measured live from browser</p>
           </div>
 
-          <div className="studio-card squircle-outer p-4">
-            <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+          <div className="border border-[#262B36] bg-[#12151C] p-4">
+            <div className="flex items-center justify-between text-xs text-[#A1A8B8]">
               <span className="uppercase tracking-wider">Active AI Model</span>
-              <Sparkles className="h-4 w-4 text-[var(--studio-amber)]" />
+              <Sparkles className="h-4 w-4 text-[#FFE01B]" aria-hidden="true" />
             </div>
-            <div className="mt-2 truncate tabular-telemetry text-lg font-bold text-[var(--text-primary)]">
+            <div className="mt-2 truncate tabular-telemetry text-lg font-bold text-[#F4F1EA]">
               {health?.gemini_model || "gemini-4-hydrogen"}
             </div>
-            <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
+            <p className="mt-1 text-[11px] text-[#A1A8B8]">
               {health?.gemini_configured
                 ? "API key configured · 35s timeout"
                 : "Offline deterministic fallback ready"}
             </p>
           </div>
 
-          <div className="studio-card squircle-outer p-4">
-            <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+          <div className="border border-[#262B36] bg-[#12151C] p-4">
+            <div className="flex items-center justify-between text-xs text-[#A1A8B8]">
               <span className="uppercase tracking-wider">FFmpeg / FFprobe</span>
-              <Cpu className="h-4 w-4 text-[var(--studio-cobalt)]" />
+              <Cpu className="h-4 w-4 text-[#38BDF8]" aria-hidden="true" />
             </div>
-            <div className="mt-2 tabular-telemetry text-2xl font-bold text-[var(--text-primary)]">
+            <div className="mt-2 tabular-telemetry text-2xl font-bold text-[#F4F1EA]">
               {health ? (health.ffmpeg_available ? "Ready" : "Unavailable") : "—"}
             </div>
-            <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
-              Magic-byte validated before decode
-            </p>
+            <p className="mt-1 text-[11px] text-[#A1A8B8]">Magic-byte validated before decode</p>
           </div>
 
-          <div className="studio-card squircle-outer p-4">
-            <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+          <div className="border border-[#262B36] bg-[#12151C] p-4">
+            <div className="flex items-center justify-between text-xs text-[#A1A8B8]">
               <span className="uppercase tracking-wider">DSP Concurrency</span>
-              <Database className="h-4 w-4 text-[var(--studio-mint)]" />
+              <Database className="h-4 w-4 text-[#22C58B]" aria-hidden="true" />
             </div>
-            <div className="mt-2 tabular-telemetry text-2xl font-bold text-[var(--text-primary)]">
+            <div className="mt-2 tabular-telemetry text-2xl font-bold text-[#F4F1EA]">
               {health?.dsp_concurrency_limit ?? 2} slots
             </div>
-            <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
-              SHA-256 cache: {health?.sha256_cache_entries ?? 0} entries · v{health?.contract_version || "1.0.0"}
+            <p className="mt-1 text-[11px] text-[#A1A8B8]">
+              SHA-256 cache: {health?.sha256_cache_entries ?? 0} entries · v
+              {health?.contract_version || "1.0.0"}
             </p>
           </div>
         </section>
 
-        {/* Endpoint Probe Table */}
-        <section className="studio-card squircle-outer overflow-hidden">
-          <div className="flex items-center justify-between border-b border-[var(--border-hairline)] px-5 py-3.5">
+        <section className="overflow-hidden border border-[#262B36] bg-[#12151C]">
+          <div className="flex items-center justify-between border-b border-[#262B36] px-5 py-3.5">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-[var(--studio-mint)]" />
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+              <ShieldCheck className="h-4 w-4 text-[#22C58B]" aria-hidden="true" />
+              <h2 className="text-sm font-bold uppercase tracking-[0.06em] text-[#F4F1EA]">
                 Live Endpoint Probes
               </h2>
             </div>
-            <span className="tabular-telemetry text-[11px] text-[var(--text-muted)]">
+            <span className="tabular-telemetry text-[11px] text-[#A1A8B8]">
               Contract Schema {health?.contract_version || "1.0.0"}
             </span>
           </div>
 
-          <div className="divide-y divide-[var(--border-hairline)]">
+          <div className="divide-y divide-[#262B36]">
             {probes.map((probe) => (
               <div
                 key={probe.id}
                 data-testid={`status-probe-${probe.id}`}
                 className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex min-w-0 items-center gap-3">
                   {probe.status === "ok" ? (
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--studio-mint)]" />
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-[#22C58B]" aria-hidden="true" />
                   ) : probe.status === "error" ? (
-                    <XCircle className="h-4 w-4 shrink-0 text-[var(--studio-vermilion)]" />
+                    <XCircle className="h-4 w-4 shrink-0 text-[#FF3B1F]" aria-hidden="true" />
                   ) : (
-                    <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-[var(--text-muted)]" />
+                    <RefreshCw
+                      className="h-4 w-4 shrink-0 animate-spin text-[#A1A8B8]"
+                      aria-hidden="true"
+                    />
                   )}
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-[var(--text-primary)]">
-                        {probe.label}
-                      </span>
-                      <code className="rounded bg-[var(--bg-inset)] px-1.5 py-0.5 tabular-telemetry text-[11px] text-[var(--text-secondary)]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-[#F4F1EA]">{probe.label}</span>
+                      <code className="border border-[#262B36] bg-[#0A0A0A] px-1.5 py-0.5 tabular-telemetry text-[11px] text-[#A1A8B8]">
                         {probe.method} {probe.path}
                       </code>
                     </div>
-                    <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{probe.detail}</p>
+                    <p className="mt-0.5 text-xs text-[#A1A8B8]">{probe.detail}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 tabular-telemetry text-xs">
                   {typeof probe.latencyMs === "number" ? (
-                    <span className="rounded-md border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2 py-0.5 font-semibold text-[var(--text-primary)]">
+                    <span className="border border-[#262B36] bg-[#0A0A0A] px-2 py-0.5 font-semibold text-[#F4F1EA]">
                       {probe.latencyMs} ms
                     </span>
                   ) : null}
                   <span
-                    className={`rounded-md px-2 py-0.5 font-semibold uppercase ${
+                    className={`px-2 py-0.5 font-bold uppercase ${
                       probe.status === "ok"
-                        ? "bg-[var(--studio-mint-soft)] text-[var(--studio-mint)]"
+                        ? "bg-[#22C58B]/15 text-[#22C58B]"
                         : probe.status === "error"
-                          ? "bg-[var(--studio-vermilion-soft)] text-[var(--studio-vermilion)]"
-                          : "bg-[var(--bg-inset)] text-[var(--text-muted)]"
+                          ? "bg-[#FF3B1F]/15 text-[#FF3B1F]"
+                          : "bg-[#0A0A0A] text-[#A1A8B8]"
                     }`}
                   >
                     {probe.status === "ok" ? "PASS" : probe.status === "error" ? "FAIL" : "WAIT"}
@@ -305,6 +317,21 @@ export default function SystemStatusPage() {
             ))}
           </div>
         </section>
+
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[#262B36] pt-4 text-xs text-[#A1A8B8]">
+          <span>Mixit Deterministic Audio DSP Studio</span>
+          <div className="flex items-center gap-4 font-semibold uppercase tracking-[0.06em]">
+            <Link href="/privacy" className="hover:text-[#FFE01B]">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:text-[#FFE01B]">
+              Terms
+            </Link>
+            <Link href="/cookies" className="hover:text-[#FFE01B]">
+              Cookies
+            </Link>
+          </div>
+        </footer>
       </main>
     </div>
   );

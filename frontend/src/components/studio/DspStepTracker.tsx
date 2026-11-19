@@ -71,37 +71,46 @@ export function DspStepTracker({
     };
   });
 
+  const currentActiveStep = steps.find((s) => s.status === "active") ?? null;
+
   return (
     <div
       data-testid="dsp-step-tracker"
-      className={`studio-card squircle-outer overflow-hidden ${compact ? "p-3" : "p-4 sm:p-5"} ${className}`}
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+      className={`studio-card overflow-hidden ${compact ? "p-3" : "p-4 sm:p-5"} ${className}`}
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Cpu className="h-4 w-4 text-[var(--studio-mint)]" />
-          <span className="tabular-telemetry text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-primary)]">
+          <Cpu className="h-4 w-4 text-[#FFE01B]" aria-hidden="true" />
+          <span className="tabular-telemetry text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]">
             {statusLabel || "Deterministic DSP Signal Chain"}
           </span>
           {typeof uploadPercent === "number" && uploadPercent < 100 ? (
-            <span className="tabular-telemetry rounded bg-[var(--studio-mint-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--studio-mint)]">
+            <span className="tabular-telemetry border border-[#0A0A0A] bg-[#FFE01B] px-1.5 py-0.5 text-[10px] font-bold text-[#0A0A0A]">
               {uploadPercent}%
             </span>
+          ) : null}
+          {currentActiveStep ? (
+            <span className="sr-only">Currently running {currentActiveStep.label}</span>
           ) : null}
         </div>
         {onCancel ? (
           <button
             type="button"
             onClick={onCancel}
-            className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--studio-vermilion)] hover:text-[var(--studio-vermilion)]"
+            aria-label="Cancel active DSP analysis"
+            className="inline-flex items-center gap-1 border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2.5 py-1 text-xs font-bold uppercase text-[var(--text-secondary)] transition-colors hover:border-[#FF3B1F] hover:bg-[#FF3B1F] hover:text-[#0A0A0A] cursor-pointer"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
             Cancel
           </button>
         ) : null}
       </div>
 
-      {/* 5-Stage Tactile Rail — wraps cleanly on 390px mobile with zero horizontal overflow */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-5 sm:gap-2.5">
+      {/* Crisp Swiss 5-Step Horizontal Progress Rail */}
+      <div className="grid grid-cols-1 gap-0 border border-[var(--border-hairline)] sm:grid-cols-5 sm:divide-x sm:divide-[var(--border-hairline)]">
         {steps.map((step, index) => {
           const isDone = step.status === "done";
           const isActive = step.status === "active";
@@ -112,61 +121,57 @@ export function DspStepTracker({
               key={step.id}
               data-stage-id={step.id}
               data-stage-status={step.status}
-              className={`relative flex flex-col justify-between rounded-xl border p-2.5 transition-all ${
+              className={`relative flex flex-col justify-between border-b border-[var(--border-hairline)] p-2.5 transition-colors last:border-b-0 sm:border-b-0 ${
                 isActive
-                  ? isMentor
-                    ? "border-[var(--studio-amber)] bg-[var(--studio-amber-soft)]"
-                    : "border-[var(--studio-mint)] bg-[var(--studio-mint-soft)]"
+                  ? "bg-[var(--studio-yellow-soft)]"
                   : isDone
-                    ? "border-[var(--border-strong)] bg-[var(--bg-inset)]"
-                    : "border-[var(--border-hairline)] bg-[var(--bg-inset)]/60 opacity-70"
+                    ? "bg-[var(--bg-elevated)]"
+                    : "bg-[var(--bg-inset)]/70 opacity-75"
               }`}
             >
               {/* Top rail beam */}
-              <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-[var(--border-hairline)]">
+              <div className="mb-2 h-1 w-full overflow-hidden bg-[var(--border-hairline)]">
                 {isActive ? (
-                  <div className="signal-beam-active h-full w-full rounded-full" />
+                  <div className="signal-beam-active h-full w-full" />
                 ) : isDone ? (
                   <div
-                    className="h-full w-full rounded-full"
+                    className="h-full w-full"
                     style={{
-                      backgroundColor: isMentor ? "var(--studio-amber)" : "var(--studio-mint)",
+                      backgroundColor: isMentor ? "#FFE01B" : "#22C58B",
                     }}
                   />
                 ) : null}
               </div>
 
               <div className="flex items-start justify-between gap-1.5">
-                <div className="flex items-center gap-1.5 min-w-0">
+                <div className="flex min-w-0 items-center gap-1.5">
                   <span
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md tabular-telemetry text-[10px] font-bold ${
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center tabular-telemetry text-[10px] font-bold ${
                       isDone
-                        ? "bg-[var(--studio-mint)] text-[#0B0D11]"
+                        ? "bg-[#22C58B] text-[#0A0A0A]"
                         : isActive
-                          ? isMentor
-                            ? "bg-[var(--studio-amber)] text-[#0B0D11]"
-                            : "bg-[var(--studio-mint)] text-[#0B0D11]"
-                          : "bg-[var(--bg-elevated)] text-[var(--text-muted)] border border-[var(--border-hairline)]"
+                          ? "bg-[#FFE01B] text-[#0A0A0A]"
+                          : "border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-muted)]"
                     }`}
                   >
                     {isDone ? (
-                      <Check className="h-3 w-3 stroke-[2.75]" />
+                      <Check className="h-3 w-3 stroke-[2.75]" aria-hidden="true" />
                     ) : isActive ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                     ) : isMentor ? (
-                      <Sparkles className="h-3 w-3" />
+                      <Sparkles className="h-3 w-3" aria-hidden="true" />
                     ) : (
-                      index + 1
+                      `0${index + 1}`
                     )}
                   </span>
-                  <span className="truncate text-[11px] font-semibold leading-tight text-[var(--text-primary)]">
+                  <span className="truncate text-[11px] font-bold leading-tight text-[var(--text-primary)]">
                     {compact ? step.shortLabel : step.label}
                   </span>
                 </div>
               </div>
 
               <div className="mt-1.5 flex items-center justify-between">
-                <span className="tabular-telemetry text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                <span className="tabular-telemetry text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                   {isDone ? "Verified" : isActive ? "Running" : isMentor ? "Opt-In" : "Queued"}
                 </span>
                 {typeof step.elapsedMs === "number" && step.elapsedMs > 0 ? (
