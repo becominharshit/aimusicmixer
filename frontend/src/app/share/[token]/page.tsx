@@ -51,7 +51,7 @@ export default function SharedReviewPage() {
             </Link>
             <MixitLogo variant="full" tone="auto" heightClass="h-6" className="hidden sm:inline-flex" />
           </div>
-          <span className="inline-flex items-center gap-1.5 border border-[#0A0A0A] bg-[#FFE01B] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0A0A0A]">
+          <span className="inline-flex items-center gap-1.5 rounded-[4px] border border-[#14171F] bg-[#F0B44C] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#111318]">
             <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
             Read-Only Client Review
           </span>
@@ -78,7 +78,7 @@ export default function SharedReviewPage() {
             <div className="pt-2">
               <Link
                 href="/"
-                className="inline-flex items-center gap-2 border border-[#0A0A0A] bg-[#FFE01B] px-4 py-2 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-[#FFE01B]"
+                className="inline-flex items-center gap-2 rounded-[4px] border border-[#14171F] bg-[#F0B44C] px-4 py-2 text-xs font-bold uppercase tracking-[0.06em] text-[#111318] hover:bg-[#14171F] hover:text-[#F0B44C]"
               >
                 Launch Mixit Studio
               </Link>

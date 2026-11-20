@@ -271,27 +271,27 @@ export function AuthModal({
                       if (e.target.checked) setErrorMsg(null);
                     }}
                     required
-                    className="mt-0.5 h-4 w-4 shrink-0 accent-[#FFE01B] cursor-pointer"
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[#F0B44C] cursor-pointer"
                   />
                   <span>
                     I agree to the{" "}
                     <Link
                       href="/privacy"
-                      className="font-semibold text-[var(--text-primary)] underline underline-offset-2 hover:text-[#FF3B1F] dark:hover:text-[#FFE01B]"
+                      className="font-semibold text-[var(--text-primary)] underline underline-offset-2 hover:text-[#EF6B63] dark:hover:text-[#F0B44C]"
                     >
                       Privacy Policy
                     </Link>
                     ,{" "}
                     <Link
                       href="/terms"
-                      className="font-semibold text-[var(--text-primary)] underline underline-offset-2 hover:text-[#FF3B1F] dark:hover:text-[#FFE01B]"
+                      className="font-semibold text-[var(--text-primary)] underline underline-offset-2 hover:text-[#EF6B63] dark:hover:text-[#F0B44C]"
                     >
                       Terms of Use
                     </Link>
                     , and{" "}
                     <Link
                       href="/cookies"
-                      className="font-semibold text-[var(--text-primary)] underline underline-offset-2 hover:text-[#FF3B1F] dark:hover:text-[#FFE01B]"
+                      className="font-semibold text-[var(--text-primary)] underline underline-offset-2 hover:text-[#EF6B63] dark:hover:text-[#F0B44C]"
                     >
                       Cookie Policy
                     </Link>
@@ -341,7 +341,7 @@ export function AuthModal({
                   setErrorMsg(null);
                   setInfoMsg(null);
                 }}
-                className="font-semibold text-[var(--text-primary)] underline underline-offset-2 hover:text-[#FF3B1F] dark:hover:text-[#FFE01B] cursor-pointer"
+                className="font-semibold text-[var(--text-primary)] underline underline-offset-2 hover:text-[#EF6B63] dark:hover:text-[#F0B44C] cursor-pointer"
               >
                 {authMode === "signin"
                   ? "Need an account? Sign up"

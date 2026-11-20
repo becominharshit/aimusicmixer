@@ -17,11 +17,18 @@ import { DspStepTracker } from "@/components/studio/DspStepTracker";
 import { FlawTimelineBar, buildFlawClusters } from "@/components/studio/FlawTimelineBar";
 import { LiveSpectralGraph } from "@/components/studio/LiveSpectralGraph";
 import { SpinningDiscPlayer } from "@/components/studio/SpinningDiscPlayer";
+import { StudioSidebar } from "@/components/studio/StudioSidebar";
+import { AddAudioModal } from "@/components/studio/AddAudioModal";
 import { CookieConsentBanner } from "@/components/compliance/CookieConsentBanner";
 import { KeyboardShortcutsModal } from "@/components/shared/KeyboardShortcutsModal";
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
 import { askMentor } from "@/lib/api";
 import { analyzePcmChannelsLocal } from "@/lib/clientWebAudioDsp";
+import {
+  cacheStudioAudioBlob,
+  deleteCachedStudioAudioBlob,
+  getCachedStudioAudioBlob,
+} from "@/lib/studioAudioCache";
 import {
   consumePendingDawMixdown,
   consumePendingStudioToDawHandoff,
@@ -270,20 +277,40 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(onRecheck).toHaveBeenCalledTimes(1);
   });
 
-  it("renders live backend health states and report export controls in StudioHeader", () => {
+  it("renders minimal 4-item StudioHeader and collapsible StudioSidebar with health diagnostics & export controls", () => {
+    const onOpenAddAudio = vi.fn();
+    const onToggleSidebar = vi.fn();
     const { rerender } = render(
-      <StudioHeader
-        mode="simple"
-        onModeChange={vi.fn()}
-        report={mockReport}
-        onClearSession={vi.fn()}
-        healthStatus="online"
-        healthData={{ status: "ok", ffmpeg_available: true, gemini_configured: false }}
-        healthError={null}
-        onRetryHealth={vi.fn()}
-      />
+      <>
+        <StudioHeader
+          mode="simple"
+          onModeChange={vi.fn()}
+          report={mockReport}
+          sidebarExpanded={false}
+          onToggleSidebar={onToggleSidebar}
+          onOpenAddAudio={onOpenAddAudio}
+          onOpenMentor={vi.fn()}
+        />
+        <StudioSidebar
+          expanded={true}
+          mobileOpen={false}
+          onCloseMobile={vi.fn()}
+          report={mockReport}
+          onClearSession={vi.fn()}
+          healthStatus="online"
+          healthData={{ status: "ok", ffmpeg_available: true, gemini_configured: false }}
+          healthError={null}
+          onRetryHealth={vi.fn()}
+        />
+      </>
     );
-    expect(screen.getByText("DSP Engine Online")).toBeInTheDocument();
+    expect(screen.getByTestId("add-audio-btn")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("add-audio-btn"));
+    expect(onOpenAddAudio).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId("sidebar-toggle-btn"));
+    expect(onToggleSidebar).toHaveBeenCalledTimes(1);
+
+    expect(screen.getByRole("button", { name: /DSP Engine Online/i })).toBeInTheDocument();
     const exportMenuBtn = screen.getByTestId("header-export-menu-btn");
     expect(exportMenuBtn).toBeInTheDocument();
     fireEvent.click(exportMenuBtn);
@@ -293,9 +320,10 @@ describe("MixBench UI & Privacy Contracts", () => {
     fireEvent.click(exportMenuBtn);
 
     rerender(
-      <StudioHeader
-        mode="simple"
-        onModeChange={vi.fn()}
+      <StudioSidebar
+        expanded={true}
+        mobileOpen={false}
+        onCloseMobile={vi.fn()}
         report={null}
         onClearSession={vi.fn()}
         healthStatus="waking"
@@ -313,9 +341,10 @@ describe("MixBench UI & Privacy Contracts", () => {
     fireEvent.click(wakingBtn);
 
     rerender(
-      <StudioHeader
-        mode="simple"
-        onModeChange={vi.fn()}
+      <StudioSidebar
+        expanded={true}
+        mobileOpen={false}
+        onCloseMobile={vi.fn()}
         report={null}
         onClearSession={vi.fn()}
         healthStatus="offline"
@@ -815,12 +844,13 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(screen.getByText(/20–60 Hz/i)).toBeInTheDocument();
   });
 
-  it("exposes WEB DAW & Profile nav links, AI Suggestions button, decluttered UploadStage, 16 DAW plugins, and /daw -> /studio WAV handoff", () => {
+  it("exposes WEB DAW & Profile nav links in StudioSidebar, AI Suggestions button, decluttered UploadStage, 16 DAW plugins, and /daw -> /studio WAV handoff", () => {
     render(
       <>
-        <StudioHeader
-          mode="simple"
-          onModeChange={vi.fn()}
+        <StudioSidebar
+          expanded={true}
+          mobileOpen={false}
+          onCloseMobile={vi.fn()}
           report={null}
           onClearSession={vi.fn()}
           healthStatus="online"
@@ -942,9 +972,10 @@ describe("MixBench UI & Privacy Contracts", () => {
     const onOpenShortcuts = vi.fn();
     const { rerender } = render(
       <>
-        <StudioHeader
-          mode="simple"
-          onModeChange={vi.fn()}
+        <StudioSidebar
+          expanded={false}
+          mobileOpen={false}
+          onCloseMobile={vi.fn()}
           report={mockReport}
           onClearSession={vi.fn()}
           healthStatus="online"
@@ -982,5 +1013,76 @@ describe("MixBench UI & Privacy Contracts", () => {
     rerender(<KeyboardShortcutsModal open={true} onOpenChange={vi.fn()} context="studio" />);
     expect(screen.getByTestId("keyboard-shortcuts-modal")).toBeInTheDocument();
     expect(screen.getByText(/Toggle Mono Fold/i)).toBeInTheDocument();
+  });
+
+  it("caches and restores studio audio blobs via studioAudioCache, opens AddAudioModal cleanly, and hides stuck preview-sync banner on restored reports", async () => {
+    const sampleBlob = new Blob(["RIFFWAVEfmt "], { type: "audio/wav" });
+    const cached = await cacheStudioAudioBlob(["analysis_99", "rep_99"], sampleBlob);
+    expect(cached).toBe(true);
+
+    const restoredByAnalysisId = await getCachedStudioAudioBlob(["analysis_99"]);
+    expect(restoredByAnalysisId).not.toBeNull();
+    expect(restoredByAnalysisId?.size).toBe(sampleBlob.size);
+
+    await deleteCachedStudioAudioBlob(["analysis_99", "rep_99"]);
+    expect(await getCachedStudioAudioBlob(["analysis_99", "rep_99"])).toBeNull();
+
+    // Restored report with historical local_web_audio_preview source does NOT show stuck upgrading banner unless actively upgrading
+    const restoredLocalReport: AnalysisReport = {
+      ...mockReport,
+      analysis_source: "local_web_audio_preview",
+    };
+    const { rerender } = render(
+      <MotionConfig reducedMotion="user">
+        <SimpleView
+          report={restoredLocalReport}
+          isPlaying={false}
+          isPrecisionUpgradeActive={false}
+          activeFindingId={null}
+          onTogglePlay={vi.fn()}
+          onAuditionFinding={vi.fn()}
+          onSelectFinding={vi.fn()}
+          onOpenAdvanced={vi.fn()}
+          onNewUpload={vi.fn()}
+        />
+      </MotionConfig>
+    );
+    expect(screen.queryByTestId("local-web-audio-banner")).not.toBeInTheDocument();
+
+    rerender(
+      <MotionConfig reducedMotion="user">
+        <SimpleView
+          report={restoredLocalReport}
+          isPlaying={false}
+          isPrecisionUpgradeActive={true}
+          activeFindingId={null}
+          onTogglePlay={vi.fn()}
+          onAuditionFinding={vi.fn()}
+          onSelectFinding={vi.fn()}
+          onOpenAdvanced={vi.fn()}
+          onNewUpload={vi.fn()}
+        />
+      </MotionConfig>
+    );
+    expect(screen.getByTestId("local-web-audio-banner")).toBeInTheDocument();
+
+    // AddAudioModal renders file picker & Load Sample Mix trigger cleanly
+    const onLoadDemo = vi.fn();
+    render(
+      <AddAudioModal
+        open={true}
+        onClose={vi.fn()}
+        genre="electronic"
+        onGenreChange={vi.fn()}
+        stage="unmastered_mix"
+        onStageChange={vi.fn()}
+        isAnalyzing={false}
+        onAnalyzeFile={vi.fn()}
+        onLoadDemo={onLoadDemo}
+      />
+    );
+    expect(screen.getByTestId("add-audio-modal")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Load Sample Mix/i }));
+    expect(onLoadDemo).toHaveBeenCalledTimes(1);
   });
 });

@@ -112,7 +112,7 @@ export function RevisionInspector({
             data-testid="export-scorecard-png-btn"
             onClick={() => void downloadScorecardPng(report)}
           >
-            <ImageDown className="h-3.5 w-3.5 text-[#FFE01B]" aria-hidden="true" />
+            <ImageDown className="h-3.5 w-3.5 text-[#F0B44C]" aria-hidden="true" />
             Export Scorecard PNG
           </Button>
         </div>

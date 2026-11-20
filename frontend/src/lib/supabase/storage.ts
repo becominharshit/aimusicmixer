@@ -261,7 +261,7 @@ export async function uploadMixProxyToStorage(params: {
       }
     }
 
-    if (!blob && params.fallbackBlob && params.fallbackBlob.size <= 15 * 1024 * 1024) {
+    if (!blob && params.fallbackBlob && params.fallbackBlob.size <= 25 * 1024 * 1024) {
       blob = params.fallbackBlob;
       if (blob.type.includes("wav")) ext = "wav";
       else if (blob.type.includes("mpeg") || blob.type.includes("mp3")) ext = "mp3";
@@ -305,6 +305,23 @@ export async function getSignedMixProxyUrl(
 
   if (error || !data?.signedUrl) return null;
   return data.signedUrl;
+}
+
+export async function fetchSignedMixProxyBlob(
+  proxyStoragePath: string,
+  expiresInSec = 3600
+): Promise<{ blob: Blob; signedUrl: string } | null> {
+  const signedUrl = await getSignedMixProxyUrl(proxyStoragePath, expiresInSec);
+  if (!signedUrl) return null;
+  try {
+    const res = await fetch(signedUrl);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!blob || blob.size === 0) return null;
+    return { blob, signedUrl };
+  } catch {
+    return null;
+  }
 }
 
 export async function saveUserAnalysis(params: {

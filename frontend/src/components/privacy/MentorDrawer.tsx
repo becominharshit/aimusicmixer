@@ -106,7 +106,7 @@ export function MentorDrawer({
         >
           <div className="flex items-center justify-between border-b border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-4 py-3.5 sm:px-5 sm:py-4">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center bg-[#FFE01B] text-[#0A0A0A]">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center bg-[#F0B44C] text-[#0A0A0A]">
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
               </span>
               <div className="min-w-0">

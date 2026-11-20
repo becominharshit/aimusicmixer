@@ -16,7 +16,7 @@ export default function TermsOfUsePage() {
         <header className="flex flex-wrap items-center justify-between border-b-[1.5px] border-[#0A0A0A]">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 border-r-[1.5px] border-[#0A0A0A] px-5 py-4 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B]"
+            className="inline-flex items-center gap-2 border-r-[1.5px] border-[#0A0A0A] px-5 py-4 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#F0B44C]"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             Back to Mixit
@@ -24,7 +24,7 @@ export default function TermsOfUsePage() {
           <div className="px-4 py-3">
             <MixitLogo variant="full" tone="light" heightClass="h-6" />
           </div>
-          <span className="inline-flex items-center gap-1.5 border-l-[1.5px] border-[#0A0A0A] bg-[#FFE01B] px-4 py-4 text-[11px] font-bold uppercase tracking-[0.08em] text-[#0A0A0A]">
+          <span className="inline-flex items-center gap-1.5 border-l-[1.5px] border-[#0A0A0A] bg-[#F0B44C] px-4 py-4 text-[11px] font-bold uppercase tracking-[0.08em] text-[#0A0A0A]">
             <Scale className="h-3.5 w-3.5" aria-hidden="true" />
             Terms of Use
           </span>
@@ -32,7 +32,7 @@ export default function TermsOfUsePage() {
 
         <main className="divide-y-[1.5px] divide-[#0A0A0A]">
           <section className="p-6 sm:p-10">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#FF3B1F]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#EF6B63]">
               100% Free Global Access · Artist IP Protected
             </p>
             <h1 className="mt-2 font-brut text-4xl text-[#0A0A0A] sm:text-5xl">
@@ -91,19 +91,19 @@ export default function TermsOfUsePage() {
           <footer className="grid grid-cols-1 divide-y-[1.5px] divide-[#0A0A0A] sm:grid-cols-3 sm:divide-x-[1.5px] sm:divide-y-0 text-xs font-bold uppercase tracking-[0.06em]">
             <Link
               href="/privacy"
-              className="p-4 text-center text-[#0A0A0A] transition-colors hover:bg-[#FFE01B]"
+              className="p-4 text-center text-[#0A0A0A] transition-colors hover:bg-[#F0B44C]"
             >
               Privacy Policy ↗
             </Link>
             <Link
               href="/cookies"
-              className="p-4 text-center text-[#0A0A0A] transition-colors hover:bg-[#FFE01B]"
+              className="p-4 text-center text-[#0A0A0A] transition-colors hover:bg-[#F0B44C]"
             >
               Cookie Policy ↗
             </Link>
             <Link
               href="/status"
-              className="p-4 text-center text-[#0A0A0A] transition-colors hover:bg-[#FFE01B]"
+              className="p-4 text-center text-[#0A0A0A] transition-colors hover:bg-[#F0B44C]"
             >
               System Status ↗
             </Link>

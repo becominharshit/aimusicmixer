@@ -18,12 +18,12 @@ const MAX_HZ = 20000;
 const BAND_CENTERS_HZ = [40, 120, 420, 1600, 5000, 12500];
 
 const BAND_ZONES = [
-  { id: "sub", label: "SUB", minHz: 20, maxHz: 60, color: "#FF3B1F" },
-  { id: "low", label: "LOW", minHz: 60, maxHz: 250, color: "#F59E0B" },
-  { id: "low_mid", label: "LOW-MID", minHz: 250, maxHz: 800, color: "#FFE01B" },
-  { id: "high_mid", label: "HIGH-MID", minHz: 800, maxHz: 3000, color: "#22C58B" },
-  { id: "presence", label: "PRESENCE", minHz: 3000, maxHz: 8000, color: "#38BDF8" },
-  { id: "air", label: "AIR", minHz: 8000, maxHz: 20000, color: "#818CF8" },
+  { id: "sub", label: "SUB", minHz: 20, maxHz: 60, color: "#EF6B63" },
+  { id: "low", label: "LOW", minHz: 60, maxHz: 250, color: "#F0B44C" },
+  { id: "low_mid", label: "LOW-MID", minHz: 250, maxHz: 800, color: "#F5C451" },
+  { id: "high_mid", label: "HIGH-MID", minHz: 800, maxHz: 3000, color: "#38D39F" },
+  { id: "presence", label: "PRESENCE", minHz: 3000, maxHz: 8000, color: "#5E9BFF" },
+  { id: "air", label: "AIR", minHz: 8000, maxHz: 20000, color: "#B388FF" },
 ] as const;
 
 type BandZoneId = (typeof BAND_ZONES)[number]["id"];
@@ -39,13 +39,13 @@ function dbToNorm(db: number): number {
   return Math.max(0.06, Math.min(0.95, (db + 54) / 48));
 }
 
-function barColorForFreq(fc: number): string {
-  if (fc < 60) return "#FF3B1F"; // Swiss Vermilion sub
-  if (fc < 250) return "#F59E0B"; // Analog Amber low
-  if (fc < 800) return "#FFE01B"; // Signal Yellow low-mid
-  if (fc < 3200) return "#22C58B"; // Acid Mint mids
-  if (fc < 8500) return "#38BDF8"; // Electric Cobalt presence
-  return "#818CF8"; // Bright air harmonics
+function barColorForFreq(fc: number): { top: string; base: string } {
+  if (fc < 60) return { top: "#EF6B63", base: "rgba(239, 107, 99, 0.42)" }; // Soft Studio Coral
+  if (fc < 250) return { top: "#F0B44C", base: "rgba(240, 180, 76, 0.42)" }; // Warm Marigold
+  if (fc < 800) return { top: "#F5C451", base: "rgba(245, 196, 81, 0.42)" }; // Soft Marigold
+  if (fc < 3200) return { top: "#38D39F", base: "rgba(56, 211, 159, 0.42)" }; // Mint Wave
+  if (fc < 8500) return { top: "#5E9BFF", base: "rgba(94, 155, 255, 0.42)" }; // Electric Sky
+  return { top: "#B388FF", base: "rgba(179, 136, 255, 0.42)" }; // Soft Orchid
 }
 
 export function LiveSpectralGraph({
@@ -58,6 +58,7 @@ export function LiveSpectralGraph({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isVisibleRef = useRef(true);
   const peakHoldRef = useRef<Float32Array>(new Float32Array(BAR_COUNT));
+  const smoothLevelsRef = useRef<Float32Array>(new Float32Array(BAR_COUNT));
   const freqBufferRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(() => studioAudioEngine.getState().isPlaying);
@@ -90,9 +91,24 @@ export function LiveSpectralGraph({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    let rafId = 0;
+    const reducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    const renderFrame = () => {
+    let rafId = 0;
+    let alive = true;
+
+    const renderFrame = (nowMs: number) => {
+      if (!alive) return;
+
+      if (!isVisibleRef.current) {
+        if (!reducedMotion) {
+          rafId = window.requestAnimationFrame(renderFrame);
+        }
+        return;
+      }
+
       const rect = canvas.getBoundingClientRect();
       const width = Math.max(220, Math.floor(rect.width));
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -112,31 +128,31 @@ export function LiveSpectralGraph({
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, width, height);
 
-      // Pure #0A0A0A hardware analyzer screen always
       const padBottom = 20;
       const plotH = Math.max(40, height - padBottom - 8);
       const plotTop = 8;
 
-      ctx.fillStyle = "#0A0A0A";
+      // Soft Charcoal-Obsidian studio instrument screen
+      ctx.fillStyle = "#0B0E14";
       ctx.fillRect(0, 0, width, height);
 
       // Highlight selected clickable frequency zone if active
       if (selectedZone) {
         const zx1 = hzToX(selectedZone.minHz, width);
         const zx2 = hzToX(selectedZone.maxHz, width);
-        ctx.fillStyle = "rgba(255, 224, 27, 0.10)";
+        ctx.fillStyle = "rgba(240, 180, 76, 0.11)";
         ctx.fillRect(zx1, plotTop, Math.max(4, zx2 - zx1), plotH);
-        ctx.strokeStyle = "rgba(255, 224, 27, 0.65)";
+        ctx.strokeStyle = "rgba(240, 180, 76, 0.65)";
         ctx.lineWidth = 1;
         ctx.strokeRect(zx1 + 0.5, plotTop + 0.5, Math.max(4, zx2 - zx1 - 1), plotH - 1);
       }
 
       // Log-frequency grid ticks
       const ticks = [60, 250, 1000, 4000, 16000];
-      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.strokeStyle = "rgba(255,255,255,0.07)";
       ctx.lineWidth = 1;
       ctx.font = "10px 'JetBrains Mono', monospace";
-      ctx.fillStyle = "#8C95A6";
+      ctx.fillStyle = "#707B8E";
       ctx.textAlign = "center";
 
       for (const hz of ticks) {
@@ -184,10 +200,10 @@ export function LiveSpectralGraph({
         }
         ctx.lineTo(0, lowerPoints[0].y);
         ctx.closePath();
-        ctx.fillStyle = "rgba(34, 197, 139, 0.11)";
+        ctx.fillStyle = "rgba(56, 211, 159, 0.11)";
         ctx.fill();
 
-        ctx.strokeStyle = "rgba(34, 197, 139, 0.58)";
+        ctx.strokeStyle = "rgba(56, 211, 159, 0.58)";
         ctx.lineWidth = 1.25;
         ctx.setLineDash([4, 3]);
         ctx.beginPath();
@@ -205,24 +221,26 @@ export function LiveSpectralGraph({
         ctx.setLineDash([]);
       }
 
-      // Compute 48 log-spaced bar magnitudes
+      // Compute 48 log-spaced bar magnitudes (live audio FFT OR living ambient harmonic baseline)
       const binCount = studioAudioEngine.getSpectrumBinCount();
       if (!freqBufferRef.current || freqBufferRef.current.length !== binCount) {
         freqBufferRef.current = new Uint8Array(new ArrayBuffer(binCount));
       }
       const { active, sampleRate } = studioAudioEngine.getFrequencyData(freqBufferRef.current);
       const peaks = peakHoldRef.current;
+      const smoothed = smoothLevelsRef.current;
 
       const slotW = width / BAR_COUNT;
       const barW = Math.max(2, slotW - 2);
       const nyquist = sampleRate * 0.5;
+      const t = nowMs * 0.001;
 
       for (let i = 0; i < BAR_COUNT; i += 1) {
         const f0 = MIN_HZ * Math.pow(MAX_HZ / MIN_HZ, i / BAR_COUNT);
         const f1 = MIN_HZ * Math.pow(MAX_HZ / MIN_HZ, (i + 1) / BAR_COUNT);
         const fc = Math.sqrt(f0 * f1);
 
-        let level = 0;
+        let targetLevel = 0;
         if (active && freqBufferRef.current) {
           const startBin = Math.max(1, Math.floor((f0 / nyquist) * binCount));
           const endBin = Math.min(
@@ -233,26 +251,38 @@ export function LiveSpectralGraph({
           for (let b = startBin; b <= endBin; b += 1) {
             if (freqBufferRef.current[b] > maxVal) maxVal = freqBufferRef.current[b];
           }
-          level = Math.max(0.03, maxVal / 255);
-        } else if (spectralBands.length >= 6) {
-          let nearest = spectralBands[0];
-          let minDist = Infinity;
-          for (let bIdx = 0; bIdx < 6; bIdx += 1) {
-            const dist = Math.abs(Math.log10(fc) - Math.log10(BAND_CENTERS_HZ[bIdx]));
-            if (dist < minDist) {
-              minDist = dist;
-              nearest = spectralBands[bIdx];
-            }
-          }
-          level = dbToNorm(nearest.energy_db) * 0.78;
+          targetLevel = Math.max(0.04, maxVal / 255);
         } else {
-          level = 0.08;
+          // Measured harmonic profile with subtle living ambient breath when paused
+          let base = 0.22 + 0.16 * Math.sin(i * 0.22);
+          if (spectralBands.length >= 6) {
+            let nearest = spectralBands[0];
+            let minDist = Infinity;
+            for (let bIdx = 0; bIdx < 6; bIdx += 1) {
+              const dist = Math.abs(Math.log10(fc) - Math.log10(BAND_CENTERS_HZ[bIdx]));
+              if (dist < minDist) {
+                minDist = dist;
+                nearest = spectralBands[bIdx];
+              }
+            }
+            base = dbToNorm(nearest.energy_db) * 0.78;
+          }
+          const ambientBreath = reducedMotion
+            ? 0
+            : Math.sin(t * 1.9 + i * 0.34) * 0.038 +
+              Math.cos(t * 1.15 - i * 0.21) * 0.024;
+          targetLevel = Math.max(0.06, Math.min(0.94, base + ambientBreath));
         }
+
+        const lerpRate = active ? 0.42 : 0.16;
+        smoothed[i] =
+          smoothed[i] === 0 ? targetLevel : smoothed[i] + (targetLevel - smoothed[i]) * lerpRate;
+        const level = smoothed[i];
 
         if (level >= peaks[i]) {
           peaks[i] = level;
         } else {
-          peaks[i] = Math.max(level, peaks[i] - 0.014);
+          peaks[i] = Math.max(level, peaks[i] - (active ? 0.012 : 0.005));
         }
 
         const inSelectedZone =
@@ -261,29 +291,34 @@ export function LiveSpectralGraph({
         const barH = Math.max(3, level * plotH);
         const x = i * slotW + 1;
         const y = plotTop + plotH - barH;
-        const color = barColorForFreq(fc);
+        const palette = barColorForFreq(fc);
 
-        ctx.fillStyle = color;
-        ctx.globalAlpha = inSelectedZone ? (active ? 0.96 : 0.84) : 0.24;
+        const grad = ctx.createLinearGradient(0, y, 0, plotTop + plotH);
+        grad.addColorStop(0, palette.top);
+        grad.addColorStop(1, palette.base);
+
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = inSelectedZone ? (active ? 0.96 : 0.86) : 0.22;
         ctx.fillRect(x, y, barW, barH);
 
         // Crisp peak-hold cap
         const capY = plotTop + plotH - Math.max(3, peaks[i] * plotH) - 2;
-        ctx.globalAlpha = inSelectedZone ? (active ? 1 : 0.65) : 0.2;
-        ctx.fillStyle = "#F4F1EA";
+        ctx.globalAlpha = inSelectedZone ? (active ? 0.95 : 0.72) : 0.2;
+        ctx.fillStyle = "#F2F0EA";
         ctx.fillRect(x, Math.max(plotTop, capY), barW, 2);
       }
 
       ctx.globalAlpha = 1;
       ctx.restore();
 
-      if (studioAudioEngine.getState().isPlaying && isVisibleRef.current) {
+      if (!reducedMotion) {
         rafId = window.requestAnimationFrame(renderFrame);
       }
     };
 
-    renderFrame();
+    renderFrame(performance.now());
     return () => {
+      alive = false;
       if (rafId) window.cancelAnimationFrame(rafId);
     };
   }, [isPlaying, spectralBands, height, selectedZone]);
@@ -292,29 +327,29 @@ export function LiveSpectralGraph({
     <div
       ref={containerRef}
       data-testid="live-spectral-graph"
-      className={`border border-[#262B36] bg-[#0A0A0A] p-3.5 text-[#F4F1EA] sm:p-4 ${className}`}
+      className={`border border-white/10 bg-[#0E1117] p-3.5 text-[#F2F0EA] sm:p-4 ${className}`}
     >
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-[#FFE01B]" aria-hidden="true" />
-          <span className="text-xs font-bold uppercase tracking-[0.04em] text-[#F4F1EA]">
+          <Activity className="h-4 w-4 text-[#F0B44C]" aria-hidden="true" />
+          <span className="text-xs font-bold uppercase tracking-[0.04em] text-[#F2F0EA]">
             {compact ? "48-Band Spectrum" : "48-Band Live Spectral Analyzer"}
           </span>
-          <span className="tabular-telemetry text-[11px] text-[#A1A8B8]">20 Hz–20 kHz</span>
+          <span className="tabular-telemetry text-[11px] text-[#98A2B3]">20 Hz–20 kHz</span>
         </div>
         <div className="flex items-center gap-2.5">
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-[#A1A8B8]">
-            <span className="h-1.5 w-3 border border-[#22C58B] bg-[#22C58B]/45" />
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-[#98A2B3]">
+            <span className="h-1.5 w-3 border border-[#38D39F] bg-[#38D39F]/40" />
             Genre Envelope
           </span>
           <span
             className={`tabular-telemetry px-1.5 py-0.5 text-[10px] font-bold uppercase ${
               isPlaying
-                ? "bg-[#FFE01B] text-[#0A0A0A]"
-                : "border border-[#262B36] bg-[#12151C] text-[#A1A8B8]"
+                ? "bg-[#F0B44C] text-[#111318]"
+                : "border border-white/10 bg-[#151923] text-[#38D39F]"
             }`}
           >
-            {isPlaying ? "60 FPS LIVE" : "MEASURED"}
+            {isPlaying ? "60 FPS LIVE" : "AMBIENT · READY"}
           </span>
         </div>
       </div>
@@ -324,7 +359,7 @@ export function LiveSpectralGraph({
         role="img"
         aria-label="48-Band Live Spectral Analyzer from 20 Hz to 20 kHz"
         style={{ height }}
-        className="block w-full border border-[#262B36]"
+        className="block w-full border border-white/10"
       />
 
       {/* Clickable Frequency Band Zone Selectors */}
@@ -344,13 +379,13 @@ export function LiveSpectralGraph({
                 onClick={() => setActiveZoneId((prev) => (prev === zone.id ? null : zone.id))}
                 className={`inline-flex items-center gap-1 border px-2 py-0.5 tabular-telemetry text-[10px] font-bold uppercase tracking-[0.04em] transition-colors cursor-pointer ${
                   isSelected
-                    ? "border-[#FFE01B] bg-[#FFE01B] text-[#0A0A0A]"
-                    : "border-[#262B36] bg-[#12151C] text-[#A1A8B8] hover:border-[#F4F1EA] hover:text-[#F4F1EA]"
+                    ? "border-[#F0B44C] bg-[#F0B44C] text-[#111318]"
+                    : "border-white/10 bg-[#151923] text-[#98A2B3] hover:border-white/30 hover:text-[#F2F0EA]"
                 }`}
               >
                 <span
                   className="h-1.5 w-1.5 shrink-0"
-                  style={{ backgroundColor: isSelected ? "#0A0A0A" : zone.color }}
+                  style={{ backgroundColor: isSelected ? "#111318" : zone.color }}
                   aria-hidden="true"
                 />
                 {zone.label}
@@ -360,8 +395,9 @@ export function LiveSpectralGraph({
         </div>
 
         {selectedZone ? (
-          <span className="tabular-telemetry text-[10px] text-[#FFE01B]">
-            {selectedZone.minHz}–{selectedZone.maxHz >= 1000 ? `${selectedZone.maxHz / 1000}k` : selectedZone.maxHz} Hz
+          <span className="tabular-telemetry text-[10px] text-[#F0B44C]">
+            {selectedZone.minHz}–
+            {selectedZone.maxHz >= 1000 ? `${selectedZone.maxHz / 1000}k` : selectedZone.maxHz} Hz
             {selectedBandInfo
               ? ` · ${selectedBandInfo.energy_db.toFixed(1)} dB (${selectedBandInfo.delta_vs_genre_median_db >= 0 ? "+" : ""}${selectedBandInfo.delta_vs_genre_median_db.toFixed(1)} vs target)`
               : ""}

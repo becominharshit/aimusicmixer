@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { AlertTriangle, ArrowRight, CheckCircle2, Pause, Play, Radio, RotateCcw } from "lucide-react";
 import type { CorrectiveEqConfig } from "@/audio/StudioAudioEngine";
 import { FindingCard } from "@/components/FindingCard";
+import { AnimatedMetricValue } from "@/components/motion/AnimatedMetricValue";
 import { FlawTimelineBar } from "@/components/studio/FlawTimelineBar";
 import { LiveSpectralGraph } from "@/components/studio/LiveSpectralGraph";
 import { SpinningDiscPlayer } from "@/components/studio/SpinningDiscPlayer";
@@ -15,6 +16,7 @@ interface SimpleViewProps {
   report: AnalysisReport;
   isPlaying: boolean;
   hasAudio?: boolean;
+  isPrecisionUpgradeActive?: boolean;
   activeFindingId: string | null;
   activeCorrectiveEqId?: string | null;
   completedRepairSteps?: Record<string, boolean>;
@@ -65,6 +67,7 @@ export function SimpleView({
   report,
   isPlaying,
   hasAudio = true,
+  isPrecisionUpgradeActive = false,
   activeFindingId,
   activeCorrectiveEqId = null,
   completedRepairSteps = {},
@@ -82,7 +85,8 @@ export function SimpleView({
   const m = report.global_metrics;
   const topFindings = report.findings.slice(0, 3);
   const plr = m.plr_db ?? Math.max(0, m.true_peak_dbtp - m.integrated_lufs);
-  const isLocalPreview = report.analysis_source === "local_web_audio_preview";
+  const showUpgradingBanner =
+    report.analysis_source === "local_web_audio_preview" && isPrecisionUpgradeActive;
 
   const platform =
     STREAMING_TARGETS.find((p) => p.id === selectedPlatform) ?? STREAMING_TARGETS[0];
@@ -99,12 +103,12 @@ export function SimpleView({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 py-4">
-      {/* Transparent Browser-Native Fallback Notice */}
-      {isLocalPreview && (
+      {/* Transparent Browser-Native Fallback Notice (only while actively upgrading to Precision DSP) */}
+      {showUpgradingBanner && (
         <div
           role="status"
           data-testid="local-web-audio-banner"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--studio-amber)]/40 bg-[var(--studio-amber-soft)] px-4 py-3 text-xs text-[var(--studio-amber)]"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-[6px] border border-[var(--studio-amber)]/40 bg-[var(--studio-amber-soft)] px-4 py-3 text-xs text-[var(--studio-amber)]"
         >
           <div className="flex items-center gap-2 font-semibold">
             <Radio className="h-4 w-4 animate-pulse shrink-0" />
@@ -178,14 +182,14 @@ export function SimpleView({
         <div className="flex flex-col justify-between gap-4 lg:col-span-7">
           <LiveSpectralGraph spectralBands={report.spectral_bands} height={192} />
 
-          {/* Measured Telemetry Strip (Single-Line Tabular Alignment) */}
+          {/* Measured Telemetry Strip (Smooth Animated Tabular Counters) */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="min-w-0 bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
               <div className="text-[11px] font-medium text-[var(--text-secondary)]">
                 Integrated Loudness
               </div>
               <div className="mt-1 whitespace-nowrap text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
-                {m.integrated_lufs.toFixed(1)}{" "}
+                <AnimatedMetricValue value={m.integrated_lufs} decimals={1} />{" "}
                 <span className="text-[11px] font-normal text-[var(--text-muted)]">LUFS</span>
               </div>
             </div>
@@ -194,18 +198,16 @@ export function SimpleView({
                 4x True Peak
               </div>
               <div className={`mt-1 whitespace-nowrap text-lg font-semibold tabular-telemetry ${truePeakTone}`}>
-                {m.true_peak_dbtp >= 0
-                  ? `+${m.true_peak_dbtp.toFixed(2)}`
-                  : m.true_peak_dbtp.toFixed(2)}{" "}
+                <AnimatedMetricValue value={m.true_peak_dbtp} decimals={2} signed />{" "}
                 <span className="text-[11px] font-normal text-[var(--text-muted)]">dBTP</span>
               </div>
             </div>
             <div className="min-w-0 bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
               <div className="text-[11px] font-medium text-[var(--text-secondary)]">PLR / LRA</div>
               <div className="mt-1 whitespace-nowrap text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
-                {plr.toFixed(1)}{" "}
+                <AnimatedMetricValue value={plr} decimals={1} />{" "}
                 <span className="text-[11px] font-normal text-[var(--text-muted)]">
-                  dB / {m.loudness_range_lu.toFixed(1)} LU
+                  dB / <AnimatedMetricValue value={m.loudness_range_lu} decimals={1} /> LU
                 </span>
               </div>
             </div>
@@ -222,8 +224,7 @@ export function SimpleView({
                       : "text-[var(--studio-mint)]"
                 }`}
               >
-                {m.phase_correlation_avg >= 0 ? "+" : ""}
-                {m.phase_correlation_avg.toFixed(2)}
+                <AnimatedMetricValue value={m.phase_correlation_avg} decimals={2} signed />
               </div>
             </div>
           </div>

@@ -146,6 +146,7 @@ export function LandingPage() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hardwareVideoRef = useRef<HTMLVideoElement | null>(null);
   const featureGridRef = useRef<HTMLElement | null>(null);
+  const heroDeckRef = useRef<HTMLDivElement | null>(null);
   const authSucceededRef = useRef(false);
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -155,7 +156,8 @@ export function LandingPage() {
   const [demoLoading, setDemoLoading] = useState(false);
   const [demoPlaying, setDemoPlaying] = useState(false);
   const [demoLoaded, setDemoLoaded] = useState(false);
-  const [activeFeatureIdx, setActiveFeatureIdx] = useState<number>(1); // 02 Vermilion highlighted by default
+  const [heroDeckVisible, setHeroDeckVisible] = useState(true);
+  const [activeFeatureIdx, setActiveFeatureIdx] = useState<number>(1); // 02 Terracotta Coral highlighted by default
   const [openAccordion, setOpenAccordion] = useState<string | null>("01");
   const [health, setHealth] = useState<BackendHealth | null>(null);
   const [healthOnline, setHealthOnline] = useState<boolean | null>(null);
@@ -217,6 +219,20 @@ export function LandingPage() {
     const sync = () => setDemoPlaying(studioAudioEngine.getState().isPlaying);
     sync();
     return studioAudioEngine.subscribe(sync);
+  }, []);
+
+  // Auto-pause ambient hero gradient mesh when hero deck scrolls off-screen
+  useEffect(() => {
+    const el = heroDeckRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setHeroDeckVisible(entries[0]?.isIntersecting ?? true);
+      },
+      { threshold: 0.05 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   // Auto-pause looping studio hardware video when off-screen (IntersectionObserver)
@@ -369,27 +385,27 @@ export function LandingPage() {
   return (
     <div
       ref={rootRef}
-      className="min-h-screen bg-[#FFFFFF] pb-28 text-[#0A0A0A] selection:bg-[#FFE01B] selection:text-[#0A0A0A] sm:pb-24"
+      className="min-h-screen bg-[#F9F8F4] pb-28 text-[#14171F] selection:bg-[#F5C451] selection:text-[#14171F] sm:pb-24"
     >
-      {/* Architectural Outer Swiss Frame — flush 2px solid #0A0A0A grid alignment */}
-      <div className="mx-auto max-w-[1440px] overflow-x-clip border-x-2 border-b-2 border-[#0A0A0A] bg-[#FFFFFF]">
+      {/* Architectural Outer Gallery Frame — crisp 1.5px #14171F alignment on Warm Ivory */}
+      <div className="mx-auto max-w-[1440px] overflow-x-clip border-x-[1.5px] border-b-[1.5px] border-[#14171F] bg-[#F9F8F4]">
         {/* ROW 1 — Compartmentalized Grid Topbar */}
         <header
           data-testid="landing-topbar"
-          className="sticky top-0 z-40 border-b-[1.5px] border-[#0A0A0A] bg-[#FFFFFF]"
+          className="sticky top-0 z-40 border-b-[1.5px] border-[#14171F] bg-[#F9F8F4]/95 backdrop-blur-sm"
         >
           <div className="grid grid-cols-[1fr_auto] items-stretch md:grid-cols-[auto_1fr_auto_auto_auto_auto]">
             {/* Brand Cell: Full MIXIT. Logo */}
             <Link
               href="/"
               aria-label="Mixit Home"
-              className="flex h-16 items-center border-r-[1.5px] border-[#0A0A0A] px-4 transition-colors hover:bg-[#F7F7F5] sm:px-6"
+              className="flex h-16 items-center border-r-[1.5px] border-[#14171F] px-4 transition-colors hover:bg-[#F2EFE7] sm:px-6"
             >
               <MixitLogo variant="full" tone="light" heightClass="h-7 sm:h-8" />
             </Link>
 
             {/* Studio Descriptor Cell */}
-            <div className="hidden items-center border-r-[1.5px] border-[#0A0A0A] px-4 text-[10px] font-bold uppercase leading-[1.2] tracking-[0.08em] text-[#0A0A0A] md:flex">
+            <div className="hidden items-center border-r-[1.5px] border-[#14171F] px-4 text-[10px] font-bold uppercase leading-[1.2] tracking-[0.08em] text-[#14171F] md:flex">
               <span>
                 AUDIO DSP
                 <br />
@@ -400,30 +416,30 @@ export function LandingPage() {
             {/* Concise Anchor Cells */}
             <a
               href="#features"
-              className="hidden items-center justify-center border-r-[1.5px] border-[#0A0A0A] px-5 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFFFFF] md:flex"
+              className="hidden items-center justify-center border-r-[1.5px] border-[#14171F] px-5 text-xs font-bold uppercase tracking-[0.06em] text-[#14171F] transition-colors hover:bg-[#14171F] hover:text-[#F9F8F4] md:flex"
             >
               Features
             </a>
             <Link
               href="/privacy"
-              className="hidden items-center justify-center border-r-[1.5px] border-[#0A0A0A] px-5 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFFFFF] md:flex"
+              className="hidden items-center justify-center border-r-[1.5px] border-[#14171F] px-5 text-xs font-bold uppercase tracking-[0.06em] text-[#14171F] transition-colors hover:bg-[#14171F] hover:text-[#F9F8F4] md:flex"
             >
               Privacy
             </Link>
             <Link
               href="/status"
-              className="hidden items-center justify-center border-r-[1.5px] border-[#0A0A0A] px-5 text-xs font-bold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFFFFF] md:flex"
+              className="hidden items-center justify-center border-r-[1.5px] border-[#14171F] px-5 text-xs font-bold uppercase tracking-[0.06em] text-[#14171F] transition-colors hover:bg-[#14171F] hover:text-[#F9F8F4] md:flex"
             >
               Status
             </Link>
 
-            {/* Solid Signal Yellow CTA Cell */}
+            {/* Soft Marigold CTA Cell */}
             <motion.button
               type="button"
               whileTap={TACTILE_TAP}
               onClick={handleEnterStudio}
               aria-label={userEmail ? "Enter Mixit Studio" : "Sign in to enter Mixit Studio"}
-              className="flex h-16 items-center justify-center gap-2 bg-[#FFE01B] px-4 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer sm:px-6"
+              className="flex h-16 items-center justify-center gap-2 bg-[#F5C451] px-4 text-xs font-extrabold uppercase tracking-[0.06em] text-[#14171F] transition-colors hover:bg-[#14171F] hover:text-[#F5C451] cursor-pointer sm:px-6"
             >
               <span>{userEmail ? "Enter Studio" : "Enter Studio"}</span>
               <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -434,22 +450,22 @@ export function LandingPage() {
         {/* ROW 2 — Asymmetric Breathable Hero (opacity: 1 immediately on mount & back-nav) */}
         <section
           data-testid="landing-hero"
-          className="grid grid-cols-1 border-b-[1.5px] border-[#0A0A0A] lg:grid-cols-12"
+          className="grid grid-cols-1 border-b-[1.5px] border-[#14171F] lg:grid-cols-12"
         >
           {/* Left Hero Column */}
-          <div className="flex flex-col justify-between gap-8 border-b-[1.5px] border-[#0A0A0A] p-6 sm:p-10 lg:col-span-6 lg:border-b-0 lg:border-r-[1.5px] lg:p-12">
+          <div className="flex flex-col justify-between gap-8 border-b-[1.5px] border-[#14171F] p-6 sm:p-10 lg:col-span-6 lg:border-b-0 lg:border-r-[1.5px] lg:p-12">
             <div className="space-y-6">
               <KineticHeadline
                 lines={["HEAR EVERY", "FLAW. PROVE", "EVERY FIX."]}
-                className="font-brut text-[clamp(3.25rem,6.4vw,6.25rem)] leading-[0.91] tracking-[-0.015em] text-[#0A0A0A]"
+                className="font-brut text-[clamp(3.25rem,6.4vw,6.25rem)] leading-[0.91] tracking-[-0.015em] text-[#14171F]"
               />
 
               <div className="flex items-start gap-2.5 pt-1">
                 <span
                   aria-hidden="true"
-                  className="mt-1.5 h-3 w-3 shrink-0 border border-[#0A0A0A] bg-[#FFE01B]"
+                  className="mt-1.5 h-3 w-3 shrink-0 border border-[#14171F] bg-[#F5C451]"
                 />
-                <p className="max-w-md text-sm font-semibold uppercase tracking-[0.04em] text-[#0A0A0A] sm:text-base">
+                <p className="max-w-md text-sm font-semibold uppercase tracking-[0.04em] text-[#14171F] sm:text-base">
                   Deterministic DSP. Live 48-Band Spectrum. Privacy-First AI.
                 </p>
               </div>
@@ -459,9 +475,10 @@ export function LandingPage() {
               <motion.button
                 type="button"
                 data-testid="hero-primary-cta"
+                whileHover={{ y: -2 }}
                 whileTap={TACTILE_TAP}
                 onClick={handleEnterStudio}
-                className="inline-flex h-12 items-center gap-2.5 border-[1.5px] border-[#0A0A0A] bg-[#FFE01B] px-6 text-xs font-extrabold uppercase tracking-[0.08em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer"
+                className="inline-flex h-12 items-center gap-2.5 border-[1.5px] border-[#14171F] bg-[#F5C451] px-6 text-xs font-extrabold uppercase tracking-[0.08em] text-[#14171F] transition-colors hover:bg-[#14171F] hover:text-[#F5C451] cursor-pointer"
               >
                 <span>{userEmail ? "Enter Studio" : "Launch Studio"}</span>
                 <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -470,10 +487,11 @@ export function LandingPage() {
               <motion.button
                 type="button"
                 data-testid="hero-preview-demo-cta"
+                whileHover={{ y: -2 }}
                 whileTap={TACTILE_TAP}
                 onClick={handleHeroPlayDemo}
                 aria-label={demoPlaying ? "Pause demo vinyl playback" : "Play demo vinyl mix"}
-                className="inline-flex h-12 items-center gap-2.5 border-[1.5px] border-[#0A0A0A] bg-[#FFFFFF] px-6 text-xs font-extrabold uppercase tracking-[0.08em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFFFFF] cursor-pointer"
+                className="inline-flex h-12 items-center gap-2.5 border-[1.5px] border-[#14171F] bg-[#FFFFFF] px-6 text-xs font-extrabold uppercase tracking-[0.08em] text-[#14171F] transition-colors hover:bg-[#14171F] hover:text-[#F9F8F4] cursor-pointer"
               >
                 {demoPlaying ? (
                   <>
@@ -490,27 +508,28 @@ export function LandingPage() {
             </div>
           </div>
 
-          {/* Right Hero Column: Spec + Vermilion Rotating Emblem + Pure #0A0A0A Interactive Audio Console */}
+          {/* Right Hero Column: Spec + Terracotta Coral Rotating Emblem + Soft Charcoal Interactive Audio Console */}
           <div
             id="demo-deck"
+            ref={heroDeckRef}
             data-testid="landing-demo-showcase"
             className="flex flex-col overflow-hidden lg:col-span-6"
           >
-            {/* Top Strip: 1-Sentence Spec + Solid Vermilion Rotating Wireframe Emblem */}
-            <div className="grid grid-cols-[1fr_auto] border-b-2 border-[#0A0A0A]">
-              <div className="flex flex-col justify-between gap-3 p-5 sm:p-6">
-                <p className="max-w-sm text-xs font-bold uppercase leading-[1.4] tracking-[0.04em] text-[#0A0A0A]">
+            {/* Top Strip: 1-Sentence Spec + Warm Terracotta Coral Rotating Wireframe Emblem */}
+            <div className="grid grid-cols-[1fr_auto] border-b-[1.5px] border-[#14171F]">
+              <div className="flex flex-col justify-between gap-3 bg-[#F9F8F4] p-5 sm:p-6">
+                <p className="max-w-sm text-xs font-bold uppercase leading-[1.4] tracking-[0.04em] text-[#14171F]">
                   CALIBRATED ITU-R BS.1770, 4X TRUE PEAK &amp; 20–120 HZ PHASE DIAGNOSTICS.
                 </p>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="tabular-telemetry text-[11px] font-bold uppercase text-[#3F3F46]">
+                  <span className="tabular-telemetry text-[11px] font-bold uppercase text-[#475467]">
                     LIVE DEMO DECK · 44.1 KHZ WAV
                   </span>
                   <button
                     type="button"
                     onClick={() => void handleToggleDemoVinyl()}
                     aria-label={demoPlaying ? "Pause live demo track" : "Spin live demo track"}
-                    className="inline-flex h-7 w-7 items-center justify-center border-[1.5px] border-[#0A0A0A] bg-[#FFFFFF] text-[#0A0A0A] transition-colors hover:bg-[#FFE01B] cursor-pointer"
+                    className="inline-flex h-7 w-7 items-center justify-center border-[1.5px] border-[#14171F] bg-[#FFFFFF] text-[#14171F] transition-colors hover:bg-[#F5C451] cursor-pointer"
                   >
                     {demoPlaying ? (
                       <Pause className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
@@ -521,14 +540,14 @@ export function LandingPage() {
                 </div>
               </div>
 
-              {/* Solid Swiss Vermilion Rotating Wireframe / Waveform Emblem */}
+              {/* Warm Terracotta Coral Rotating Wireframe Emblem */}
               <div
                 aria-hidden="true"
-                className="flex w-24 items-center justify-center border-l-2 border-[#0A0A0A] bg-[#FF3B1F] p-4 sm:w-28"
+                className="flex w-24 items-center justify-center border-l-[1.5px] border-[#14171F] bg-[#E85D4A] p-4 sm:w-28"
               >
                 <svg
                   viewBox="0 0 80 80"
-                  className="swiss-emblem-spin h-16 w-16 text-[#0A0A0A]"
+                  className="swiss-emblem-spin h-16 w-16 text-[#14171F]"
                   fill="none"
                 >
                   <circle cx="40" cy="40" r="34" stroke="currentColor" strokeWidth="2.2" />
@@ -541,12 +560,24 @@ export function LandingPage() {
               </div>
             </div>
 
-            {/* Pure #0A0A0A Hardware Instrument Inset — overflow-hidden, zero stray edge strip */}
+            {/* Soft Charcoal-Obsidian Hardware Instrument Inset + Drifting Colorful Ambient Radial Mesh */}
             <div
               data-testid="landing-dark-demo-panel"
-              className="flex flex-1 flex-col gap-3 overflow-hidden bg-[#0A0A0A] p-4 sm:p-5"
+              className="relative flex flex-1 flex-col gap-3 overflow-hidden bg-[#0E1117] p-4 sm:p-5"
             >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
+              {/* Softly animated colorful ambient radial gradient mesh (paused when off-screen) */}
+              <div
+                aria-hidden="true"
+                className={`pointer-events-none absolute -inset-12 ambient-mesh-drift ${
+                  heroDeckVisible ? "" : "ambient-mesh-paused"
+                }`}
+                style={{
+                  background:
+                    "radial-gradient(circle at 22% 28%, rgba(240, 180, 76, 0.20) 0%, transparent 44%), radial-gradient(circle at 78% 24%, rgba(94, 155, 255, 0.22) 0%, transparent 46%), radial-gradient(circle at 66% 80%, rgba(179, 136, 255, 0.18) 0%, transparent 45%), radial-gradient(circle at 26% 78%, rgba(56, 211, 159, 0.16) 0%, transparent 42%)",
+                }}
+              />
+
+              <div className="relative z-10 grid grid-cols-1 gap-3 sm:grid-cols-12">
                 <div className="min-w-0 sm:col-span-6">
                   <SpinningDiscPlayer
                     title="demo-flawed-v1.wav"
@@ -559,7 +590,7 @@ export function LandingPage() {
                     compact
                     isLoadingAudio={demoLoading}
                     onTogglePlay={handleToggleDemoVinyl}
-                    className="h-full"
+                    className="h-full bg-[#0E1117]/92"
                   />
                 </div>
                 <div className="flex min-w-0 flex-col justify-between gap-3 sm:col-span-6">
@@ -567,6 +598,7 @@ export function LandingPage() {
                     spectralBands={DEMO_SPECTRAL_BANDS}
                     height={156}
                     compact
+                    className="bg-[#0E1117]/92"
                   />
                   <FlawTimelineBar
                     peaks={DEMO_PEAKS}
@@ -574,6 +606,7 @@ export function LandingPage() {
                     clippingTimestamps={[3.4, 4.1, 4.8]}
                     findings={DEMO_FINDINGS}
                     height={84}
+                    className="bg-[#0E1117]/92"
                   />
                 </div>
               </div>
@@ -584,28 +617,28 @@ export function LandingPage() {
         {/* ROW 3 — Full-Width Status Ticker Strip */}
         <section
           aria-label="Engine status strip"
-          className="grid grid-cols-1 border-b-[1.5px] border-[#0A0A0A] md:grid-cols-[auto_1fr_auto]"
+          className="grid grid-cols-1 border-b-[1.5px] border-[#14171F] md:grid-cols-[auto_1fr_auto]"
         >
-          <div className="flex items-center justify-center border-b-[1.5px] border-[#0A0A0A] px-5 py-3 tabular-telemetry text-xs font-extrabold text-[#0A0A0A] md:border-b-0 md:border-r-[1.5px]">
+          <div className="flex items-center justify-center border-b-[1.5px] border-[#14171F] px-5 py-3 tabular-telemetry text-xs font-extrabold text-[#14171F] md:border-b-0 md:border-r-[1.5px]">
             (2026)
           </div>
 
-          <div className="flex items-center justify-between gap-4 border-b-[1.5px] border-[#0A0A0A] px-5 py-4 md:border-b-0 md:border-r-[1.5px] sm:px-8">
-            <p className="text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] sm:text-sm">
+          <div className="flex items-center justify-between gap-4 border-b-[1.5px] border-[#14171F] px-5 py-4 md:border-b-0 md:border-r-[1.5px] sm:px-8">
+            <p className="text-xs font-extrabold uppercase tracking-[0.06em] text-[#14171F] sm:text-sm">
               MATHEMATICAL DSP TRUTH. ZERO AUDIO SENT BY DEFAULT.
             </p>
-            <ArrowRight className="h-4 w-4 shrink-0 text-[#0A0A0A]" aria-hidden="true" />
+            <ArrowRight className="h-4 w-4 shrink-0 text-[#14171F]" aria-hidden="true" />
           </div>
 
           <Link
             href="/status"
             data-testid="landing-engine-status-pill"
-            className="flex items-center justify-between gap-3 bg-[#FFE01B] px-5 py-4 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] sm:px-6"
+            className="flex items-center justify-between gap-3 bg-[#F5C451] px-5 py-4 text-xs font-extrabold uppercase tracking-[0.06em] text-[#14171F] transition-colors hover:bg-[#14171F] hover:text-[#F5C451] sm:px-6"
           >
             <span className="tabular-telemetry">{engineStatusLabel}</span>
             <span
               aria-hidden="true"
-              className="h-2.5 w-2.5 shrink-0 rounded-full bg-current"
+              className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#129E6E]"
             />
           </Link>
         </section>
@@ -615,22 +648,22 @@ export function LandingPage() {
           id="features"
           ref={featureGridRef}
           data-testid="landing-proof-band"
-          className="grid grid-cols-1 border-b-[1.5px] border-[#0A0A0A] lg:grid-cols-12"
+          className="grid grid-cols-1 border-b-[1.5px] border-[#14171F] lg:grid-cols-12"
         >
           {/* Left Rail */}
-          <div className="flex flex-col justify-between gap-6 border-b-[1.5px] border-[#0A0A0A] p-6 lg:col-span-3 lg:border-b-0 lg:border-r-[1.5px] lg:p-8">
+          <div className="flex flex-col justify-between gap-6 border-b-[1.5px] border-[#14171F] bg-[#F9F8F4] p-6 lg:col-span-3 lg:border-b-0 lg:border-r-[1.5px] lg:p-8">
             <div className="space-y-4">
-              <div className="text-xs font-extrabold uppercase leading-snug tracking-[0.08em] text-[#0A0A0A]">
+              <div className="text-xs font-extrabold uppercase leading-snug tracking-[0.08em] text-[#14171F]">
                 SELECTED
                 <br />
                 CAPABILITIES
               </div>
-              <ArrowDown className="h-4 w-4 text-[#0A0A0A]" aria-hidden="true" />
+              <ArrowDown className="h-4 w-4 text-[#14171F]" aria-hidden="true" />
             </div>
 
             <div className="space-y-3">
-              <div className="border-[1.5px] border-[#0A0A0A] bg-[#0A0A0A] p-3 text-[#F4F1EA]">
-                <div className="tabular-telemetry text-[10px] font-bold uppercase tracking-[0.08em] text-[#FFE01B]">
+              <div className="border-[1.5px] border-[#14171F] bg-[#0E1117] p-3 text-[#F2F0EA]">
+                <div className="tabular-telemetry text-[10px] font-bold uppercase tracking-[0.08em] text-[#F0B44C]">
                   REFERENCE BENCHMARK
                 </div>
                 <div className="mt-1 tabular-telemetry text-xs font-semibold">
@@ -638,57 +671,63 @@ export function LandingPage() {
                 </div>
               </div>
 
-              <button
+              <motion.button
                 type="button"
+                whileHover={{ y: -2 }}
+                whileTap={TACTILE_TAP}
                 onClick={handleEnterStudio}
-                className="inline-flex w-full items-center justify-between border-[1.5px] border-[#0A0A0A] bg-[#FFFFFF] px-4 py-3 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#FFE01B] cursor-pointer"
+                className="inline-flex w-full items-center justify-between border-[1.5px] border-[#14171F] bg-[#FFFFFF] px-4 py-3 text-xs font-extrabold uppercase tracking-[0.06em] text-[#14171F] transition-colors hover:bg-[#F5C451] cursor-pointer"
               >
                 <span>Open Workbench</span>
                 <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-              </button>
+              </motion.button>
             </div>
           </div>
 
-          {/* Right 01 / 02 / 03 Rows */}
-          <div className="divide-y-[1.5px] divide-[#0A0A0A] lg:col-span-9">
+          {/* Right 01 / 02 / 03 Rows with Scroll Reveals & Tactile Spring Hover */}
+          <div className="divide-y-[1.5px] divide-[#14171F] lg:col-span-9">
             {FEATURE_ROWS.map((row, idx) => {
               const isHighlighted = activeFeatureIdx === idx;
               return (
-                <div
+                <motion.div
                   key={row.num}
+                  initial={{ opacity: 0.92, y: 12 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.2 }}
+                  transition={{ duration: 0.36, delay: idx * 0.06, ease: STUDIO_EASE }}
                   onMouseEnter={() => setActiveFeatureIdx(idx)}
                   onFocus={() => setActiveFeatureIdx(idx)}
                   onClick={() => setActiveFeatureIdx(idx)}
-                  className={`grid grid-cols-1 transition-colors duration-150 md:grid-cols-12 ${
+                  className={`grid grid-cols-1 transition-colors duration-200 md:grid-cols-12 ${
                     isHighlighted
-                      ? "bg-[#FF3B1F] text-[#0A0A0A]"
-                      : "bg-[#FFFFFF] text-[#0A0A0A] hover:bg-[#F7F7F5]"
+                      ? "bg-[#E85D4A] text-[#14171F]"
+                      : "bg-[#F9F8F4] text-[#14171F] hover:bg-[#F2EFE7]"
                   }`}
                 >
                   {/* Number + Title Cell */}
-                  <div className="flex items-center gap-5 border-b-[1.5px] border-[#0A0A0A] p-5 sm:gap-7 sm:p-7 md:col-span-7 md:border-b-0 md:border-r-[1.5px]">
-                    <span className="font-brut shrink-0 text-6xl leading-none text-[#0A0A0A] sm:text-7xl">
+                  <div className="flex items-center gap-5 border-b-[1.5px] border-[#14171F] p-5 sm:gap-7 sm:p-7 md:col-span-7 md:border-b-0 md:border-r-[1.5px]">
+                    <span className="font-brut shrink-0 text-6xl leading-none text-[#14171F] sm:text-7xl">
                       {row.num}
                     </span>
                     <div className="min-w-0 space-y-1.5">
                       <span
-                        className={`inline-block border border-[#0A0A0A] px-2 py-0.5 tabular-telemetry text-[10px] font-bold uppercase tracking-[0.08em] ${
+                        className={`inline-block border border-[#14171F] px-2 py-0.5 tabular-telemetry text-[10px] font-bold uppercase tracking-[0.08em] ${
                           isHighlighted
-                            ? "bg-[#FFE01B] text-[#0A0A0A]"
-                            : "bg-[#F7F7F5] text-[#0A0A0A]"
+                            ? "bg-[#F5C451] text-[#14171F]"
+                            : "bg-[#FFFFFF] text-[#14171F]"
                         }`}
                       >
                         {row.tag}
                       </span>
-                      <h2 className="font-condensed text-2xl font-extrabold leading-tight text-[#0A0A0A] sm:text-[26px]">
+                      <h2 className="font-condensed text-2xl font-extrabold leading-tight text-[#14171F] sm:text-[26px]">
                         {row.title}
                       </h2>
-                      <p className="text-xs font-semibold text-[#0A0A0A]/85">{row.sub}</p>
+                      <p className="text-xs font-semibold text-[#14171F]/85">{row.sub}</p>
                     </div>
                   </div>
 
                   {/* Right Visual Preview Pane */}
-                  <div className="relative overflow-hidden bg-[#0A0A0A] md:col-span-5">
+                  <div className="relative overflow-hidden bg-[#0E1117] md:col-span-5">
                     {row.kind === "hardware" ? (
                       <div className="relative h-48 w-full overflow-hidden md:h-full md:min-h-[180px]">
                         <video
@@ -704,78 +743,78 @@ export function LandingPage() {
                         >
                           <source src="/media/studio-hardware-loop.mp4" type="video/mp4" />
                         </video>
-                        <div className="pointer-events-none absolute bottom-2.5 left-2.5 border border-[#FFE01B] bg-[#0A0A0A]/88 px-2 py-0.5 tabular-telemetry text-[10px] font-bold uppercase text-[#FFE01B]">
+                        <div className="pointer-events-none absolute bottom-2.5 left-2.5 border border-[#F0B44C] bg-[#0E1117]/90 px-2 py-0.5 tabular-telemetry text-[10px] font-bold uppercase text-[#F0B44C]">
                           LIVE A/B · AUTO-FIX EQ
                         </div>
                       </div>
                     ) : row.kind === "telemetry" ? (
-                      <div className="flex h-full min-h-[168px] flex-col justify-between p-5 text-[#F4F1EA]">
-                        <div className="flex items-center justify-between tabular-telemetry text-[10px] font-bold uppercase text-[#A1A8B8]">
+                      <div className="flex h-full min-h-[168px] flex-col justify-between p-5 text-[#F2F0EA]">
+                        <div className="flex items-center justify-between tabular-telemetry text-[10px] font-bold uppercase text-[#98A2B3]">
                           <span>DSP TELEMETRY</span>
-                          <span className="text-[#22C58B]">SHA-256 CACHED</span>
+                          <span className="text-[#38D39F]">SHA-256 CACHED</span>
                         </div>
                         <div className="grid grid-cols-3 gap-2 py-2">
-                          <div className="border border-[#262B36] bg-[#12151C] p-2.5">
-                            <div className="text-[9px] uppercase text-[#A1A8B8]">LUFS</div>
-                            <div className="mt-1 tabular-telemetry text-base font-bold text-[#F4F1EA]">
+                          <div className="border border-white/10 bg-[#151923] p-2.5">
+                            <div className="text-[9px] uppercase text-[#98A2B3]">LUFS</div>
+                            <div className="mt-1 tabular-telemetry text-base font-bold text-[#F2F0EA]">
                               -14.4
                             </div>
                           </div>
-                          <div className="border border-[#262B36] bg-[#12151C] p-2.5">
-                            <div className="text-[9px] uppercase text-[#A1A8B8]">4X PEAK</div>
-                            <div className="mt-1 tabular-telemetry text-base font-bold text-[#FFE01B]">
+                          <div className="border border-white/10 bg-[#151923] p-2.5">
+                            <div className="text-[9px] uppercase text-[#98A2B3]">4X PEAK</div>
+                            <div className="mt-1 tabular-telemetry text-base font-bold text-[#F0B44C]">
                               -1.76
                             </div>
                           </div>
-                          <div className="border border-[#262B36] bg-[#12151C] p-2.5">
-                            <div className="text-[9px] uppercase text-[#A1A8B8]">SUB PHASE</div>
-                            <div className="mt-1 tabular-telemetry text-base font-bold text-[#22C58B]">
+                          <div className="border border-white/10 bg-[#151923] p-2.5">
+                            <div className="text-[9px] uppercase text-[#98A2B3]">SUB PHASE</div>
+                            <div className="mt-1 tabular-telemetry text-base font-bold text-[#38D39F]">
                               +0.999
                             </div>
                           </div>
                         </div>
-                        <div className="tabular-telemetry text-[10px] text-[#A1A8B8]">
+                        <div className="tabular-telemetry text-[10px] text-[#98A2B3]">
                           20–120 HZ BUTTERWORTH BANDPASS · 0 CLIPS
                         </div>
                       </div>
                     ) : (
-                      <div className="flex h-full min-h-[168px] flex-col justify-between p-5 text-[#F4F1EA]">
-                        <div className="flex items-center justify-between tabular-telemetry text-[10px] font-bold uppercase text-[#A1A8B8]">
+                      <div className="flex h-full min-h-[168px] flex-col justify-between p-5 text-[#F2F0EA]">
+                        <div className="flex items-center justify-between tabular-telemetry text-[10px] font-bold uppercase text-[#98A2B3]">
                           <span>AI SUGGESTIONS</span>
-                          <span className="text-[#FFE01B]">OPT-IN ONLY</span>
+                          <span className="text-[#F0B44C]">OPT-IN ONLY</span>
                         </div>
                         <div className="space-y-2 py-2 text-xs">
-                          <div className="flex items-center justify-between border border-[#262B36] bg-[#12151C] px-3 py-2">
-                            <span className="tabular-telemetry text-[#FFE01B]">ev_sub_phase_01</span>
-                            <span className="font-semibold text-[#F4F1EA]">Mono &lt; 100 Hz</span>
+                          <div className="flex items-center justify-between border border-white/10 bg-[#151923] px-3 py-2">
+                            <span className="tabular-telemetry text-[#F0B44C]">ev_sub_phase_01</span>
+                            <span className="font-semibold text-[#F2F0EA]">Mono &lt; 100 Hz</span>
                           </div>
-                          <div className="flex items-center justify-between border border-[#262B36] bg-[#12151C] px-3 py-2">
-                            <span className="tabular-telemetry text-[#22C58B]">ev_true_peak_02</span>
-                            <span className="font-semibold text-[#F4F1EA]">Ceiling -1.0 dBTP</span>
+                          <div className="flex items-center justify-between border border-white/10 bg-[#151923] px-3 py-2">
+                            <span className="tabular-telemetry text-[#38D39F]">ev_true_peak_02</span>
+                            <span className="font-semibold text-[#F2F0EA]">Ceiling -1.0 dBTP</span>
                           </div>
                         </div>
-                        <div className="tabular-telemetry text-[10px] text-[#A1A8B8]">
+                        <div className="tabular-telemetry text-[10px] text-[#98A2B3]">
                           ZERO RAW AUDIO TRANSMITTED BY DEFAULT
                         </div>
                       </div>
                     )}
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
         </section>
 
-        {/* ROW 5 — Bottom Split: Signal Yellow Geometric Emblem + Expandable + Accordions */}
-        <section className="grid grid-cols-1 border-b-[1.5px] border-[#0A0A0A] lg:grid-cols-12">
-          {/* Left: Signal Yellow Emblem Block + BUILT FOR REAL MIXES. */}
-          <div className="grid grid-cols-1 border-b-[1.5px] border-[#0A0A0A] sm:grid-cols-[180px_1fr] lg:col-span-5 lg:border-b-0 lg:border-r-[1.5px]">
-            <div className="flex flex-col items-center justify-between gap-4 border-b-[1.5px] border-[#0A0A0A] bg-[#FFE01B] p-6 sm:border-b-0 sm:border-r-[1.5px]">
+        {/* ROW 5 — Bottom Split: Soft Marigold Geometric Emblem + Kinetic Section Headline + Expandable Accordions */}
+        <section className="grid grid-cols-1 border-b-[1.5px] border-[#14171F] lg:grid-cols-12">
+          {/* Left: Soft Marigold Emblem Block + BUILT FOR REAL MIXES. */}
+          <div className="grid grid-cols-1 border-b-[1.5px] border-[#14171F] sm:grid-cols-[180px_1fr] lg:col-span-5 lg:border-b-0 lg:border-r-[1.5px]">
+            <div className="flex flex-col items-center justify-between gap-4 border-b-[1.5px] border-[#14171F] bg-[#F5C451] p-6 sm:border-b-0 sm:border-r-[1.5px]">
               <MixitLogo variant="mark" heightClass="h-11" />
               <svg
                 viewBox="0 0 100 100"
                 aria-hidden="true"
-                className="swiss-emblem-spin h-20 w-20 text-[#0A0A0A]"
+                className="swiss-emblem-spin h-20 w-20 text-[#14171F]"
               >
                 <rect x="42" y="6" width="16" height="88" fill="currentColor" />
                 <rect x="6" y="42" width="88" height="16" fill="currentColor" />
@@ -796,19 +835,20 @@ export function LandingPage() {
                   transform="rotate(-45 50 50)"
                 />
               </svg>
-              <span className="tabular-telemetry text-[10px] font-extrabold uppercase tracking-[0.1em] text-[#0A0A0A]">
+              <span className="tabular-telemetry text-[10px] font-extrabold uppercase tracking-[0.1em] text-[#14171F]">
                 MIXIT · DSP
               </span>
             </div>
 
-            <div className="flex flex-col justify-between gap-6 p-6 sm:p-8">
+            <div className="flex flex-col justify-between gap-6 bg-[#F9F8F4] p-6 sm:p-8">
               <div className="space-y-3">
-                <h2 className="font-brut text-5xl leading-[0.92] text-[#0A0A0A]">
-                  BUILT FOR
-                  <br />
-                  REAL MIXES.
-                </h2>
-                <p className="text-xs font-semibold leading-relaxed text-[#3F3F46]">
+                <KineticHeadline
+                  as="h2"
+                  inView
+                  lines={["BUILT FOR", "REAL MIXES."]}
+                  className="font-brut text-5xl leading-[0.92] text-[#14171F]"
+                />
+                <p className="text-xs font-semibold leading-relaxed text-[#475467]">
                   Measured in deterministic Python DSP.
                   <br />
                   Verified live in browser Web Audio.
@@ -818,7 +858,7 @@ export function LandingPage() {
               <button
                 type="button"
                 onClick={handleEnterStudio}
-                className="inline-flex w-fit items-center gap-2 text-xs font-extrabold uppercase tracking-[0.08em] text-[#0A0A0A] underline decoration-[1.5px] underline-offset-4 hover:text-[#FF3B1F] cursor-pointer"
+                className="inline-flex w-fit items-center gap-2 text-xs font-extrabold uppercase tracking-[0.08em] text-[#14171F] underline decoration-[1.5px] underline-offset-4 hover:text-[#E85D4A] cursor-pointer"
               >
                 <span>Launch Studio</span>
                 <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -827,15 +867,15 @@ export function LandingPage() {
           </div>
 
           {/* Narrow Vertical Rail */}
-          <div className="hidden flex-col items-center justify-between border-r-[1.5px] border-[#0A0A0A] py-6 lg:col-span-1 lg:flex">
-            <span className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#0A0A0A] [writing-mode:vertical-rl]">
+          <div className="hidden flex-col items-center justify-between border-r-[1.5px] border-[#14171F] bg-[#F9F8F4] py-6 lg:col-span-1 lg:flex">
+            <span className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#14171F] [writing-mode:vertical-rl]">
               ARCHITECTURE
             </span>
-            <ArrowRight className="h-4 w-4 text-[#0A0A0A]" aria-hidden="true" />
+            <ArrowRight className="h-4 w-4 text-[#14171F]" aria-hidden="true" />
           </div>
 
           {/* Right: 4 Expandable + Accordion Rows */}
-          <div className="divide-y-[1.5px] divide-[#0A0A0A] lg:col-span-6">
+          <div className="divide-y-[1.5px] divide-[#14171F] lg:col-span-6">
             {SPEC_ACCORDIONS.map((item) => {
               const isOpen = openAccordion === item.num;
               return (
@@ -844,19 +884,19 @@ export function LandingPage() {
                     type="button"
                     aria-expanded={isOpen}
                     onClick={() => setOpenAccordion((prev) => (prev === item.num ? null : item.num))}
-                    className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-[#F7F7F5] cursor-pointer"
+                    className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-[#F2EFE7] cursor-pointer"
                   >
                     <div className="flex items-center gap-5">
-                      <span className="tabular-telemetry text-xs font-extrabold text-[#3F3F46]">
+                      <span className="tabular-telemetry text-xs font-extrabold text-[#475467]">
                         {item.num}
                       </span>
-                      <span className="font-condensed text-xl font-extrabold tracking-[0.03em] text-[#0A0A0A]">
+                      <span className="font-condensed text-xl font-extrabold tracking-[0.03em] text-[#14171F]">
                         {item.title}
                       </span>
                     </div>
                     <Plus
-                      className={`h-4 w-4 shrink-0 text-[#0A0A0A] transition-transform duration-200 ${
-                        isOpen ? "rotate-45 text-[#FF3B1F]" : ""
+                      className={`h-4 w-4 shrink-0 text-[#14171F] transition-transform duration-200 ${
+                        isOpen ? "rotate-45 text-[#E85D4A]" : ""
                       }`}
                       aria-hidden="true"
                     />
@@ -870,7 +910,7 @@ export function LandingPage() {
                         transition={{ duration: 0.2, ease: STUDIO_EASE }}
                         className="overflow-hidden"
                       >
-                        <p className="border-t border-[#0A0A0A]/15 bg-[#F7F7F5] px-6 py-4 pl-14 text-xs font-medium leading-relaxed text-[#3F3F46]">
+                        <p className="border-t border-[#14171F]/15 bg-[#F2EFE7] px-6 py-4 pl-14 text-xs font-medium leading-relaxed text-[#475467]">
                           {item.body}
                         </p>
                       </motion.div>
@@ -882,17 +922,18 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* ROW 6 — Clean 3-Column Swiss Grid Footer (with bottom clearance so floating cookie card never intersects legal links) */}
+        {/* ROW 6 — Clean 3-Column Architectural Footer (with bottom clearance so floating cookie card never intersects legal links) */}
         <footer
           data-testid="landing-footer"
-          className="grid grid-cols-1 divide-y-[1.5px] divide-[#0A0A0A] pb-16 md:grid-cols-12 md:divide-x-[1.5px] md:divide-y-0 md:pb-0"
+          className="grid grid-cols-1 divide-y-[1.5px] divide-[#14171F] bg-[#F9F8F4] pb-16 md:grid-cols-12 md:divide-x-[1.5px] md:divide-y-0 md:pb-0"
         >
-          {/* Column 1: Solid Vermilion CTA Block */}
+          {/* Column 1: Warm Terracotta Coral CTA Block */}
           <motion.button
             type="button"
+            whileHover={{ y: -1 }}
             whileTap={TACTILE_TAP}
             onClick={handleEnterStudio}
-            className="flex items-center justify-between gap-4 bg-[#FF3B1F] p-6 text-left text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer md:col-span-4 sm:p-8"
+            className="flex items-center justify-between gap-4 bg-[#E85D4A] p-6 text-left text-[#14171F] transition-colors hover:bg-[#14171F] hover:text-[#F5C451] cursor-pointer md:col-span-4 sm:p-8"
           >
             <span className="font-condensed text-2xl font-extrabold leading-tight uppercase">
               READY TO CHECK
@@ -908,18 +949,18 @@ export function LandingPage() {
             <nav
               data-testid="landing-footer-legal-nav"
               aria-label="Legal and status links"
-              className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A]"
+              className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-extrabold uppercase tracking-[0.06em] text-[#14171F]"
             >
-              <Link href="/privacy" className="hover:text-[#FF3B1F] hover:underline">
+              <Link href="/privacy" className="hover:text-[#E85D4A] hover:underline">
                 Privacy Policy
               </Link>
-              <Link href="/terms" className="hover:text-[#FF3B1F] hover:underline">
+              <Link href="/terms" className="hover:text-[#E85D4A] hover:underline">
                 Terms of Use
               </Link>
-              <Link href="/cookies" className="hover:text-[#FF3B1F] hover:underline">
+              <Link href="/cookies" className="hover:text-[#E85D4A] hover:underline">
                 Cookie Policy
               </Link>
-              <Link href="/status" className="hover:text-[#FF3B1F] hover:underline">
+              <Link href="/status" className="hover:text-[#E85D4A] hover:underline">
                 System Status
               </Link>
             </nav>
@@ -927,10 +968,10 @@ export function LandingPage() {
 
           {/* Column 3: Global Launch Pledge */}
           <div className="flex flex-col justify-between gap-3 p-6 md:col-span-3 sm:p-8">
-            <span className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#0A0A0A]">
+            <span className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#14171F]">
               MIXIT STUDIO · 100% FREE
             </span>
-            <p className="tabular-telemetry text-[11px] font-semibold uppercase leading-relaxed text-[#3F3F46]">
+            <p className="tabular-telemetry text-[11px] font-semibold uppercase leading-relaxed text-[#475467]">
               ZERO AD TRACKERS.
               <br />
               ESSENTIAL COOKIES ONLY.

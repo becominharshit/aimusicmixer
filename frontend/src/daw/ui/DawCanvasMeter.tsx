@@ -74,20 +74,20 @@ function drawSegmentedBarVertical(
     // Mint bottom portion
     const mintTop = Math.max(topY, yellowThreshY);
     if (mintTop < y + h) {
-      ctx.fillStyle = "#22C58B";
+      ctx.fillStyle = "#38D39F";
       ctx.fillRect(x, mintTop, w, y + h - mintTop);
     }
 
     // Yellow mid-hot portion
     if (topY < yellowThreshY) {
       const yellowTop = Math.max(topY, redThreshY);
-      ctx.fillStyle = "#FFE01B";
+      ctx.fillStyle = "#F0B44C";
       ctx.fillRect(x, yellowTop, w, yellowThreshY - yellowTop);
     }
 
     // Vermilion peak/clip portion
     if (topY < redThreshY) {
-      ctx.fillStyle = "#FF3B1F";
+      ctx.fillStyle = "#EF6B63";
       ctx.fillRect(x, topY, w, redThreshY - topY);
     }
   }
@@ -95,7 +95,7 @@ function drawSegmentedBarVertical(
   // Crisp peak-hold cap
   if (holdNorm > 0.01) {
     const capY = Math.max(y, Math.min(y + h - 2, Math.round(y + h - holdNorm * h)));
-    ctx.fillStyle = holdNorm >= dbToNorm(-1) ? "#FF3B1F" : "#F4F1EA";
+    ctx.fillStyle = holdNorm >= dbToNorm(-1) ? "#EF6B63" : "#F4F1EA";
     ctx.fillRect(x, capY, w, 2);
   }
 }
@@ -120,25 +120,25 @@ function drawSegmentedBarHorizontal(
 
     const mintEnd = Math.min(endX, yellowX);
     if (mintEnd > x) {
-      ctx.fillStyle = "#22C58B";
+      ctx.fillStyle = "#38D39F";
       ctx.fillRect(x, y, mintEnd - x, h);
     }
 
     if (endX > yellowX) {
       const yellowEnd = Math.min(endX, redX);
-      ctx.fillStyle = "#FFE01B";
+      ctx.fillStyle = "#F0B44C";
       ctx.fillRect(yellowX, y, yellowEnd - yellowX, h);
     }
 
     if (endX > redX) {
-      ctx.fillStyle = "#FF3B1F";
+      ctx.fillStyle = "#EF6B63";
       ctx.fillRect(redX, y, endX - redX, h);
     }
   }
 
   if (holdNorm > 0.01) {
     const capX = Math.max(x, Math.min(x + w - 2, Math.round(x + holdNorm * w)));
-    ctx.fillStyle = holdNorm >= dbToNorm(-1) ? "#FF3B1F" : "#F4F1EA";
+    ctx.fillStyle = holdNorm >= dbToNorm(-1) ? "#EF6B63" : "#F4F1EA";
     ctx.fillRect(capX, y, 2, h);
   }
 }
@@ -222,7 +222,7 @@ export function DawCanvasMeter({
           ctx.fillRect(grX, pad, barW, innerH);
           const grH = Math.round(grNorm * innerH);
           if (grH > 0) {
-            ctx.fillStyle = "#FF3B1F";
+            ctx.fillStyle = "#EF6B63";
             ctx.fillRect(grX, pad, barW, grH);
           }
         } else {
@@ -240,7 +240,7 @@ export function DawCanvasMeter({
           ctx.fillRect(pad, grY, innerW, rowH);
           const grW = Math.round(grNorm * innerW);
           if (grW > 0) {
-            ctx.fillStyle = "#FF3B1F";
+            ctx.fillStyle = "#EF6B63";
             ctx.fillRect(pad + innerW - grW, grY, grW, rowH);
           }
         } else {
@@ -278,7 +278,7 @@ export function DawCanvasMeter({
         ctx.fillRect(grX, pad, barW, innerH);
         const grH = Math.round(grNorm * innerH);
         if (grH > 0) {
-          ctx.fillStyle = "#FF3B1F";
+          ctx.fillStyle = "#EF6B63";
           ctx.fillRect(grX, pad, barW, grH);
         }
       }
@@ -298,7 +298,7 @@ export function DawCanvasMeter({
         ctx.fillRect(pad, grY, innerW, barH);
         const grW = Math.round(grNorm * innerW);
         if (grW > 0) {
-          ctx.fillStyle = "#FF3B1F";
+          ctx.fillStyle = "#EF6B63";
           ctx.fillRect(pad + innerW - grW, grY, grW, barH);
         }
       }

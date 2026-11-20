@@ -7,42 +7,75 @@ import { STUDIO_EASE } from "@/lib/motion";
 interface KineticHeadlineProps {
   lines: string[];
   className?: string;
-  as?: "h1" | "h2";
-  delayBase?: number;
+  as?: "h1" | "h2" | "h3";
+  inView?: boolean;
+  staggerSec?: number;
 }
 
 /**
- * Editorial kinetic headline reveal that animates GPU transform on mount
- * while ALWAYS preserving opacity === 1 as the resting and fallback state
- * so client-side back-navigation can never strand hero text invisible.
+ * Editorial Kinetic Mask-Reveal Typography:
+ * - Keeps the outer heading element permanently at opacity: 1 (so hero text NEVER
+ *   gets stuck invisible on initial mount or browser back-navigation).
+ * - Hero headlines perform an immediate mask-wipe reveal on mount; scroll-revealed
+ *   section headings start visible at subtle y-offset (never clipped invisible when
+ *   jumping directly to the footer).
+ * - Strictly honors prefers-reduced-motion.
  */
 export function KineticHeadline({
   lines,
   className = "",
   as = "h1",
-  delayBase = 0.04,
+  inView = false,
+  staggerSec = 0.065,
 }: KineticHeadlineProps) {
-  const prefersReduced = useReducedMotion();
-  const Tag = as;
+  const prefersReducedMotion = useReducedMotion();
+  const HeadingTag = as;
 
   return (
-    <Tag className={className} style={{ opacity: 1 }}>
-      {lines.map((line, idx) => (
-        <span key={line} className="block overflow-hidden pt-[0.04em] pb-[0.18em] -mb-[0.14em]">
-          <motion.span
-            className="block will-change-transform"
-            initial={prefersReduced ? false : { y: "22%", opacity: 1 }}
-            animate={{ y: "0%", opacity: 1 }}
-            transition={{
-              duration: prefersReduced ? 0 : 0.62,
-              delay: prefersReduced ? 0 : delayBase + idx * 0.08,
-              ease: STUDIO_EASE,
-            }}
-          >
-            {line}
-          </motion.span>
-        </span>
-      ))}
-    </Tag>
+    <HeadingTag className={className} style={{ opacity: 1 }}>
+      {lines.map((line, lineIdx) =>
+        inView ? (
+          prefersReducedMotion ? (
+            <span key={`${line}-${lineIdx}`} className="block">
+              {line}
+            </span>
+          ) : (
+            <motion.span
+              key={`${line}-${lineIdx}`}
+              className="block will-change-transform"
+              initial={{ y: 10, opacity: 0.96 }}
+              whileInView={{ y: 0, opacity: 1 }}
+              viewport={{ once: true, amount: "some" }}
+              transition={{
+                duration: 0.42,
+                delay: lineIdx * staggerSec,
+                ease: STUDIO_EASE,
+              }}
+            >
+              {line}
+            </motion.span>
+          )
+        ) : (
+          <span key={`${line}-${lineIdx}`} className="block overflow-hidden pb-[0.04em]">
+            {prefersReducedMotion ? (
+              <span className="block">{line}</span>
+            ) : (
+              <motion.span
+                className="block will-change-transform"
+                initial={{ y: "38%" }}
+                animate={{ y: "0%" }}
+                transition={{
+                  duration: 0.44,
+                  delay: lineIdx * staggerSec,
+                  ease: STUDIO_EASE,
+                }}
+              >
+                {line}
+              </motion.span>
+            )}
+          </span>
+        )
+      )}
+    </HeadingTag>
   );
 }

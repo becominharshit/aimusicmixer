@@ -83,12 +83,12 @@ export function DspStepTracker({
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Cpu className="h-4 w-4 text-[#FFE01B]" aria-hidden="true" />
+          <Cpu className="h-4 w-4 text-[#F0B44C]" aria-hidden="true" />
           <span className="tabular-telemetry text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]">
             {statusLabel || "Deterministic DSP Signal Chain"}
           </span>
           {typeof uploadPercent === "number" && uploadPercent < 100 ? (
-            <span className="tabular-telemetry border border-[#0A0A0A] bg-[#FFE01B] px-1.5 py-0.5 text-[10px] font-bold text-[#0A0A0A]">
+            <span className="tabular-telemetry border border-[#0A0A0A] bg-[#F0B44C] px-1.5 py-0.5 text-[10px] font-bold text-[#0A0A0A]">
               {uploadPercent}%
             </span>
           ) : null}
@@ -101,7 +101,7 @@ export function DspStepTracker({
             type="button"
             onClick={onCancel}
             aria-label="Cancel active DSP analysis"
-            className="inline-flex items-center gap-1 border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2.5 py-1 text-xs font-bold uppercase text-[var(--text-secondary)] transition-colors hover:border-[#FF3B1F] hover:bg-[#FF3B1F] hover:text-[#0A0A0A] cursor-pointer"
+            className="inline-flex items-center gap-1 border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2.5 py-1 text-xs font-bold uppercase text-[var(--text-secondary)] transition-colors hover:border-[#EF6B63] hover:bg-[#EF6B63] hover:text-[#0A0A0A] cursor-pointer"
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
             Cancel
@@ -137,7 +137,7 @@ export function DspStepTracker({
                   <div
                     className="h-full w-full"
                     style={{
-                      backgroundColor: isMentor ? "#FFE01B" : "#22C58B",
+                      backgroundColor: isMentor ? "#F0B44C" : "#38D39F",
                     }}
                   />
                 ) : null}
@@ -148,9 +148,9 @@ export function DspStepTracker({
                   <span
                     className={`flex h-5 w-5 shrink-0 items-center justify-center tabular-telemetry text-[10px] font-bold ${
                       isDone
-                        ? "bg-[#22C58B] text-[#0A0A0A]"
+                        ? "bg-[#38D39F] text-[#0A0A0A]"
                         : isActive
-                          ? "bg-[#FFE01B] text-[#0A0A0A]"
+                          ? "bg-[#F0B44C] text-[#0A0A0A]"
                           : "border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-muted)]"
                     }`}
                   >

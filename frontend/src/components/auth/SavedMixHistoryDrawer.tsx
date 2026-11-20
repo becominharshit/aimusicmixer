@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, FolderOpen, GitCompare, History, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertTriangle, FolderOpen, GitCompare, History, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { STUDIO_EASE, STUDIO_SPRING } from "@/lib/motion";
 import type { SavedAnalysisRecord } from "@/lib/supabase/storage";
@@ -22,6 +22,7 @@ interface SavedMixHistoryDrawerProps {
   onCompareAgainstActive: (baselineReport: AnalysisReport) => void;
   onDeleteAnalysis: (analysisId: string, proxyStoragePath?: string | null) => void;
   onPurgeAccountData?: () => Promise<void>;
+  onOpenAddAudio?: () => void;
 }
 
 export function SavedMixHistoryDrawer({
@@ -38,6 +39,7 @@ export function SavedMixHistoryDrawer({
   onCompareAgainstActive,
   onDeleteAnalysis,
   onPurgeAccountData,
+  onOpenAddAudio,
 }: SavedMixHistoryDrawerProps) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmPurgeAll, setConfirmPurgeAll] = useState(false);
@@ -106,6 +108,20 @@ export function SavedMixHistoryDrawer({
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
+                {onOpenAddAudio && (
+                  <button
+                    type="button"
+                    data-testid="history-add-audio-btn"
+                    onClick={() => {
+                      onClose();
+                      onOpenAddAudio();
+                    }}
+                    className="inline-flex h-8 items-center gap-1 rounded-[4px] border border-[#14171F] dark:border-[#F0B44C] bg-[#F0B44C] px-2.5 text-[11px] font-extrabold text-[#111318] transition-colors hover:bg-[#F5C451] cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5 stroke-[2.75]" aria-hidden="true" />
+                    Add Audio
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={onRefresh}

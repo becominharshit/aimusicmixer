@@ -357,11 +357,24 @@ export class StudioAudioEngine {
   }
 
   async loadFileSlot(slot: AudioSourceSlot, file: File, lufs: number | null): Promise<void> {
+    await this.loadBlobSlot(slot, file, lufs, `file:${file.name}:${file.size}`);
+  }
+
+  async loadBlobSlot(
+    slot: AudioSourceSlot,
+    blob: Blob,
+    lufs: number | null,
+    sourceKey?: string
+  ): Promise<void> {
     const ctx = this.ensureGraph();
-    const arrayBuffer = await file.arrayBuffer();
+    const arrayBuffer = await blob.arrayBuffer();
     const decoded = await ctx.decodeAudioData(arrayBuffer);
     this.slots[slot].buffer = null;
-    this.slots[slot] = { buffer: decoded, lufs, url: `file:${file.name}:${file.size}` };
+    this.slots[slot] = {
+      buffer: decoded,
+      lufs,
+      url: sourceKey || `blob:${blob.size}:${blob.type || "audio"}`,
+    };
     if (slot === "primary" && this.loopEndSec <= 0) {
       this.loopStartSec = 0;
       this.loopEndSec = decoded.duration;

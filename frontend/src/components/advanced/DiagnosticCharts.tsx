@@ -104,7 +104,7 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={spectralData} margin={{ top: 10, right: 8, left: 0, bottom: 8 }}>
                 <CartesianGrid stroke="var(--border-hairline)" vertical={false} />
-                <ReferenceArea y1={-2.2} y2={2.2} fill="#00D9A3" fillOpacity={0.09} />
+                <ReferenceArea y1={-2.2} y2={2.2} fill="#38D39F" fillOpacity={0.09} />
                 <XAxis
                   dataKey="shortLabel"
                   interval={0}
@@ -120,8 +120,8 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
                   tickFormatter={(v: number) => `${v} dB`}
                 />
                 <ReferenceLine y={0} stroke="var(--border-strong)" />
-                <ReferenceLine y={2.2} stroke="#00D9A3" strokeOpacity={0.45} strokeDasharray="3 3" />
-                <ReferenceLine y={-2.2} stroke="#00D9A3" strokeOpacity={0.45} strokeDasharray="3 3" />
+                <ReferenceLine y={2.2} stroke="#38D39F" strokeOpacity={0.45} strokeDasharray="3 3" />
+                <ReferenceLine y={-2.2} stroke="#38D39F" strokeOpacity={0.45} strokeDasharray="3 3" />
                 <Tooltip
                   contentStyle={tooltipStyle}
                   formatter={(value: number) => [
@@ -133,7 +133,7 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
                   {spectralData.map((entry) => {
                     const abs = Math.abs(entry.delta);
                     const fill =
-                      abs >= 5.0 ? "#FF4D3D" : abs >= 2.2 ? "#F5A623" : "#00D9A3";
+                      abs >= 5.0 ? "#EF6B63" : abs >= 2.2 ? "#F0B44C" : "#38D39F";
                     return <Cell key={entry.band} fill={fill} />;
                   })}
                 </Bar>
@@ -170,8 +170,8 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
               >
                 <defs>
                   <linearGradient id="stLufsGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00D9A3" stopOpacity={0.28} />
-                    <stop offset="95%" stopColor="#00D9A3" stopOpacity={0.02} />
+                    <stop offset="5%" stopColor="#5E9BFF" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#38D39F" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="var(--border-hairline)" vertical={false} />
@@ -191,7 +191,7 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
                 />
                 <ReferenceLine
                   y={report.global_metrics.integrated_lufs}
-                  stroke="#00D9A3"
+                  stroke="#38D39F"
                   strokeOpacity={0.55}
                   strokeDasharray="4 4"
                 />
@@ -202,7 +202,7 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
                 <Area
                   type="monotone"
                   dataKey="lufs"
-                  stroke="#00D9A3"
+                  stroke="#5E9BFF"
                   strokeWidth={2}
                   fill="url(#stLufsGrad)"
                   dot={false}
@@ -303,7 +303,7 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
                   }}
                 >
                   <CartesianGrid stroke="var(--border-hairline)" vertical={false} />
-                  <ReferenceArea y1={-1} y2={0} fill="#FF4D3D" fillOpacity={0.07} />
+                  <ReferenceArea y1={-1} y2={0} fill="#EF6B63" fillOpacity={0.07} />
                   <XAxis
                     dataKey="timeLabel"
                     tick={{ fill: "var(--text-secondary)", fontSize: 10 }}
@@ -317,7 +317,7 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
                     axisLine={false}
                     tickLine={false}
                   />
-                  <ReferenceLine y={0} stroke="#FF4D3D" strokeOpacity={0.5} strokeDasharray="3 3" />
+                  <ReferenceLine y={0} stroke="#EF6B63" strokeOpacity={0.5} strokeDasharray="3 3" />
                   <Tooltip
                     contentStyle={tooltipStyle}
                     formatter={(value: number) => [
@@ -328,7 +328,7 @@ export function DiagnosticCharts({ report, onSeek }: DiagnosticChartsProps) {
                   <Line
                     type="monotone"
                     dataKey="correlation"
-                    stroke="#00D9A3"
+                    stroke="#38D39F"
                     strokeWidth={2}
                     dot={false}
                   />

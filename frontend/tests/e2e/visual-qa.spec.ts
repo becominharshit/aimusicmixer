@@ -350,7 +350,18 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
       await page.waitForTimeout(250);
     }
 
-    // Verify 1-click PAPER / INK theme toggle works inside /studio
+    // Verify 1-click PAPER / INK theme toggle inside collapsible StudioSidebar
+    const sidebar = page.getByTestId("studio-sidebar");
+    await expect(sidebar).toBeVisible();
+    const collapsedBox = await sidebar.boundingBox();
+    expect(collapsedBox!.width).toBeLessThanOrEqual(72);
+
+    // Expand collapsible sidebar smoothly to 240px and verify labels appear cleanly
+    await page.getByTestId("sidebar-toggle-btn").click();
+    await page.waitForTimeout(300);
+    const expandedBox = await sidebar.boundingBox();
+    expect(expandedBox!.width).toBeGreaterThanOrEqual(220);
+
     const themeToggle = page.getByTestId("theme-toggle");
     await expect(themeToggle).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -359,11 +370,22 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await themeToggle.click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
-    // Verify StudioHeader is strictly single-row (<= 68px) and Advanced Mix Check never clips trailing "k"
+    // Collapse back to sleek 64px rail
+    await page.getByTestId("sidebar-toggle-btn").click();
+    await page.waitForTimeout(300);
+
+    // Verify minimal 4-item StudioHeader is strictly single-row (<= 60px), zero right-edge clipping, and + Add Audio is prominent
     const header = page.getByTestId("studio-header");
     const headerBox = await header.boundingBox();
     expect(headerBox).not.toBeNull();
-    expect(headerBox!.height).toBeLessThanOrEqual(68);
+    expect(headerBox!.height).toBeLessThanOrEqual(60);
+
+    const addAudioBtn = page.getByTestId("add-audio-btn");
+    await expect(addAudioBtn).toBeVisible();
+    await addAudioBtn.click();
+    await expect(page.getByTestId("add-audio-modal")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("add-audio-modal")).toBeHidden();
 
     const advBtn = page.getByRole("button", { name: "Advanced Mix Check", exact: true });
     await assertNoTextClipping(advBtn, "Advanced Mix Check button");
@@ -374,9 +396,17 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
       timeout: 25_000,
     });
 
-    // Header stays strictly single-row even with active report + Export/Share dropdown
+    // Header stays strictly single-row even with active track pill + Add Audio + Simple|Advanced + AI Suggestions
     const headerBoxWithReport = await header.boundingBox();
-    expect(headerBoxWithReport!.height).toBeLessThanOrEqual(68);
+    expect(headerBoxWithReport!.height).toBeLessThanOrEqual(60);
+    const headerButtons = header.locator("button:visible");
+    const hbCount = await headerButtons.count();
+    for (let i = 0; i < hbCount; i += 1) {
+      const box = await headerButtons.nth(i).boundingBox();
+      expect(box!.x + box!.width, "Header button must not clip past right edge").toBeLessThanOrEqual(
+        1440
+      );
+    }
 
     // Sticky WorkspaceSubNav sits cleanly below header (zero 2-3px top clipping)
     const subnav = page.getByTestId("workspace-subnav");
@@ -397,7 +427,7 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
       await assertNoButtonOverlap(dockDeviceGroup, `Dock Device Group (${label} active)`);
     }
 
-    // Export / Share dropdown exposes EQ Preset, JSON, Scorecard PNG, and PDF cleanly
+    // Export / Share dropdown in sidebar exposes EQ Preset, JSON, Scorecard PNG, and PDF cleanly
     await page.getByTestId("header-export-menu-btn").click();
     await expect(page.getByRole("menuitem", { name: /Download EQ Preset/i })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: /Export JSON report/i })).toBeVisible();
@@ -406,7 +436,7 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 
-    // Keyboard Shortcuts (?) modal opens via header button and closes on Escape
+    // Keyboard Shortcuts (?) modal opens via sidebar button and closes on Escape
     await page.getByTestId("shortcuts-help-btn").click();
     await expect(page.getByTestId("keyboard-shortcuts-modal")).toBeVisible();
     await page.keyboard.press("Escape");
@@ -414,6 +444,13 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await page.waitForTimeout(180);
 
     await saveShot(page, "06-studio-simple-1440.png", false);
+
+    // Capture expanded sidebar screenshot too
+    await page.getByTestId("sidebar-toggle-btn").click();
+    await page.waitForTimeout(320);
+    await saveShot(page, "06b-studio-sidebar-expanded-1440.png", false);
+    await page.getByTestId("sidebar-toggle-btn").click();
+    await page.waitForTimeout(300);
 
     // Auto-Fix Preview toggle
     const autoFixBtn = page.getByTestId("dock-autofix-btn");
@@ -423,12 +460,15 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await autoFixBtn.click();
     await expect(autoFixBtn).toHaveAttribute("aria-pressed", "false");
 
-    // Advanced Mix Check
+    // Advanced Mix Check: verify smooth transition (opacity === 1) + live animating Spectrum & Vectorscope
     await advBtn.click();
     await expect(page.getByTestId("flaw-timeline-bar")).toBeVisible();
     await expect(page.getByTestId("live-spectral-graph")).toBeVisible();
     await expect(page.getByTestId("stereo-vectorscope")).toBeVisible();
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(320);
+    expect(
+      await page.getByTestId("live-spectral-graph").evaluate((el) => getComputedStyle(el).opacity)
+    ).toBe("1");
     await assertNoButtonOverlap(
       page.getByTestId("flaw-marker-rail"),
       "Advanced FlawTimelineBar (1440px)",
@@ -437,7 +477,7 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await saveShot(page, "07-studio-advanced-1440.png", false);
 
     // AI Suggestions Drawer privacy defaults (zero "Gemini 4 Hydrogen" strings)
-    await page.getByRole("button", { name: /AI Suggestions/i }).click();
+    await page.getByTestId("header-ai-suggestions-btn").click();
     await expect(
       page.getByRole("switch", { name: /Toggle A Metrics-Only AI Mentor/i })
     ).toHaveAttribute("aria-checked", "false");
@@ -455,17 +495,28 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await expect(page.getByRole("button", { name: /Open saved mix history \(1 saved\)/i })).toBeVisible({
       timeout: 10_000,
     });
-    // Wait for debounced checklist sync (350ms)
-    await page.waitForTimeout(500);
+    // Wait for debounced checklist sync (350ms) and IndexedDB/Storage proxy write
+    await page.waitForTimeout(700);
 
-    // Check 1024px single-row header invariant too
+    // Reload /studio directly and assert playable audio restores automatically with ZERO stuck banners!
+    await page.reload();
+    await expect(page.getByRole("heading", { name: /demo-flawed-v1\.wav/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("dock-play-btn")).toBeEnabled({ timeout: 15_000 });
+    await expect(page.getByTestId("missing-archived-audio-banner")).toHaveCount(0);
+    await expect(page.getByTestId("local-web-audio-banner")).toHaveCount(0);
+
+    // Check 1024px single-row header invariant too (zero clipping)
     await page.setViewportSize({ width: 1024, height: 900 });
     await page.waitForTimeout(200);
     const headerBox1024 = await header.boundingBox();
-    expect(headerBox1024!.height).toBeLessThanOrEqual(68);
+    expect(headerBox1024!.height).toBeLessThanOrEqual(60);
     await assertNoTextClipping(advBtn, "Advanced Mix Check (1024px)");
+    const addAudio1024 = await addAudioBtn.boundingBox();
+    expect(addAudio1024!.x + addAudio1024!.width).toBeLessThanOrEqual(1024);
 
-    // Mobile 390x844 studio check
+    // Mobile 390x844 studio check + slide-over sidebar drawer
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(250);
     await assertNoButtonOverlap(subnav, "WorkspaceSubNav (390px)");
@@ -480,6 +531,14 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     );
     expect(mobileOverflow).toBeLessThanOrEqual(4);
     await saveShot(page, "08-studio-mobile-390.png", false);
+
+    // Open mobile slide-over sidebar drawer cleanly and close on Escape
+    await page.getByTestId("mobile-sidebar-toggle-btn").click();
+    await expect(page.getByTestId("studio-sidebar-mobile")).toBeVisible();
+    await page.waitForTimeout(220);
+    await saveShot(page, "08b-studio-mobile-drawer-390.png", false);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("studio-sidebar-mobile")).toBeHidden();
 
     // Closed-loop /studio -> /daw bridge: click "Fix in Web DAW ↗" on first actionable FindingCard
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -553,7 +612,7 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
     await expect(page.getByTestId("landing-hero")).toBeVisible();
 
-    // Sign back in -> /studio MUST auto-restore last analyzed mix AND its checked DAW repair box!
+    // Sign back in -> /studio MUST auto-restore last analyzed mix, playable audio buffer, AND checked DAW repair box with ZERO stuck banners!
     await page.goto(new URL("/studio", page.url()).toString());
     await expect(page.getByTestId("auth-modal")).toBeVisible({ timeout: 10_000 });
     await page.fill("#auth-email", "engineer@mixit.studio");
@@ -564,6 +623,9 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
       timeout: 15_000,
     });
     await expect(page.getByRole("checkbox").first()).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("dock-play-btn")).toBeEnabled({ timeout: 15_000 });
+    await expect(page.getByTestId("missing-archived-audio-banner")).toHaveCount(0);
+    await expect(page.getByTestId("local-web-audio-banner")).toHaveCount(0);
 
     // Sign Out cleanly at end
     await page.getByRole("button", { name: /Sign out/i }).click();

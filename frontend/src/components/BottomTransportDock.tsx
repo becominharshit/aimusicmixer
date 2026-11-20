@@ -1,16 +1,23 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Laptop, Pause, Play, Repeat, Scale, Smartphone, Speaker, Wand2 } from "lucide-react";
+import {
+  Headphones,
+  Laptop,
+  Pause,
+  Play,
+  Repeat,
+  Scale,
+  Smartphone,
+  Sparkles,
+} from "lucide-react";
 import {
   studioAudioEngine,
   type AudioSourceSlot,
   type DeviceProfile,
   type StereoMode,
 } from "@/audio/StudioAudioEngine";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { STUDIO_SPRING, TACTILE_TAP } from "@/lib/motion";
 import { formatTimecode } from "@/lib/utils";
 
@@ -31,7 +38,7 @@ interface BottomTransportDockProps {
   onTogglePlay: () => void;
   onToggleLoop: () => void;
   onToggleAutoFix?: () => void;
-  onSeek: (timeSec: number) => void;
+  onSeek: (sec: number) => void;
   onChangeSource: (slot: AudioSourceSlot) => void;
   onChangeStereo: (mode: StereoMode) => void;
   onChangeDevice: (profile: DeviceProfile) => void;
@@ -61,267 +68,214 @@ export function BottomTransportDock({
   onChangeDevice,
   onToggleMatchLoudness,
 }: BottomTransportDockProps) {
-  const progressBarRef = useRef<HTMLDivElement | null>(null);
-  const timecodeRef = useRef<HTMLSpanElement | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (
-          tag === "INPUT" ||
-          tag === "TEXTAREA" ||
-          tag === "SELECT" ||
-          target.isContentEditable ||
-          target.getAttribute("role") === "textbox"
-        ) {
-          return;
-        }
-      }
-
-      if (e.code === "Space") {
-        if (target && (target.tagName === "BUTTON" || target.getAttribute("role") === "switch")) {
-          return;
-        }
-        e.preventDefault();
-        if (hasPrimary) onTogglePlay();
-      } else if (e.key === "m" || e.key === "M") {
-        e.preventDefault();
-        onChangeStereo(stereoMode === "mono" ? "stereo" : "mono");
+    let raf = 0;
+    const update = () => {
+      setCurrentTime(studioAudioEngine.getCurrentTimeSec());
+      if (studioAudioEngine.getState().isPlaying) {
+        raf = requestAnimationFrame(update);
       }
     };
+    update();
+    if (isPlaying) {
+      raf = requestAnimationFrame(update);
+    }
+    return () => cancelAnimationFrame(raf);
+  }, [isPlaying, activeSource, loopEnabled]);
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hasPrimary, onTogglePlay, onChangeStereo, stereoMode]);
-
-  useEffect(() => {
-    let rafId = 0;
-    const tick = () => {
-      const cur = studioAudioEngine.getCurrentTimeSec();
-      const dur = durationSec || studioAudioEngine.getDurationSec() || 1;
-      const pct = Math.max(0, Math.min(1, cur / dur));
-
-      if (progressBarRef.current) {
-        progressBarRef.current.style.transform = `scaleX(${pct})`;
-      }
-      if (timecodeRef.current) {
-        timecodeRef.current.textContent = `${formatTimecode(cur, true)} / ${formatTimecode(dur, true)}`;
-      }
-      rafId = window.requestAnimationFrame(tick);
-    };
-    rafId = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(rafId);
-  }, [durationSec]);
-
-  const sources: { id: AudioSourceSlot; label: string; enabled: boolean }[] = [
-    { id: "primary", label: "Mix A", enabled: hasPrimary },
-    { id: "reference", label: "Ref B", enabled: hasReference },
-    { id: "revised", label: "Mix v2", enabled: hasRevised },
-  ];
-
-  const devices: {
-    id: DeviceProfile;
-    label: string;
-    shortLabel: string;
-    sub: string;
-    icon: React.ComponentType<{ className?: string }>;
-  }[] = [
-    { id: "full", label: "Full Range", shortLabel: "Full", sub: "Flat bypass", icon: Speaker },
-    {
-      id: "smartphone",
-      label: "Smartphone",
-      shortLabel: "Phone",
-      sub: "300Hz–4.5kHz · Mono",
-      icon: Smartphone,
-    },
-    { id: "laptop", label: "Laptop", shortLabel: "Laptop", sub: "150Hz–8kHz", icon: Laptop },
-  ];
+  const effectiveDur = Math.max(0.1, durationSec || studioAudioEngine.getDurationSec() || 1);
+  const progressPct = Math.min(100, (currentTime / effectiveDur) * 100);
 
   return (
     <div
       role="region"
-      data-testid="bottom-transport-dock"
-      aria-label="Persistent Mixit Transport and Mix Translation Lab"
-      className="no-print sticky bottom-0 left-0 right-0 z-30 border-t border-[var(--border-hairline)] bg-[var(--bg-elevated)]"
+      aria-label="Persistent Mixit Transport and Device Translation Lab"
+      className="no-print sticky bottom-0 z-30 w-full border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)]/96 backdrop-blur-md"
     >
-      {/* Top 60fps interactive progress hairline */}
-      <div
-        role="slider"
-        tabIndex={0}
-        aria-label="Transport seek bar"
-        aria-valuemin={0}
-        aria-valuemax={Math.round(durationSec)}
-        aria-valuenow={0}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowRight") {
-            e.preventDefault();
-            onSeek(Math.min(durationSec, studioAudioEngine.getCurrentTimeSec() + 5));
-          } else if (e.key === "ArrowLeft") {
-            e.preventDefault();
-            onSeek(Math.max(0, studioAudioEngine.getCurrentTimeSec() - 5));
-          }
-        }}
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(rect.width, 1)));
-          onSeek(ratio * durationSec);
-        }}
-        className="relative h-1.5 w-full cursor-pointer bg-[var(--bg-inset)]"
-      >
-        <div
-          ref={progressBarRef}
-          className="h-full w-full origin-left bg-[#FFE01B]"
-          style={{ transform: "scaleX(0)", willChange: "transform" }}
-        />
-      </div>
-
-      <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-6 sm:py-2.5">
-        {/* Left: Transport + Timecode + Loop Problem Window + Auto-Fix Preview */}
-        <div className="flex max-w-full flex-wrap items-center gap-1.5">
-          <Button
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2.5 px-3 py-2.5 sm:px-5 lg:flex-nowrap">
+        {/* Playback + Seek Cluster */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:min-w-[230px] sm:gap-2.5">
+          <motion.button
             type="button"
-            variant="primary"
-            size="sm"
+            whileTap={hasPrimary ? TACTILE_TAP : undefined}
             disabled={!hasPrimary}
-            title="Spacebar to play / pause"
             onClick={onTogglePlay}
-            className="shrink-0 whitespace-nowrap"
+            aria-label={isPlaying ? "Pause mix" : "Play mix"}
+            data-testid="dock-play-btn"
+            title={
+              hasPrimary
+                ? "Play / Pause (Space)"
+                : "No playable audio attached for this archived report"
+            }
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+              hasPrimary
+                ? "border-[#14171F] dark:border-[#F0B44C] bg-[#F0B44C] text-[#111318] hover:bg-[#F5C451] cursor-pointer"
+                : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-muted)] cursor-not-allowed"
+            }`}
           >
-            {isPlaying ? (
-              <>
-                <Pause className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                Pause
-              </>
-            ) : (
-              <>
-                <Play className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                Play
-              </>
-            )}
-          </Button>
-          <span
-            ref={timecodeRef}
-            className="min-w-[98px] shrink-0 whitespace-nowrap border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2.5 py-1 text-center text-[11px] font-semibold text-[var(--text-primary)] tabular-telemetry sm:min-w-[112px] sm:text-xs"
-          >
-            00:00.0 / {formatTimecode(durationSec, true)}
-          </span>
-          <Button
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+          </motion.button>
+
+          <motion.button
             type="button"
-            variant={loopEnabled ? "soft" : "secondary"}
-            size="sm"
+            whileTap={hasPrimary ? TACTILE_TAP : undefined}
             disabled={!hasPrimary}
             onClick={onToggleLoop}
             aria-pressed={loopEnabled}
-            aria-label={loopEnabled ? "Disable loop window" : "Enable loop window"}
-            title="Loop selected problem window"
-            className="shrink-0 justify-center whitespace-nowrap"
+            aria-label="Toggle Loop Selection"
+            title="Toggle Loop Selection (L)"
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+              !hasPrimary
+                ? "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-muted)] cursor-not-allowed"
+                : loopEnabled
+                  ? "border-[var(--studio-mint)] bg-[var(--studio-mint-soft)] text-[var(--studio-mint)] cursor-pointer"
+                  : "border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+            }`}
           >
-            <Repeat className="h-3.5 w-3.5 shrink-0 text-[var(--studio-mint)]" aria-hidden="true" />
-            <span className="hidden sm:inline">{loopEnabled ? "Looping" : "Loop Window"}</span>
-          </Button>
-          {onToggleAutoFix && (
-            <Button
-              type="button"
-              data-testid="dock-autofix-btn"
-              variant={autoFixEnabled ? "primary" : "secondary"}
-              size="sm"
-              disabled={!hasPrimary || !canAutoFix}
-              onClick={onToggleAutoFix}
-              aria-pressed={autoFixEnabled}
-              title="Non-destructive preview: engages corrective EQ bands + <100 Hz M/S mono-maker into -0.3 dBFS safety limiter"
-              className="shrink-0 whitespace-nowrap"
-            >
-              <Wand2
-                className={`h-3.5 w-3.5 shrink-0 ${
-                  autoFixEnabled ? "text-[#0A0A0A]" : "text-[var(--studio-mint)]"
-                }`}
-                aria-hidden="true"
-              />
-              <span className="sm:hidden">{autoFixEnabled ? "Fix On" : "Auto-Fix"}</span>
-              <span className="hidden sm:inline">
-                {autoFixEnabled ? "Auto-Fix On" : "Auto-Fix Preview"}
-              </span>
-            </Button>
-          )}
+            <Repeat className="h-3.5 w-3.5" aria-hidden="true" />
+          </motion.button>
+
+          <div className="flex min-w-[115px] flex-1 items-center gap-2">
+            <span className="whitespace-nowrap text-[11px] font-semibold text-[var(--text-primary)] tabular-telemetry">
+              {formatTimecode(currentTime)}
+            </span>
+            <input
+              type="range"
+              aria-label="Seek audio position"
+              disabled={!hasPrimary}
+              min={0}
+              max={effectiveDur}
+              step={0.1}
+              value={Math.min(currentTime, effectiveDur)}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setCurrentTime(v);
+                onSeek(v);
+              }}
+              style={{
+                background: `linear-gradient(to right, var(--studio-yellow) ${progressPct}%, var(--border-strong) ${progressPct}%)`,
+              }}
+              className="h-1.5 w-full cursor-pointer appearance-none rounded-full accent-[var(--studio-yellow)] disabled:cursor-not-allowed disabled:opacity-40"
+            />
+            <span className="whitespace-nowrap text-[11px] text-[var(--text-muted)] tabular-telemetry">
+              {formatTimecode(effectiveDur)}
+            </span>
+          </div>
         </div>
 
-        {/* Center: Click-Free A/B Source + LUFS Match + Mono Fold */}
-        <div className="flex max-w-full flex-wrap items-center gap-2">
+        {/* Source Switcher + Loudness Match + Auto-Fix Preview */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
           <div
             data-testid="dock-source-group"
-            className="relative inline-flex shrink-0 flex-nowrap items-center gap-0.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
+            className="inline-flex shrink-0 flex-nowrap items-center gap-0.5 rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
+            role="group"
+            aria-label="Audio source A/B switcher"
           >
-            {sources.map((src) => {
+            {(
+              [
+                { id: "primary", label: "My Mix", enabled: hasPrimary },
+                { id: "reference", label: "Reference", enabled: hasReference },
+                { id: "revised", label: "Revised v2", enabled: hasRevised },
+              ] as const
+            ).map((src) => {
               const active = activeSource === src.id;
               return (
-                <motion.button
+                <button
                   key={src.id}
                   type="button"
                   disabled={!src.enabled}
-                  whileTap={src.enabled ? TACTILE_TAP : undefined}
                   onClick={() => onChangeSource(src.id)}
-                  className={`relative z-10 shrink-0 whitespace-nowrap px-2.5 py-1 text-[11px] font-bold ${
-                    !src.enabled
-                      ? "cursor-not-allowed text-[var(--text-muted)]/50"
-                      : active
-                        ? "cursor-pointer text-[#0A0A0A]"
-                        : "cursor-pointer text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  className={`relative z-10 inline-flex shrink-0 items-center whitespace-nowrap rounded-[3px] px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                    active
+                      ? "text-[#111318]"
+                      : src.enabled
+                        ? "text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                        : "text-[var(--text-muted)] opacity-45 cursor-not-allowed"
                   }`}
                 >
                   {active && (
                     <motion.span
                       layoutId="dock-source-pill"
                       transition={STUDIO_SPRING}
-                      className="pointer-events-none absolute inset-0 -z-10 bg-[#FFE01B]"
+                      className="pointer-events-none absolute inset-0 -z-10 rounded-[3px] bg-[#F0B44C]"
                     />
                   )}
-                  {src.label}
-                </motion.button>
+                  <span>{src.label}</span>
+                </button>
               );
             })}
           </div>
 
-          {(hasReference || hasRevised) && (
-            <div className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2.5 py-1 text-[11px]">
-              <Scale className="h-3 w-3 shrink-0 text-[var(--studio-mint)]" aria-hidden="true" />
-              <span className="font-semibold text-[var(--text-primary)]">Match LUFS</span>
-              <span className="tabular-telemetry text-[var(--text-secondary)]">
-                {loudnessOffsetDb >= 0 ? "+" : ""}
-                {loudnessOffsetDb.toFixed(1)} dB
+          <button
+            type="button"
+            onClick={() => onToggleMatchLoudness(!matchLoudness)}
+            aria-pressed={matchLoudness}
+            title="Match playback loudness to primary mix LUFS so louder tracks do not sound artificially better"
+            className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[4px] border px-2.5 py-1.5 text-[11px] font-bold cursor-pointer transition-colors ${
+              matchLoudness
+                ? "border-[var(--studio-mint)] bg-[var(--studio-mint-soft)] text-[var(--studio-mint)]"
+                : "border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+            }`}
+          >
+            <Scale className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>Match LUFS</span>
+            {activeSource !== "primary" && matchLoudness && (
+              <span className="tabular-telemetry">
+                ({loudnessOffsetDb >= 0 ? "+" : ""}
+                {loudnessOffsetDb.toFixed(1)} dB)
               </span>
-              <Switch
-                checked={matchLoudness}
-                onCheckedChange={onToggleMatchLoudness}
-                aria-label="Toggle LUFS loudness matching"
-              />
-            </div>
-          )}
+            )}
+          </button>
 
-          {/* Stereo <-> Mono Fold (Keyboard shortcut: M) */}
+          {onToggleAutoFix && (
+            <motion.button
+              type="button"
+              whileTap={hasPrimary && canAutoFix ? TACTILE_TAP : undefined}
+              disabled={!hasPrimary || !canAutoFix}
+              onClick={onToggleAutoFix}
+              aria-pressed={autoFixEnabled}
+              data-testid="dock-autofix-btn"
+              title={
+                !hasPrimary
+                  ? "Audio buffer required for Auto-Fix Preview"
+                  : !canAutoFix
+                    ? "No corrective tonal/phase defects active on this mix"
+                    : "Non-destructive Web Audio preview: applies measured corrective EQ bands plus <100 Hz M/S sub-bass mono-maker"
+              }
+              className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[4px] border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                !hasPrimary || !canAutoFix
+                  ? "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-muted)] opacity-50 cursor-not-allowed"
+                  : autoFixEnabled
+                    ? "border-[var(--studio-mint)] bg-[var(--studio-mint)] text-[#111318] cursor-pointer"
+                    : "border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[#F0B44C] hover:text-[#F0B44C] cursor-pointer"
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{autoFixEnabled ? "Auto-Fix ON" : "Auto-Fix Preview"}</span>
+            </motion.button>
+          )}
+        </div>
+
+        {/* Stereo / Mono + Device Translation Lab */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
           <div
             data-testid="dock-stereo-group"
-            className="relative inline-flex shrink-0 flex-nowrap items-center gap-0.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
+            className="inline-flex shrink-0 flex-nowrap items-center gap-0.5 rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
+            role="group"
+            aria-label="Stereo or Mono fold"
           >
-            {(
-              [
-                { id: "stereo", label: "Stereo", shortLabel: "Stereo" },
-                { id: "mono", label: "Mono (0.5L + 0.5R)", shortLabel: "Mono" },
-              ] as const
-            ).map((opt) => {
-              const active = stereoMode === opt.id;
+            {(["stereo", "mono"] as const).map((s) => {
+              const active = stereoMode === s;
               return (
-                <motion.button
-                  key={opt.id}
+                <button
+                  key={s}
                   type="button"
-                  whileTap={TACTILE_TAP}
-                  title="Keyboard shortcut: M"
-                  onClick={() => onChangeStereo(opt.id)}
-                  className={`relative z-10 shrink-0 whitespace-nowrap px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                  onClick={() => onChangeStereo(s)}
+                  className={`relative z-10 inline-flex shrink-0 items-center whitespace-nowrap rounded-[3px] px-2.5 py-1 text-[11px] font-bold capitalize cursor-pointer transition-colors ${
                     active
-                      ? "text-[#0A0A0A]"
+                      ? "text-[#111318]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   }`}
                 >
@@ -329,36 +283,39 @@ export function BottomTransportDock({
                     <motion.span
                       layoutId="dock-stereo-pill"
                       transition={STUDIO_SPRING}
-                      className="pointer-events-none absolute inset-0 -z-10 bg-[#FFE01B]"
+                      className="pointer-events-none absolute inset-0 -z-10 rounded-[3px] bg-[#F0B44C]"
                     />
                   )}
-                  <span className="hidden md:inline">{opt.label}</span>
-                  <span className="md:hidden">{opt.shortLabel}</span>
-                </motion.button>
+                  <span>{s}</span>
+                </button>
               );
             })}
           </div>
-        </div>
 
-        {/* Right: Zero-Clipping Mix Translation Hardware Profiles */}
-        <div className="flex max-w-full flex-wrap items-center gap-2">
           <div
             data-testid="dock-device-group"
-            className="relative inline-flex shrink-0 flex-nowrap items-center gap-0.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
+            className="inline-flex shrink-0 flex-nowrap items-center gap-0.5 rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
+            role="group"
+            aria-label="Device Translation Lab"
           >
-            {devices.map((dev) => {
+            {(
+              [
+                { id: "full", label: "Full Range", sub: "", icon: Headphones },
+                { id: "smartphone", label: "Smartphone", sub: "300Hz–4.5kHz · Mono", icon: Smartphone },
+                { id: "laptop", label: "Laptop", sub: "150Hz–8kHz", icon: Laptop },
+              ] as const
+            ).map((dev) => {
               const active = deviceProfile === dev.id;
-              const DevIcon = dev.icon;
+              const Icon = dev.icon;
               return (
-                <motion.button
+                <button
                   key={dev.id}
                   type="button"
-                  whileTap={TACTILE_TAP}
                   onClick={() => onChangeDevice(dev.id)}
-                  title={`${dev.label} (${dev.sub}) — Approximate generic translation check`}
-                  className={`relative z-10 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-left cursor-pointer ${
+                  title={dev.sub ? `${dev.label} (${dev.sub})` : dev.label}
+                  className={`relative z-10 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-[3px] px-2.5 py-1 text-[11px] font-bold cursor-pointer transition-colors ${
                     active
-                      ? "text-[#0A0A0A]"
+                      ? "text-[#111318]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   }`}
                 >
@@ -366,25 +323,21 @@ export function BottomTransportDock({
                     <motion.span
                       layoutId="dock-device-pill"
                       transition={STUDIO_SPRING}
-                      className="pointer-events-none absolute inset-0 -z-10 bg-[#FFE01B]"
+                      className="pointer-events-none absolute inset-0 -z-10 rounded-[3px] bg-[#F0B44C]"
                     />
                   )}
-                  <DevIcon
-                    className={`h-3 w-3 shrink-0 ${
-                      active ? "text-[#0A0A0A]" : "text-[var(--studio-mint)]"
-                    }`}
-                    aria-hidden="true"
-                  />
-                  <span className="text-[11px] font-bold sm:hidden">{dev.shortLabel}</span>
-                  <span className="hidden text-[11px] font-bold sm:inline">{dev.label}</span>
-                  <span
-                    className={`hidden text-[10px] 2xl:inline ${
-                      active ? "text-[#0A0A0A]/80" : "text-[var(--text-muted)]"
-                    }`}
-                  >
-                    {dev.sub}
-                  </span>
-                </motion.button>
+                  <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span>{dev.label}</span>
+                  {dev.sub && (
+                    <span
+                      className={`hidden 2xl:inline text-[10px] tabular-telemetry ${
+                        active ? "text-[#111318]/80" : "text-[var(--text-muted)]"
+                      }`}
+                    >
+                      ({dev.sub})
+                    </span>
+                  )}
+                </button>
               );
             })}
           </div>

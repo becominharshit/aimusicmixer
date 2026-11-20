@@ -100,7 +100,7 @@ function DeviceModuleCard({
             onClick={() => actions.setPluginBypass(chainId, plugin.instanceId, isPowerOn)}
             className={`inline-flex h-6 w-6 shrink-0 items-center justify-center border cursor-pointer transition-colors ${
               isPowerOn
-                ? "border-[#0A0A0A] bg-[#FFE01B] text-[#0A0A0A]"
+                ? "border-[#0A0A0A] bg-[#F0B44C] text-[#0A0A0A]"
                 : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-muted)]"
             }`}
           >
@@ -123,7 +123,7 @@ function DeviceModuleCard({
             aria-label={`Toggle A/B slot (currently ${plugin.abSlot})`}
             title={`Active slot ${plugin.abSlot} — click to compare A/B`}
             onClick={() => actions.togglePluginAB(chainId, plugin.instanceId)}
-            className="h-6 border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-1.5 tabular-telemetry text-[10px] font-bold text-[#FFE01B] hover:border-[#FFE01B] cursor-pointer"
+            className="h-6 border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-1.5 tabular-telemetry text-[10px] font-bold text-[#F0B44C] hover:border-[#F0B44C] cursor-pointer"
           >
             {plugin.abSlot}
           </button>
@@ -149,7 +149,7 @@ function DeviceModuleCard({
             }
             className={`h-6 border px-1.5 tabular-telemetry text-[10px] font-extrabold cursor-pointer transition-colors ${
               plugin.deltaListen
-                ? "border-[#FF3B1F] bg-[#FF3B1F] text-[#0A0A0A]"
+                ? "border-[#EF6B63] bg-[#EF6B63] text-[#0A0A0A]"
                 : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             }`}
           >
@@ -180,7 +180,7 @@ function DeviceModuleCard({
                 type="button"
                 aria-label={`Remove ${descriptor.name}`}
                 onClick={() => actions.removePlugin(chainId, plugin.instanceId)}
-                className="inline-flex h-6 w-5 items-center justify-center border border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)] hover:border-[#FF3B1F] hover:bg-[#FF3B1F] hover:text-[#0A0A0A] cursor-pointer"
+                className="inline-flex h-6 w-5 items-center justify-center border border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)] hover:border-[#EF6B63] hover:bg-[#EF6B63] hover:text-[#0A0A0A] cursor-pointer"
               >
                 <X className="h-3 w-3" aria-hidden="true" />
               </button>
@@ -199,7 +199,7 @@ function DeviceModuleCard({
               actions.loadPluginPreset(chainId, plugin.instanceId, e.target.value);
             }
           }}
-          className="h-6 min-w-0 flex-1 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-1.5 text-[11px] font-medium text-[var(--text-primary)] focus:border-[#FFE01B] focus:outline-none"
+          className="h-6 min-w-0 flex-1 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-1.5 text-[11px] font-medium text-[var(--text-primary)] focus:border-[#F0B44C] focus:outline-none"
         >
           <option value="">Preset: Custom</option>
           {descriptor.presets.map((preset) => (
@@ -272,7 +272,7 @@ function DeviceModuleCard({
                     }
                     className={`h-6 border px-2 tabular-telemetry text-[10px] font-bold uppercase cursor-pointer ${
                       checked
-                        ? "border-[#0A0A0A] bg-[#FFE01B] text-[#0A0A0A]"
+                        ? "border-[#0A0A0A] bg-[#F0B44C] text-[#0A0A0A]"
                         : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-muted)]"
                     }`}
                   >
@@ -339,7 +339,7 @@ function DeviceModuleCard({
                     const nextVal = normalizedToParam(param, Number.parseFloat(e.target.value));
                     actions.setPluginParam(chainId, plugin.instanceId, param.id, nextVal);
                   }}
-                  className="h-2 w-full cursor-pointer accent-[#FFE01B]"
+                  className="h-2 w-full cursor-pointer accent-[#F0B44C]"
                 />
               </div>
             );
@@ -382,11 +382,11 @@ export function DawDeviceRack({
     >
       <div className="flex items-center justify-between gap-3 border-b border-[var(--border-hairline)] bg-[var(--bg-canvas)] px-4 py-2">
         <div className="flex items-center gap-2">
-          <Sliders className="h-3.5 w-3.5 text-[#FFE01B]" aria-hidden="true" />
+          <Sliders className="h-3.5 w-3.5 text-[#F0B44C]" aria-hidden="true" />
           <span className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[var(--text-primary)]">
             Device Rack
           </span>
-          <span className="border border-[#0A0A0A] bg-[#FFE01B] px-2 py-0.5 tabular-telemetry text-[10px] font-extrabold uppercase text-[#0A0A0A]">
+          <span className="border border-[#0A0A0A] bg-[#F0B44C] px-2 py-0.5 tabular-telemetry text-[10px] font-extrabold uppercase text-[#0A0A0A]">
             {chainLabel}
           </span>
           <span className="tabular-telemetry text-[10px] text-[var(--text-muted)]">
@@ -406,7 +406,7 @@ export function DawDeviceRack({
               No FX Devices on {chainLabel}
             </p>
             <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
-              Click <strong className="text-[#FFE01B]">+ Add</strong> on any module in the left
+              Click <strong className="text-[#F0B44C]">+ Add</strong> on any module in the left
               Plugin Browser to insert it here.
             </p>
           </div>

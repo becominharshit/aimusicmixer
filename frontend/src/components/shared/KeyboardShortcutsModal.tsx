@@ -37,7 +37,7 @@ export function KeyboardShortcutsModal({
       >
         <div className="flex items-center justify-between border-b-[1.5px] border-[var(--border-hairline)] bg-[var(--bg-canvas)] px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="inline-flex h-7 w-7 items-center justify-center bg-[#FFE01B] text-[#0A0A0A]">
+            <span className="inline-flex h-7 w-7 items-center justify-center bg-[#F0B44C] text-[#0A0A0A]">
               <Keyboard className="h-4 w-4" aria-hidden="true" />
             </span>
             <div>
@@ -53,7 +53,7 @@ export function KeyboardShortcutsModal({
             type="button"
             onClick={() => onOpenChange(false)}
             aria-label="Close keyboard shortcuts"
-            className="inline-flex h-7 w-7 items-center justify-center border border-[var(--border-hairline)] text-[var(--text-secondary)] transition-colors hover:border-[#FFE01B] hover:text-[var(--text-primary)] cursor-pointer"
+            className="inline-flex h-7 w-7 items-center justify-center border border-[var(--border-hairline)] text-[var(--text-secondary)] transition-colors hover:border-[#F0B44C] hover:text-[var(--text-primary)] cursor-pointer"
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -77,7 +77,7 @@ export function KeyboardShortcutsModal({
                 {row.keys.map((key) => (
                   <kbd
                     key={key}
-                    className="inline-flex min-w-[28px] items-center justify-center border border-[var(--border-strong)] bg-[var(--bg-inset)] px-2 py-1 tabular-telemetry text-[11px] font-bold text-[#FFE01B]"
+                    className="inline-flex min-w-[28px] items-center justify-center border border-[var(--border-strong)] bg-[var(--bg-inset)] px-2 py-1 tabular-telemetry text-[11px] font-bold text-[#F0B44C]"
                   >
                     {key}
                   </kbd>

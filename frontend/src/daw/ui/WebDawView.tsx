@@ -108,7 +108,7 @@ function TransportTimecode({
     <span
       ref={spanRef}
       data-testid="daw-timecode"
-      className="min-w-[116px] shrink-0 whitespace-nowrap border border-[var(--border-hairline)] bg-[#0A0A0A] px-2.5 py-1 text-center tabular-telemetry text-xs font-bold text-[#FFE01B]"
+      className="min-w-[116px] shrink-0 whitespace-nowrap border border-[var(--border-hairline)] bg-[#0A0A0A] px-2.5 py-1 text-center tabular-telemetry text-xs font-bold text-[#F0B44C]"
     >
       00:00.0 / {formatDawClock(durationSec)}
     </span>
@@ -139,7 +139,7 @@ function ArrangementPlayhead({
     <div
       ref={lineRef}
       aria-hidden="true"
-      className="pointer-events-none absolute top-0 bottom-0 left-0 z-20 w-[2px] bg-[#FFE01B] will-change-transform"
+      className="pointer-events-none absolute top-0 bottom-0 left-0 z-20 w-[2px] bg-[#F0B44C] will-change-transform"
       style={{ transform: "translateX(0px)" }}
     />
   );
@@ -148,7 +148,7 @@ function ArrangementPlayhead({
 /** Static HiDPI waveform canvas for an Arrangement track lane. */
 function TrackWaveformLane({
   peaks,
-  color = "#22C58B",
+  color = "#38D39F",
 }: {
   peaks: number[];
   color?: string;
@@ -233,7 +233,7 @@ function MixerTrackStrip({
       onClick={onSelect}
       className={`flex w-[152px] shrink-0 cursor-pointer flex-col border bg-[var(--bg-elevated)] transition-colors ${
         selected
-          ? "border-[#FFE01B] ring-1 ring-[#FFE01B]"
+          ? "border-[#F0B44C] ring-1 ring-[#F0B44C]"
           : "border-[var(--border-hairline)] hover:border-[var(--border-strong)]"
       }`}
     >
@@ -241,7 +241,7 @@ function MixerTrackStrip({
       <div
         className={`flex items-center justify-between gap-1 border-b px-2 py-1.5 ${
           selected
-            ? "border-[#0A0A0A] bg-[#FFE01B] text-[#0A0A0A]"
+            ? "border-[#0A0A0A] bg-[#F0B44C] text-[#0A0A0A]"
             : "border-[var(--border-hairline)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
         }`}
       >
@@ -255,7 +255,7 @@ function MixerTrackStrip({
             e.stopPropagation();
             actions.removeTrack(track.id);
           }}
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center hover:text-[#FF3B1F] cursor-pointer"
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center hover:text-[#EF6B63] cursor-pointer"
         >
           <Trash2 className="h-3 w-3" aria-hidden="true" />
         </button>
@@ -268,7 +268,7 @@ function MixerTrackStrip({
             e.stopPropagation();
             onRelinkRequest(track.id);
           }}
-          className="flex items-center justify-center gap-1 border-b border-[#FF3B1F] bg-[#FF3B1F]/15 px-2 py-1 text-[10px] font-bold uppercase text-[#FF3B1F] hover:bg-[#FF3B1F] hover:text-[#0A0A0A] cursor-pointer"
+          className="flex items-center justify-center gap-1 border-b border-[#EF6B63] bg-[#EF6B63]/15 px-2 py-1 text-[10px] font-bold uppercase text-[#EF6B63] hover:bg-[#EF6B63] hover:text-[#0A0A0A] cursor-pointer"
         >
           <AlertTriangle className="h-3 w-3" aria-hidden="true" />
           Relink Audio
@@ -293,7 +293,7 @@ function MixerTrackStrip({
             }}
             className={`h-5 border px-1.5 tabular-telemetry text-[10px] font-extrabold cursor-pointer ${
               track.phaseInvert
-                ? "border-[#FF3B1F] bg-[#FF3B1F] text-[#0A0A0A]"
+                ? "border-[#EF6B63] bg-[#EF6B63] text-[#0A0A0A]"
                 : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)]"
             }`}
           >
@@ -310,7 +310,7 @@ function MixerTrackStrip({
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={() => actions.setTrackInputGain(track.id, 0)}
           onChange={(e) => actions.setTrackInputGain(track.id, Number.parseFloat(e.target.value))}
-          className="h-1.5 w-full cursor-pointer accent-[#FFE01B]"
+          className="h-1.5 w-full cursor-pointer accent-[#F0B44C]"
         />
 
         {/* Send A (Reverb) & Send B (Delay) */}
@@ -350,7 +350,7 @@ function MixerTrackStrip({
               onChange={(e) =>
                 actions.setTrackSend(track.id, "B", Number.parseFloat(e.target.value))
               }
-              className="h-1.5 w-full cursor-pointer accent-[#22C58B]"
+              className="h-1.5 w-full cursor-pointer accent-[#38D39F]"
             />
           </div>
         </div>
@@ -378,7 +378,7 @@ function MixerTrackStrip({
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={() => actions.setTrackPan(track.id, 0)}
           onChange={(e) => actions.setTrackPan(track.id, Number.parseFloat(e.target.value))}
-          className="h-1.5 w-full cursor-pointer accent-[#FFE01B]"
+          className="h-1.5 w-full cursor-pointer accent-[#F0B44C]"
         />
 
         <div className="grid grid-cols-2 gap-1 pt-1">
@@ -392,7 +392,7 @@ function MixerTrackStrip({
             }}
             className={`h-6 border tabular-telemetry text-[10px] font-extrabold cursor-pointer ${
               track.mute
-                ? "border-[#FF3B1F] bg-[#FF3B1F] text-[#0A0A0A]"
+                ? "border-[#EF6B63] bg-[#EF6B63] text-[#0A0A0A]"
                 : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)]"
             }`}
           >
@@ -408,7 +408,7 @@ function MixerTrackStrip({
             }}
             className={`h-6 border tabular-telemetry text-[10px] font-extrabold cursor-pointer ${
               track.solo
-                ? "border-[#0A0A0A] bg-[#FFE01B] text-[#0A0A0A]"
+                ? "border-[#0A0A0A] bg-[#F0B44C] text-[#0A0A0A]"
                 : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)]"
             }`}
           >
@@ -431,7 +431,7 @@ function MixerTrackStrip({
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={() => actions.setTrackFader(track.id, 0)}
               onChange={(e) => actions.setTrackFader(track.id, Number.parseFloat(e.target.value))}
-              className="h-1.5 w-[130px] -rotate-90 cursor-pointer accent-[#FFE01B]"
+              className="h-1.5 w-[130px] -rotate-90 cursor-pointer accent-[#F0B44C]"
             />
           </div>
           <span
@@ -478,13 +478,13 @@ function ReturnBusStrip({
     <div
       onClick={onSelect}
       className={`flex w-[124px] shrink-0 cursor-pointer flex-col border bg-[var(--bg-surface)] ${
-        selected ? "border-[#FFE01B] ring-1 ring-[#FFE01B]" : "border-[var(--border-hairline)]"
+        selected ? "border-[#F0B44C] ring-1 ring-[#F0B44C]" : "border-[var(--border-hairline)]"
       }`}
     >
       <div
         className={`border-b px-2 py-1.5 text-[11px] font-extrabold uppercase ${
           selected
-            ? "border-[#0A0A0A] bg-[#FFE01B] text-[#0A0A0A]"
+            ? "border-[#0A0A0A] bg-[#F0B44C] text-[#0A0A0A]"
             : "border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[#38BDF8]"
         }`}
       >
@@ -502,7 +502,7 @@ function ReturnBusStrip({
           }}
           className={`h-6 w-full border tabular-telemetry text-[10px] font-extrabold cursor-pointer ${
             ret.mute
-              ? "border-[#FF3B1F] bg-[#FF3B1F] text-[#0A0A0A]"
+              ? "border-[#EF6B63] bg-[#EF6B63] text-[#0A0A0A]"
               : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)]"
           }`}
         >
@@ -879,7 +879,7 @@ export function WebDawView() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--bg-canvas)] text-[var(--text-secondary)]">
         <div className="flex items-center gap-3 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-5 py-3 text-xs font-semibold">
-          <span className="h-2 w-2 rounded-full bg-[#FFE01B] animate-pulse" />
+          <span className="h-2 w-2 rounded-full bg-[#F0B44C] animate-pulse" />
           <span>Initializing Mixit Web DAW…</span>
         </div>
       </div>
@@ -955,7 +955,7 @@ export function WebDawView() {
               <Link
                 href="/daw"
                 aria-current="page"
-                className="bg-[#FFE01B] px-3 py-1 text-xs font-extrabold uppercase tracking-[0.04em] text-[#0A0A0A]"
+                className="bg-[#F0B44C] px-3 py-1 text-xs font-extrabold uppercase tracking-[0.04em] text-[#0A0A0A]"
               >
                 Web DAW
               </Link>
@@ -969,7 +969,7 @@ export function WebDawView() {
               onClick={() => setShortcutsOpen(true)}
               aria-label="Keyboard shortcuts"
               title="Keyboard shortcuts (?)"
-              className="inline-flex h-8 w-8 items-center justify-center border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors hover:border-[#FFE01B] hover:text-[var(--text-primary)] cursor-pointer"
+              className="inline-flex h-8 w-8 items-center justify-center border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors hover:border-[#F0B44C] hover:text-[var(--text-primary)] cursor-pointer"
             >
               <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
@@ -983,7 +983,7 @@ export function WebDawView() {
             >
               {isDarkTheme ? (
                 <>
-                  <Sun className="h-3.5 w-3.5 text-[#FFE01B]" aria-hidden="true" />
+                  <Sun className="h-3.5 w-3.5 text-[#F0B44C]" aria-hidden="true" />
                   <span className="hidden md:inline">PAPER</span>
                 </>
               ) : (
@@ -999,7 +999,7 @@ export function WebDawView() {
               aria-label="Open User Profile"
               className="inline-flex h-8 items-center gap-1.5 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2.5 text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--border-active)]"
             >
-              <UserIcon className="h-3.5 w-3.5 text-[#FFE01B]" aria-hidden="true" />
+              <UserIcon className="h-3.5 w-3.5 text-[#F0B44C]" aria-hidden="true" />
               <span className="hidden max-w-[120px] truncate lg:inline">{supabaseUser.email}</span>
             </Link>
 
@@ -1007,7 +1007,7 @@ export function WebDawView() {
               type="button"
               onClick={() => void handleSignOut()}
               aria-label="Sign out"
-              className="inline-flex h-8 items-center gap-1 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2.5 text-xs font-semibold text-[var(--text-secondary)] hover:border-[#FF3B1F] hover:text-[#FF3B1F] cursor-pointer"
+              className="inline-flex h-8 items-center gap-1 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2.5 text-xs font-semibold text-[var(--text-secondary)] hover:border-[#EF6B63] hover:text-[#EF6B63] cursor-pointer"
             >
               <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
               <span className="hidden sm:inline">Sign Out</span>
@@ -1022,11 +1022,11 @@ export function WebDawView() {
           data-testid="daw-onboarding-banner"
           role="region"
           aria-label="Web DAW Quick-Start Guide"
-          className="border-b-[1.5px] border-[#0A0A0A] bg-[#FFE01B] px-3 py-2 text-[#0A0A0A] sm:px-5"
+          className="border-b-[1.5px] border-[#0A0A0A] bg-[#F0B44C] px-3 py-2 text-[#0A0A0A] sm:px-5"
         >
           <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-bold">
-              <span className="border border-[#0A0A0A] bg-[#0A0A0A] px-2 py-0.5 tabular-telemetry text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#FFE01B]">
+              <span className="border border-[#0A0A0A] bg-[#0A0A0A] px-2 py-0.5 tabular-telemetry text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#F0B44C]">
                 QUICK START
               </span>
               <span>
@@ -1041,7 +1041,7 @@ export function WebDawView() {
               type="button"
               onClick={dismissOnboarding}
               aria-label="Dismiss Web DAW quick-start guide"
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center border border-[#0A0A0A] bg-[#FFFFFF] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center border border-[#0A0A0A] bg-[#FFFFFF] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#F0B44C] cursor-pointer"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
@@ -1093,7 +1093,7 @@ export function WebDawView() {
               aria-label="Project name"
               value={project.name}
               onChange={(e) => daw.renameProject(e.target.value)}
-              className="h-8 w-40 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2.5 text-xs font-extrabold text-[var(--text-primary)] focus:border-[#FFE01B] focus:outline-none sm:w-48"
+              className="h-8 w-40 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2.5 text-xs font-extrabold text-[var(--text-primary)] focus:border-[#F0B44C] focus:outline-none sm:w-48"
             />
             <Button
               type="button"
@@ -1110,7 +1110,7 @@ export function WebDawView() {
               size="sm"
               onClick={() => void handleOpenProjectsModal()}
             >
-              <FolderOpen className="h-3.5 w-3.5 text-[#FFE01B]" aria-hidden="true" />
+              <FolderOpen className="h-3.5 w-3.5 text-[#F0B44C]" aria-hidden="true" />
               Open
             </Button>
             <button
@@ -1119,9 +1119,9 @@ export function WebDawView() {
               aria-label={`Project auto-save status: ${autosaveLabel}. Click to save now`}
               className={`inline-flex h-8 items-center gap-1 border px-2 tabular-telemetry text-[10px] font-bold uppercase cursor-pointer ${
                 autosave.status === "error"
-                  ? "border-[#FF3B1F] bg-[#FF3B1F]/15 text-[#FF3B1F]"
+                  ? "border-[#EF6B63] bg-[#EF6B63]/15 text-[#EF6B63]"
                   : autosave.status === "saved"
-                    ? "border-[#22C58B] bg-[#22C58B]/15 text-[#22C58B]"
+                    ? "border-[#38D39F] bg-[#38D39F]/15 text-[#38D39F]"
                     : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)]"
               }`}
             >
@@ -1241,7 +1241,7 @@ export function WebDawView() {
       {snapshot.error ? (
         <div
           role="alert"
-          className="flex items-center justify-between gap-3 border-b border-[#FF3B1F] bg-[#FF3B1F]/15 px-4 py-2 text-xs text-[#FF3B1F]"
+          className="flex items-center justify-between gap-3 border-b border-[#EF6B63] bg-[#EF6B63]/15 px-4 py-2 text-xs text-[#EF6B63]"
         >
           <span className="flex items-center gap-2 font-semibold">
             <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -1250,7 +1250,7 @@ export function WebDawView() {
           <button
             type="button"
             onClick={() => daw.clearError()}
-            className="border border-[#FF3B1F] px-2 py-0.5 text-[10px] font-bold uppercase cursor-pointer"
+            className="border border-[#EF6B63] px-2 py-0.5 text-[10px] font-bold uppercase cursor-pointer"
           >
             Dismiss
           </button>
@@ -1273,7 +1273,7 @@ export function WebDawView() {
                 <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[var(--text-primary)]">
                   Plugin Browser (16)
                 </div>
-                <div className="truncate tabular-telemetry text-[9px] uppercase text-[#FFE01B]">
+                <div className="truncate tabular-telemetry text-[9px] uppercase text-[#F0B44C]">
                   Target → {selectedChainMeta.label}
                 </div>
               </div>
@@ -1282,7 +1282,7 @@ export function WebDawView() {
               type="button"
               aria-label={browserOpen ? "Collapse plugin browser" : "Expand plugin browser"}
               onClick={() => setBrowserOpen((prev) => !prev)}
-              className="inline-flex h-7 w-7 items-center justify-center border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[#FFE01B] cursor-pointer"
+              className="inline-flex h-7 w-7 items-center justify-center border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[#F0B44C] cursor-pointer"
             >
               {browserOpen ? (
                 <PanelLeftClose className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1301,7 +1301,7 @@ export function WebDawView() {
                   value={pluginQuery}
                   onChange={(e) => setPluginQuery(e.target.value)}
                   placeholder="Search EQ, Comp, Tape…"
-                  className="h-7 w-full border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[#FFE01B] focus:outline-none"
+                  className="h-7 w-full border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[#F0B44C] focus:outline-none"
                 />
               </div>
 
@@ -1342,7 +1342,7 @@ export function WebDawView() {
                               whileTap={TACTILE_TAP}
                               aria-label={`Add ${entry.descriptor.name} to ${selectedChainMeta.label}`}
                               onClick={() => daw.addPlugin(selectedChainId, entry.id)}
-                              className="shrink-0 border border-[#0A0A0A] bg-[#FFE01B] px-2 py-0.5 tabular-telemetry text-[10px] font-extrabold uppercase text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer"
+                              className="shrink-0 border border-[#0A0A0A] bg-[#F0B44C] px-2 py-0.5 tabular-telemetry text-[10px] font-extrabold uppercase text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-[#F0B44C] cursor-pointer"
                             >
                               + Add
                             </motion.button>
@@ -1373,7 +1373,7 @@ export function WebDawView() {
                 onClick={() => setMainView("arrangement")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-extrabold uppercase tracking-[0.04em] cursor-pointer ${
                   mainView === "arrangement"
-                    ? "bg-[#FFE01B] text-[#0A0A0A]"
+                    ? "bg-[#F0B44C] text-[#0A0A0A]"
                     : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 }`}
               >
@@ -1387,7 +1387,7 @@ export function WebDawView() {
                 onClick={() => setMainView("mixer")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-extrabold uppercase tracking-[0.04em] cursor-pointer ${
                   mainView === "mixer"
-                    ? "bg-[#FFE01B] text-[#0A0A0A]"
+                    ? "bg-[#F0B44C] text-[#0A0A0A]"
                     : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 }`}
               >
@@ -1403,7 +1403,7 @@ export function WebDawView() {
                 size="sm"
                 onClick={() => importInputRef.current?.click()}
               >
-                <Upload className="h-3.5 w-3.5 text-[#FFE01B]" aria-hidden="true" />
+                <Upload className="h-3.5 w-3.5 text-[#F0B44C]" aria-hidden="true" />
                 Import Audio
               </Button>
 
@@ -1421,7 +1421,7 @@ export function WebDawView() {
                     onClick={() => setSelectedChainId(bus.id)}
                     className={`px-2 py-1 cursor-pointer ${
                       selectedChainId === bus.id
-                        ? "bg-[#FFE01B] text-[#0A0A0A]"
+                        ? "bg-[#F0B44C] text-[#0A0A0A]"
                         : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                     }`}
                   >
@@ -1434,7 +1434,7 @@ export function WebDawView() {
 
           {/* Missing Audio Relink Alert Banner */}
           {missingAudioTrackIds.length > 0 ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#FF3B1F] bg-[#FF3B1F]/15 px-4 py-2 text-xs text-[#FF3B1F]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#EF6B63] bg-[#EF6B63]/15 px-4 py-2 text-xs text-[#EF6B63]">
               <span className="flex items-center gap-2 font-semibold">
                 <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
                 {missingAudioTrackIds.length} track(s) need local audio relinking on this device
@@ -1446,7 +1446,7 @@ export function WebDawView() {
                   setRelinkTrackId(missingAudioTrackIds[0]);
                   relinkInputRef.current?.click();
                 }}
-                className="border border-[#FF3B1F] bg-[#FF3B1F] px-2.5 py-1 text-[10px] font-extrabold uppercase text-[#0A0A0A] cursor-pointer"
+                className="border border-[#EF6B63] bg-[#EF6B63] px-2.5 py-1 text-[10px] font-extrabold uppercase text-[#0A0A0A] cursor-pointer"
               >
                 Relink Track Audio
               </button>
@@ -1467,7 +1467,7 @@ export function WebDawView() {
                 data-testid="daw-empty-state"
                 className="mx-auto flex max-w-xl flex-col items-center justify-center border-[1.5px] border-dashed border-[var(--border-strong)] bg-[var(--bg-elevated)] p-10 text-center"
               >
-                <div className="mb-4 flex h-12 w-12 items-center justify-center border border-[#0A0A0A] bg-[#FFE01B] text-[#0A0A0A]">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center border border-[#0A0A0A] bg-[#F0B44C] text-[#0A0A0A]">
                   <FileAudio className="h-6 w-6" aria-hidden="true" />
                 </div>
                 <h1 className="font-condensed text-2xl font-extrabold uppercase text-[var(--text-primary)]">
@@ -1492,7 +1492,7 @@ export function WebDawView() {
                     disabled={isLoadingDemo}
                     onClick={() => void handleLoadSampleTrack()}
                   >
-                    <Play className="h-4 w-4 text-[#FFE01B]" aria-hidden="true" />
+                    <Play className="h-4 w-4 text-[#F0B44C]" aria-hidden="true" />
                     {isLoadingDemo ? "Loading Sample…" : "Load Sample Mix Track"}
                   </Button>
                 </div>
@@ -1530,7 +1530,7 @@ export function WebDawView() {
                           left: `${(transport.loopStartSec / effectiveDuration) * 100}%`,
                           width: `${Math.max(2, ((transport.loopEndSec - transport.loopStartSec) / effectiveDuration) * 100)}%`,
                         }}
-                        className="absolute top-0 bottom-0 border-x border-[#FFE01B] bg-[#FFE01B]/20"
+                        className="absolute top-0 bottom-0 border-x border-[#F0B44C] bg-[#F0B44C]/20"
                       />
                     ) : null}
                     {[0, 0.25, 0.5, 0.75, 1].map((frac, idx) => (
@@ -1596,7 +1596,7 @@ export function WebDawView() {
                                 e.stopPropagation();
                                 daw.removeTrack(track.id);
                               }}
-                              className="text-[var(--text-muted)] hover:text-[#FF3B1F] cursor-pointer"
+                              className="text-[var(--text-muted)] hover:text-[#EF6B63] cursor-pointer"
                             >
                               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                             </button>
@@ -1613,7 +1613,7 @@ export function WebDawView() {
                               }}
                               className={`h-5 w-6 border tabular-telemetry text-[10px] font-extrabold cursor-pointer ${
                                 track.mute
-                                  ? "border-[#FF3B1F] bg-[#FF3B1F] text-[#0A0A0A]"
+                                  ? "border-[#EF6B63] bg-[#EF6B63] text-[#0A0A0A]"
                                   : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)]"
                               }`}
                             >
@@ -1629,7 +1629,7 @@ export function WebDawView() {
                               }}
                               className={`h-5 w-6 border tabular-telemetry text-[10px] font-extrabold cursor-pointer ${
                                 track.solo
-                                  ? "border-[#0A0A0A] bg-[#FFE01B] text-[#0A0A0A]"
+                                  ? "border-[#0A0A0A] bg-[#F0B44C] text-[#0A0A0A]"
                                   : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)]"
                               }`}
                             >
@@ -1698,15 +1698,15 @@ export function WebDawView() {
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                             className={`relative border ${
                               missing
-                                ? "border-[#FF3B1F]"
+                                ? "border-[#EF6B63]"
                                 : selected
-                                  ? "border-[#FFE01B]"
-                                  : "border-[#22C58B]/60"
+                                  ? "border-[#F0B44C]"
+                                  : "border-[#38D39F]/60"
                             }`}
                           >
                             <TrackWaveformLane
                               peaks={track.peaks}
-                              color={missing ? "#FF3B1F" : selected ? "#FFE01B" : "#22C58B"}
+                              color={missing ? "#EF6B63" : selected ? "#F0B44C" : "#38D39F"}
                             />
                             <div className="pointer-events-none absolute top-1 left-1.5 bg-[#0A0A0A]/80 px-1 tabular-telemetry text-[9px] font-bold text-[#F4F1EA]">
                               {track.audio?.fileName ?? track.name}
@@ -1765,11 +1765,11 @@ export function WebDawView() {
                     onClick={() => setSelectedChainId(CHAIN_MASTER)}
                     className={`flex w-[144px] shrink-0 cursor-pointer flex-col border bg-[var(--bg-elevated)] ${
                       selectedChainId === CHAIN_MASTER
-                        ? "border-[#FFE01B] ring-1 ring-[#FFE01B]"
+                        ? "border-[#F0B44C] ring-1 ring-[#F0B44C]"
                         : "border-[var(--border-strong)]"
                     }`}
                   >
-                    <div className="border-b border-[#0A0A0A] bg-[#FFE01B] px-2 py-1.5 text-[11px] font-extrabold uppercase text-[#0A0A0A]">
+                    <div className="border-b border-[#0A0A0A] bg-[#F0B44C] px-2 py-1.5 text-[11px] font-extrabold uppercase text-[#0A0A0A]">
                       MASTER BUS
                     </div>
 
@@ -1788,7 +1788,7 @@ export function WebDawView() {
                             onChange={(e) =>
                               daw.setMasterFader(Number.parseFloat(e.target.value))
                             }
-                            className="h-1.5 w-[148px] -rotate-90 cursor-pointer accent-[#FFE01B]"
+                            className="h-1.5 w-[148px] -rotate-90 cursor-pointer accent-[#F0B44C]"
                           />
                         </div>
                         <span className="tabular-telemetry text-[10px] font-bold text-[var(--text-primary)]">
@@ -1807,7 +1807,7 @@ export function WebDawView() {
                       />
                     </div>
 
-                    <div className="border-t border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2 py-1 text-center tabular-telemetry text-[9px] text-[#FFE01B]">
+                    <div className="border-t border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2 py-1 text-center tabular-telemetry text-[9px] text-[#F0B44C]">
                       {project.master.inserts.length} FX + LIMITER
                     </div>
                   </div>

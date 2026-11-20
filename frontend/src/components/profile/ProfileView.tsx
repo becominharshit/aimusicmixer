@@ -261,7 +261,7 @@ export function ProfileView() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg-canvas)] text-[var(--text-secondary)]">
         <div className="flex items-center gap-3 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-5 py-3 text-xs font-semibold">
-          <span className="h-2 w-2 rounded-full bg-[#FFE01B] animate-pulse" />
+          <span className="h-2 w-2 rounded-full bg-[#F0B44C] animate-pulse" />
           <span>Verifying Mixit Profile session…</span>
         </div>
       </div>
@@ -315,7 +315,7 @@ export function ProfileView() {
               <Link
                 href="/profile"
                 aria-current="page"
-                className="inline-flex h-7 items-center border-l border-[var(--border-hairline)] bg-[#FFE01B] px-2.5 tabular-telemetry text-[10px] font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A]"
+                className="inline-flex h-7 items-center border-l border-[var(--border-hairline)] bg-[#F0B44C] px-2.5 tabular-telemetry text-[10px] font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A]"
               >
                 PROFILE
               </Link>
@@ -333,7 +333,7 @@ export function ProfileView() {
             >
               {isDarkTheme ? (
                 <>
-                  <Sun className="h-3.5 w-3.5 text-[#FFE01B]" aria-hidden="true" />
+                  <Sun className="h-3.5 w-3.5 text-[#F0B44C]" aria-hidden="true" />
                   <span className="hidden sm:inline">PAPER</span>
                 </>
               ) : (
@@ -349,7 +349,7 @@ export function ProfileView() {
               whileTap={TACTILE_TAP}
               onClick={() => void handleSignOut()}
               aria-label="Sign out"
-              className="inline-flex h-8 items-center gap-1.5 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2.5 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:border-[#FF3B1F] hover:text-[var(--text-primary)] cursor-pointer"
+              className="inline-flex h-8 items-center gap-1.5 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2.5 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:border-[#EF6B63] hover:text-[var(--text-primary)] cursor-pointer"
             >
               <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
               <span className="hidden sm:inline">Sign Out</span>
@@ -368,7 +368,7 @@ export function ProfileView() {
             <div className="flex items-center gap-4">
               <div
                 aria-hidden="true"
-                className="flex h-14 w-14 shrink-0 items-center justify-center border-[1.5px] border-[#0A0A0A] bg-[#FFE01B] font-brut text-3xl text-[#0A0A0A]"
+                className="flex h-14 w-14 shrink-0 items-center justify-center border-[1.5px] border-[#0A0A0A] bg-[#F0B44C] font-brut text-3xl text-[#0A0A0A]"
               >
                 {initialLetter}
               </div>
@@ -390,7 +390,7 @@ export function ProfileView() {
             <div className="flex items-center gap-2">
               <Link
                 href="/studio"
-                className="inline-flex h-9 items-center border border-[#0A0A0A] bg-[#FFE01B] px-3.5 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B]"
+                className="inline-flex h-9 items-center border border-[#0A0A0A] bg-[#F0B44C] px-3.5 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#F0B44C]"
               >
                 Open Console
               </Link>
@@ -425,7 +425,7 @@ export function ProfileView() {
               </div>
               <div
                 data-testid="stat-daw-projects"
-                className="mt-1 tabular-telemetry text-3xl font-extrabold text-[#FFE01B]"
+                className="mt-1 tabular-telemetry text-3xl font-extrabold text-[#F0B44C]"
               >
                 {isLoadingStats ? "—" : dawProjectsCount}
               </div>
@@ -452,7 +452,7 @@ export function ProfileView() {
         >
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-hairline)] pb-3">
             <div className="flex items-center gap-2">
-              <Sliders className="h-4 w-4 text-[#FFE01B]" aria-hidden="true" />
+              <Sliders className="h-4 w-4 text-[#F0B44C]" aria-hidden="true" />
               <h2 className="text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-primary)]">
                 Studio Preferences
               </h2>
@@ -487,7 +487,7 @@ export function ProfileView() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Your studio name"
-                className="h-10 w-full border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-3 text-sm text-[var(--text-primary)] focus:border-[#FFE01B] focus:outline-none"
+                className="h-10 w-full border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-3 text-sm text-[var(--text-primary)] focus:border-[#F0B44C] focus:outline-none"
               />
             </div>
 
@@ -502,7 +502,7 @@ export function ProfileView() {
                 id="profile-default-genre"
                 value={defaultGenre}
                 onChange={(e) => setDefaultGenre(e.target.value as GenreType)}
-                className="h-10 w-full border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-3 text-sm text-[var(--text-primary)] focus:border-[#FFE01B] focus:outline-none"
+                className="h-10 w-full border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-3 text-sm text-[var(--text-primary)] focus:border-[#F0B44C] focus:outline-none"
               >
                 {GENRE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -523,7 +523,7 @@ export function ProfileView() {
                 id="profile-preferred-daw"
                 value={preferredDaw}
                 onChange={(e) => setPreferredDaw(e.target.value as PreferredDaw)}
-                className="h-10 w-full border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-3 text-sm text-[var(--text-primary)] focus:border-[#FFE01B] focus:outline-none"
+                className="h-10 w-full border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-3 text-sm text-[var(--text-primary)] focus:border-[#F0B44C] focus:outline-none"
               >
                 {DAW_OPTIONS.map((daw) => (
                   <option key={daw} value={daw}>
@@ -548,7 +548,7 @@ export function ProfileView() {
                   }}
                   className={`h-9 text-xs font-bold uppercase tracking-[0.06em] transition-colors cursor-pointer ${
                     defaultTheme === "dark"
-                      ? "bg-[#FFE01B] text-[#0A0A0A]"
+                      ? "bg-[#F0B44C] text-[#0A0A0A]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   }`}
                 >
@@ -564,7 +564,7 @@ export function ProfileView() {
                   }}
                   className={`h-9 text-xs font-bold uppercase tracking-[0.06em] transition-colors cursor-pointer ${
                     defaultTheme === "light"
-                      ? "bg-[#FFE01B] text-[#0A0A0A]"
+                      ? "bg-[#F0B44C] text-[#0A0A0A]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   }`}
                 >
@@ -580,7 +580,7 @@ export function ProfileView() {
               whileTap={TACTILE_TAP}
               disabled={saveStatus === "saving"}
               data-testid="save-profile-preferences-btn"
-              className="inline-flex h-10 items-center gap-2 border border-[#0A0A0A] bg-[#FFE01B] px-5 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] disabled:opacity-50 cursor-pointer"
+              className="inline-flex h-10 items-center gap-2 border border-[#0A0A0A] bg-[#F0B44C] px-5 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#F0B44C] disabled:opacity-50 cursor-pointer"
             >
               <Save className="h-3.5 w-3.5" aria-hidden="true" />
               {saveStatus === "saving" ? "Saving…" : "Save Studio Preferences"}
@@ -709,7 +709,7 @@ export function ProfileView() {
           {/* Data Purge & Sign Out Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-hairline)] pt-4">
             {confirmPurge ? (
-              <div className="flex w-full flex-wrap items-center justify-between gap-3 border border-[#FF3B1F] bg-[var(--studio-vermilion-soft)] p-3 text-xs">
+              <div className="flex w-full flex-wrap items-center justify-between gap-3 border border-[#EF6B63] bg-[var(--studio-vermilion-soft)] p-3 text-xs">
                 <div className="flex items-center gap-2 font-semibold text-[var(--studio-vermilion)]">
                   <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
                   <span>
@@ -722,7 +722,7 @@ export function ProfileView() {
                     disabled={isPurging}
                     data-testid="confirm-purge-profile-btn"
                     onClick={() => void handleConfirmPurge()}
-                    className="h-8 border border-[#0A0A0A] bg-[#FF3B1F] px-3 text-xs font-extrabold uppercase text-[#0A0A0A] disabled:opacity-50 cursor-pointer"
+                    className="h-8 border border-[#0A0A0A] bg-[#EF6B63] px-3 text-xs font-extrabold uppercase text-[#0A0A0A] disabled:opacity-50 cursor-pointer"
                   >
                     {isPurging ? "Deleting…" : "Confirm Permanent Delete"}
                   </button>
@@ -746,7 +746,7 @@ export function ProfileView() {
                       setPurgeDone(false);
                       setConfirmPurge(true);
                     }}
-                    className="inline-flex h-9 items-center gap-1.5 border border-[#FF3B1F]/60 bg-[var(--studio-vermilion-soft)] px-3.5 text-xs font-bold text-[var(--studio-vermilion)] transition-colors hover:bg-[#FF3B1F] hover:text-[#0A0A0A] cursor-pointer"
+                    className="inline-flex h-9 items-center gap-1.5 border border-[#EF6B63]/60 bg-[var(--studio-vermilion-soft)] px-3.5 text-xs font-bold text-[var(--studio-vermilion)] transition-colors hover:bg-[#EF6B63] hover:text-[#0A0A0A] cursor-pointer"
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                     Delete My Data &amp; Audio Proxies
@@ -761,7 +761,7 @@ export function ProfileView() {
                 <button
                   type="button"
                   onClick={() => void handleSignOut()}
-                  className="inline-flex h-9 items-center gap-1.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-4 text-xs font-bold uppercase tracking-[0.06em] text-[var(--text-primary)] transition-colors hover:border-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer"
+                  className="inline-flex h-9 items-center gap-1.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-4 text-xs font-bold uppercase tracking-[0.06em] text-[var(--text-primary)] transition-colors hover:border-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-[#F0B44C] cursor-pointer"
                 >
                   <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
                   Sign Out

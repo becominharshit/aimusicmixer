@@ -235,9 +235,9 @@ export function FindingCard({
       transition={{ duration: 0.2, ease: STUDIO_EASE }}
       onClick={() => onSelect?.(finding)}
       data-testid={`finding-card-${finding.evidence_id}`}
-      className={`relative bg-[var(--bg-elevated)] p-4 sm:p-5 transition-colors duration-150 ${
+      className={`relative rounded-[6px] bg-[var(--bg-elevated)] p-4 sm:p-5 transition-colors duration-150 ${
         isActive
-          ? "active-hairline-border ring-1 ring-[#FFE01B]/40"
+          ? "active-hairline-border ring-1 ring-[#F0B44C]/35"
           : "hairline-border hover:border-[var(--border-strong)]"
       }`}
     >
@@ -279,7 +279,7 @@ export function FindingCard({
             {formatTimecode(finding.timestamp_start_sec)} – {formatTimecode(finding.timestamp_end_sec)}
           </span>
           {isActive && (
-            <span className="bg-[#FFE01B] px-2 py-0.5 text-[10px] font-extrabold uppercase text-[#0A0A0A]">
+            <span className="rounded-[3px] bg-[#F0B44C] px-2 py-0.5 text-[10px] font-extrabold uppercase text-[#111318]">
               Focused
             </span>
           )}
@@ -312,9 +312,9 @@ export function FindingCard({
           onClick={() => {
             if (hasAudio) onAudition(finding);
           }}
-          className={`inline-flex h-8 items-center gap-1.5 border px-3 text-xs font-bold transition-colors ${
+          className={`inline-flex h-8 items-center gap-1.5 rounded-[4px] border px-3 text-xs font-bold transition-colors ${
             hasAudio
-              ? "border-[#0A0A0A] bg-[#FFE01B] text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer"
+              ? "border-[#14171F] dark:border-[#F0B44C] bg-[#F0B44C] text-[#111318] hover:bg-[#F5C451] cursor-pointer"
               : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-muted)] cursor-not-allowed"
           }`}
         >
@@ -367,9 +367,9 @@ export function FindingCard({
             onClick={() => {
               if (hasAudio) void onFixInDaw(finding);
             }}
-            className={`inline-flex h-8 items-center gap-1.5 border px-2.5 text-[11px] font-bold transition-colors ${
+            className={`inline-flex h-8 items-center gap-1.5 rounded-[4px] border px-2.5 text-[11px] font-bold transition-colors ${
               hasAudio
-                ? "border-[#FFE01B]/65 bg-[var(--bg-inset)] text-[#FFE01B] hover:border-[#0A0A0A] hover:bg-[#FFE01B] hover:text-[#0A0A0A] cursor-pointer"
+                ? "border-[#F0B44C]/55 bg-[var(--bg-inset)] text-[#F0B44C] hover:border-[#F0B44C] hover:bg-[#F0B44C] hover:text-[#111318] cursor-pointer"
                 : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-muted)] cursor-not-allowed"
             }`}
           >

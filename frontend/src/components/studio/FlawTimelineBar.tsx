@@ -46,15 +46,15 @@ function formatClock(sec: number): string {
 
 function pinMetaForFinding(finding: Finding): { color: string; priority: number } {
   if (finding.severity === "alert" || finding.category === "true_peak") {
-    return { color: "#FF3B1F", priority: 3 }; // Swiss Vermilion clipping / critical
+    return { color: "#EF6B63", priority: 3 }; // Soft Studio Coral clipping / critical
   }
   if (finding.category === "stereo_phase") {
-    return { color: "#A855F7", priority: 2 }; // Sub-bass phase violet
+    return { color: "#B388FF", priority: 2 }; // Soft Orchid sub-bass phase
   }
   if (finding.severity === "caution") {
-    return { color: "#F59E0B", priority: 1 }; // Amber tonal congestion
+    return { color: "#F0B44C", priority: 1 }; // Warm Marigold tonal congestion
   }
-  return { color: "#22C58B", priority: 0 }; // Acid Mint safe
+  return { color: "#38D39F", priority: 0 }; // Mint Wave safe
 }
 
 function pillEstimatedWidthPx(markerCount: number): number {
@@ -267,14 +267,14 @@ export function FlawTimelineBar({
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, width, height);
 
-    // Pure #0A0A0A hardware waveform enclosure
-    ctx.fillStyle = "#0A0A0A";
+    // Deep soft charcoal-obsidian waveform enclosure
+    ctx.fillStyle = "#0B0E14";
     ctx.fillRect(0, 0, width, height);
 
     const midY = height * 0.54;
     const maxAmp = height * 0.36;
 
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.strokeStyle = "rgba(255,255,255,0.07)";
     ctx.lineWidth = 1;
     for (const ratio of [0.22, 0.54, 0.86]) {
       ctx.beginPath();
@@ -287,9 +287,9 @@ export function FlawTimelineBar({
     if (engineState.loopEnabled && engineState.loopEndSec > engineState.loopStartSec + 0.05) {
       const lx1 = (engineState.loopStartSec / effectiveDuration) * width;
       const lx2 = (engineState.loopEndSec / effectiveDuration) * width;
-      ctx.fillStyle = "rgba(255, 224, 27, 0.14)";
+      ctx.fillStyle = "rgba(240, 180, 76, 0.14)";
       ctx.fillRect(lx1, 0, Math.max(2, lx2 - lx1), height);
-      ctx.strokeStyle = "#FFE01B";
+      ctx.strokeStyle = "#F0B44C";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(lx1, 0);
@@ -309,7 +309,7 @@ export function FlawTimelineBar({
 
     // Optional reference silhouette
     if (referencePeaks && referencePeaks.length > 0) {
-      ctx.fillStyle = "rgba(56, 189, 248, 0.28)";
+      ctx.fillStyle = "rgba(94, 155, 255, 0.28)";
       const step = width / referencePeaks.length;
       for (let i = 0; i < referencePeaks.length; i += 1) {
         const pair = referencePeaks[i];
@@ -319,11 +319,21 @@ export function FlawTimelineBar({
       }
     }
 
-    // Primary waveform bars
+    // Primary waveform bars with smooth musical gradient (Sky -> Orchid unplayed, Marigold -> Mint played, Soft Coral hot peaks)
     const playheadX = (currentTime / effectiveDuration) * width;
     const barCount = Math.max(1, peaks.length);
     const barStep = width / barCount;
     const barW = Math.max(1.5, Math.min(4, barStep * 0.72));
+
+    const playedGrad = ctx.createLinearGradient(0, 0, Math.max(1, width), 0);
+    playedGrad.addColorStop(0, "#F0B44C");
+    playedGrad.addColorStop(0.55, "#38D39F");
+    playedGrad.addColorStop(1, "#5E9BFF");
+
+    const idleGrad = ctx.createLinearGradient(0, 0, Math.max(1, width), 0);
+    idleGrad.addColorStop(0, "#4B5D7A");
+    idleGrad.addColorStop(0.5, "#5C6487");
+    idleGrad.addColorStop(1, "#6C5D8C");
 
     for (let i = 0; i < barCount; i += 1) {
       const pair = peaks[i] ?? [0, 0];
@@ -332,18 +342,18 @@ export function FlawTimelineBar({
       const barH = Math.max(3, amp * maxAmp * 2);
       const isHot = amp > 0.94;
       if (isHot) {
-        ctx.fillStyle = "#FF3B1F";
+        ctx.fillStyle = "#EF6B63";
       } else if (currentTime > 0 && x < playheadX) {
-        ctx.fillStyle = "#FFE01B";
+        ctx.fillStyle = playedGrad;
       } else {
-        ctx.fillStyle = "#3E4759";
+        ctx.fillStyle = idleGrad;
       }
       ctx.fillRect(x, midY - barH * 0.5, barW, barH);
     }
 
     // Clipping ticks at top rail
     if (clippingTimestamps.length > 0) {
-      ctx.fillStyle = "#FF3B1F";
+      ctx.fillStyle = "#EF6B63";
       for (const ts of clippingTimestamps.slice(0, 60)) {
         const cx = (ts / effectiveDuration) * width;
         ctx.fillRect(cx - 1, 0, 2, 10);
@@ -351,14 +361,14 @@ export function FlawTimelineBar({
     }
 
     // Playhead needle
-    ctx.strokeStyle = "#F4F1EA";
+    ctx.strokeStyle = "#F2F0EA";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(playheadX, 0);
     ctx.lineTo(playheadX, height);
     ctx.stroke();
 
-    ctx.fillStyle = "#FFE01B";
+    ctx.fillStyle = "#F0B44C";
     ctx.fillRect(playheadX - 3, 0, 6, 6);
   }, [
     peaks,
@@ -404,40 +414,40 @@ export function FlawTimelineBar({
     <div
       ref={containerRef}
       data-testid="flaw-timeline-bar"
-      className={`border border-[#262B36] bg-[#0A0A0A] p-3.5 text-[#F4F1EA] sm:p-4 ${className}`}
+      className={`border border-white/10 bg-[#0E1117] p-3.5 text-[#F2F0EA] sm:p-4 ${className}`}
     >
       {/* Top Timeline Metadata Bar */}
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-[0.04em] text-[#F4F1EA]">
+          <span className="text-xs font-bold uppercase tracking-[0.04em] text-[#F2F0EA]">
             Interactive Flaw Timeline
           </span>
           {typeof bpm === "number" && bpm > 0 ? (
             <span
               data-testid="waveform-bpm-badge"
-              className="tabular-telemetry border border-[#262B36] bg-[#12151C] px-2 py-0.5 text-[11px] font-semibold text-[#FFE01B]"
+              className="tabular-telemetry border border-white/10 bg-[#151923] px-2 py-0.5 text-[11px] font-semibold text-[#F0B44C]"
             >
               {Math.round(bpm)} BPM
             </span>
           ) : null}
           {clippingTimestamps.length > 0 ? (
-            <span className="inline-flex items-center gap-1 border border-[#FF3B1F]/60 bg-[#FF3B1F]/15 px-2 py-0.5 tabular-telemetry text-[11px] font-semibold text-[#FF3B1F]">
+            <span className="inline-flex items-center gap-1 border border-[#EF6B63]/55 bg-[#EF6B63]/15 px-2 py-0.5 tabular-telemetry text-[11px] font-semibold text-[#EF6B63]">
               <AlertTriangle className="h-3 w-3" aria-hidden="true" />
               {clippingTimestamps.length} clips
             </span>
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2 tabular-telemetry text-xs text-[#A1A8B8]">
+        <div className="flex items-center gap-2 tabular-telemetry text-xs text-[#98A2B3]">
           <span>{formatClock(currentTime)}</span>
-          <span className="text-[#525B70]">/</span>
+          <span className="text-[#707B8E]">/</span>
           <span>{formatClock(effectiveDuration)}</span>
           {engineState.loopEnabled ? (
             <button
               type="button"
               onClick={() => studioAudioEngine.setLoop(false)}
               aria-label="Clear active loop window"
-              className="ml-1 inline-flex items-center gap-1 border border-[#FFE01B] bg-[#FFE01B] px-2 py-0.5 text-[11px] font-bold text-[#0A0A0A] cursor-pointer"
+              className="ml-1 inline-flex items-center gap-1 border border-[#F0B44C] bg-[#F0B44C] px-2 py-0.5 text-[11px] font-bold text-[#111318] cursor-pointer"
             >
               <Repeat className="h-3 w-3" aria-hidden="true" />
               {formatClock(engineState.loopStartSec)}–{formatClock(engineState.loopEndSec)}
@@ -513,17 +523,17 @@ export function FlawTimelineBar({
               role={activeCluster.markers.length > 1 ? "dialog" : "tooltip"}
               aria-label="Flaw marker details"
               style={{ left: `${Math.max(18, Math.min(82, activeCluster.pct))}%` }}
-              className="absolute -top-2 z-50 w-72 -translate-x-1/2 -translate-y-full border-[1.5px] border-[#FFE01B] bg-[#12151C] p-2.5 text-[#F4F1EA]"
+              className="absolute -top-2 z-50 w-72 -translate-x-1/2 -translate-y-full border-[1.5px] border-[#F0B44C] bg-[#151923] p-2.5 text-[#F2F0EA] shadow-xl"
             >
               {activeCluster.markers.length > 1 ? (
-                <div className="mb-2 flex items-center justify-between border-b border-[#262B36] px-1 pb-1.5">
-                  <span className="text-[11px] font-bold uppercase text-[#F4F1EA]">
+                <div className="mb-2 flex items-center justify-between border-b border-white/10 px-1 pb-1.5">
+                  <span className="text-[11px] font-bold uppercase text-[#F2F0EA]">
                     {activeCluster.markers.length} flaws near{" "}
-                    <span className="tabular-telemetry text-[#FFE01B]">
+                    <span className="tabular-telemetry text-[#F0B44C]">
                       {formatClock(activeCluster.earliestStart)}
                     </span>
                   </span>
-                  <span className="text-[10px] text-[#A1A8B8]">Select to loop</span>
+                  <span className="text-[10px] text-[#98A2B3]">Select to loop</span>
                 </div>
               ) : null}
 
@@ -533,7 +543,7 @@ export function FlawTimelineBar({
                     key={marker.finding.evidence_id}
                     type="button"
                     onClick={() => handleAuditionMarker(marker)}
-                    className="block w-full border border-[#262B36] bg-[#0A0A0A] p-2 text-left transition-colors hover:border-[#FFE01B] cursor-pointer"
+                    className="block w-full border border-white/10 bg-[#0E1117] p-2 text-left transition-colors hover:border-[#F0B44C] cursor-pointer"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span
@@ -550,18 +560,18 @@ export function FlawTimelineBar({
                           </>
                         )}
                       </span>
-                      <span className="tabular-telemetry text-[10px] text-[#A1A8B8]">
+                      <span className="tabular-telemetry text-[10px] text-[#98A2B3]">
                         {formatClock(marker.start)}–{formatClock(marker.end)}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs font-semibold text-[#F4F1EA]">
+                    <p className="mt-1 text-xs font-semibold text-[#F2F0EA]">
                       {marker.finding.title}
                     </p>
                     <div className="mt-1 flex items-center justify-between gap-2">
-                      <span className="tabular-telemetry text-[11px] text-[#A1A8B8]">
+                      <span className="tabular-telemetry text-[11px] text-[#98A2B3]">
                         {marker.finding.measured_value}
                       </span>
-                      <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-bold uppercase text-[#FFE01B]">
+                      <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-bold uppercase text-[#F0B44C]">
                         <Play className="h-2.5 w-2.5 fill-current" aria-hidden="true" /> Audition
                       </span>
                     </div>
@@ -579,7 +589,7 @@ export function FlawTimelineBar({
           aria-label="Interactive audio waveform and flaw-marker timeline"
           onClick={handleCanvasClick}
           style={{ height }}
-          className="block w-full cursor-pointer border border-[#262B36]"
+          className="block w-full cursor-pointer border border-white/10"
         />
       </div>
 
@@ -594,10 +604,10 @@ export function FlawTimelineBar({
               key={`${section.label}-${idx}`}
               type="button"
               onClick={() => void studioAudioEngine.auditionRange(section.start_sec, section.end_sec)}
-              className="inline-flex items-center gap-1.5 border border-[#262B36] bg-[#12151C] px-2.5 py-1 text-[11px] font-semibold text-[#A1A8B8] transition-colors hover:border-[#FFE01B] hover:text-[#F4F1EA] cursor-pointer"
+              className="inline-flex items-center gap-1.5 border border-white/10 bg-[#151923] px-2.5 py-1 text-[11px] font-semibold text-[#98A2B3] transition-colors hover:border-[#F0B44C] hover:text-[#F2F0EA] cursor-pointer"
             >
               <span>{section.label}</span>
-              <span className="tabular-telemetry text-[10px] text-[#7B8394]">
+              <span className="tabular-telemetry text-[10px] text-[#707B8E]">
                 {formatClock(section.start_sec)} · {section.avg_lufs.toFixed(1)} LUFS
               </span>
             </button>

@@ -360,7 +360,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Storage: upload object
+  // Storage: upload object (extracts multipart file body if uploaded via FormData)
   if (
     url.pathname.startsWith("/storage/v1/object/mix-proxies/") &&
     (req.method === "POST" || req.method === "PUT")
@@ -368,10 +368,32 @@ const server = http.createServer(async (req, res) => {
     const objectPath = decodeURIComponent(
       url.pathname.slice("/storage/v1/object/mix-proxies/".length)
     );
-    const buffer = await readBodyBuffer(req);
+    const rawBuffer = await readBodyBuffer(req);
+    const ct = String(req.headers["content-type"] || "audio/wav");
+    let finalBuffer = rawBuffer;
+    let finalContentType = ct;
+
+    const boundaryMatch = ct.match(/boundary=([^\s;]+)/i);
+    if (boundaryMatch) {
+      const boundary = boundaryMatch[1].replace(/^"|"$/g, "");
+      const headerSep = Buffer.from("\r\n\r\n");
+      const firstSep = rawBuffer.indexOf(headerSep);
+      const closingBoundary = Buffer.from(`\r\n--${boundary}`);
+      if (firstSep !== -1) {
+        const bodyStart = firstSep + 4;
+        const bodyEnd = rawBuffer.indexOf(closingBoundary, bodyStart);
+        if (bodyEnd > bodyStart) {
+          const partHeaders = rawBuffer.subarray(0, firstSep).toString("utf8");
+          const partCt = partHeaders.match(/content-type:\s*([^\r\n]+)/i);
+          if (partCt) finalContentType = partCt[1].trim();
+          finalBuffer = rawBuffer.subarray(bodyStart, bodyEnd);
+        }
+      }
+    }
+
     storageObjects.set(objectPath, {
-      buffer,
-      contentType: String(req.headers["content-type"] || "audio/wav"),
+      buffer: finalBuffer,
+      contentType: finalContentType,
     });
     sendJson(res, 200, { Key: `mix-proxies/${objectPath}`, Id: objectPath });
     return;

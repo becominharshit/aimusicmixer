@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
+import { AnimatePresence, motion } from "motion/react";
 import { AlertCircle, BookmarkPlus, CheckCircle2, SlidersHorizontal } from "lucide-react";
 import {
   studioAudioEngine,
@@ -14,7 +15,7 @@ import {
 } from "@/audio/StudioAudioEngine";
 import { BottomTransportDock } from "@/components/BottomTransportDock";
 import { deriveAutoFixEqBands } from "@/components/FindingCard";
-import { StudioHeader, type HealthStatus, type WorkspaceMode } from "@/components/StudioHeader";
+import type { HealthStatus, WorkspaceMode } from "@/components/StudioHeader";
 import { UploadStage } from "@/components/UploadStage";
 import { AdvancedWorkbench } from "@/components/advanced/AdvancedWorkbench";
 import { RevisionInspector } from "@/components/advanced/RevisionInspector";
@@ -24,6 +25,8 @@ import { SavedMixHistoryDrawer } from "@/components/auth/SavedMixHistoryDrawer";
 import { MentorDrawer } from "@/components/privacy/MentorDrawer";
 import { KeyboardShortcutsModal } from "@/components/shared/KeyboardShortcutsModal";
 import { SimpleView } from "@/components/simple/SimpleView";
+import { AddAudioModal } from "@/components/studio/AddAudioModal";
+import { StudioShell } from "@/components/studio/StudioShell";
 import { ReferenceABView } from "@/components/workspace/ReferenceABView";
 import { WorkspaceSubNav, type WorkspaceSubTab } from "@/components/workspace/WorkspaceSubNav";
 import {
@@ -49,6 +52,7 @@ import {
   uploadUserStems,
 } from "@/lib/api";
 import { analyzeFileWithWebAudioFallback } from "@/lib/clientWebAudioDsp";
+import { STUDIO_EASE } from "@/lib/motion";
 import {
   audioBufferToWavFile,
   consumePendingDawMixdown,
@@ -57,6 +61,12 @@ import {
   setPendingStudioToDawHandoff,
 } from "@/lib/pendingDawMixdown";
 import { loadRepairChecklist, saveRepairChecklist } from "@/lib/repairChecklist";
+import {
+  cacheStudioAudioBlob,
+  clearStudioAudioCache,
+  deleteCachedStudioAudioBlob,
+  getCachedStudioAudioBlob,
+} from "@/lib/studioAudioCache";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   DEFAULT_PRIVACY_PREFERENCES,
@@ -64,6 +74,7 @@ import {
   enableAnalysisShareLink,
   fetchOrCreateUserProfile,
   fetchSavedAnalyses,
+  fetchSignedMixProxyBlob,
   getSignedMixProxyUrl,
   purgeUserAccountData,
   saveProfilePrivacyPreferences,
@@ -110,6 +121,10 @@ export function StudioWorkbench() {
   const [authPromptReason, setAuthPromptReason] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [addAudioOpen, setAddAudioOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isUpgradingPrecision, setIsUpgradingPrecision] = useState(false);
 
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [privacyPrefs, setPrivacyPrefs] = useState<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
@@ -181,8 +196,31 @@ export function StudioWorkbench() {
     reportRef.current = report;
   }, [report]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = window.localStorage.getItem("mixit_sidebar_expanded_v1");
+      if (saved === "1") setSidebarExpanded(true);
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarExpanded((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("mixit_sidebar_expanded_v1", next ? "1" : "0");
+      } catch {
+        // Ignore storage errors
+      }
+      return next;
+    });
+  }, []);
+
   const cancelBackgroundUpgrade = useCallback(() => {
     bgUpgradeCycleRef.current += 1;
+    setIsUpgradingPrecision(false);
     if (bgUpgradeTimerRef.current !== null) {
       window.clearTimeout(bgUpgradeTimerRef.current);
       bgUpgradeTimerRef.current = null;
@@ -538,15 +576,19 @@ export function StudioWorkbench() {
       });
       if (saved) {
         setSavedAnalyses((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+        const blobToPersist = fallbackBlob ?? activeAudioFileRef.current ?? null;
+        if (blobToPersist) {
+          void cacheStudioAudioBlob([saved.id, nextReport.report_id], blobToPersist);
+        }
         const rawProxy = nextReport.audio_metadata.playback_proxy_url || "";
         const resolvedProxyUrl =
           rawProxy && !rawProxy.startsWith("blob:") ? resolveApiUrl(rawProxy) : undefined;
-        if (resolvedProxyUrl || fallbackBlob) {
+        if (resolvedProxyUrl || blobToPersist) {
           void uploadMixProxyToStorage({
             userId: supabaseUser.id,
             analysisId: saved.id,
             proxyUrl: resolvedProxyUrl,
-            fallbackBlob: fallbackBlob ?? null,
+            fallbackBlob: blobToPersist,
           }).then((storagePath) => {
             if (storagePath) {
               setSavedAnalyses((prev) =>
@@ -654,8 +696,10 @@ export function StudioWorkbench() {
       setWakeAttempt(0);
       setHealthError(null);
       setHealthState("online");
+      setIsUpgradingPrecision(false);
       revokeLocalObjectUrl();
     } else if (!localAudioBuffer) {
+      setIsUpgradingPrecision(false);
       studioAudioEngine.reset();
     }
     studioAudioEngine.setAutoFixPreview(false, []);
@@ -691,6 +735,7 @@ export function StudioWorkbench() {
     setRevisionError(null);
     setActiveFindingId(reportWithSteps.findings[0]?.evidence_id ?? null);
 
+    // 1. In-memory fresh AudioBuffer (instant during active local Web Audio preview)
     if (localAudioBuffer && localObjectUrl) {
       revokeLocalObjectUrl();
       localObjectUrlRef.current = localObjectUrl;
@@ -700,26 +745,63 @@ export function StudioWorkbench() {
         reportWithSteps.global_metrics.integrated_lufs,
         localObjectUrl
       );
+      if (fallbackFile) {
+        void cacheStudioAudioBlob([savedRecord?.id, reportWithSteps.report_id], fallbackFile);
+      }
       return;
     }
 
-    // For cloud-restored records, try the private Supabase signed proxy URL first
-    if (!fromLiveBackend && savedRecord?.proxy_storage_path) {
-      const signedUrl = await getSignedMixProxyUrl(savedRecord.proxy_storage_path);
-      if (signedUrl) {
+    // 2. Local IndexedDB cache first (instant restore on reload or sign-in across sessions)
+    if (!fromLiveBackend) {
+      const cachedBlob = await getCachedStudioAudioBlob([
+        savedRecord?.id,
+        reportWithSteps.report_id,
+      ]);
+      if (cachedBlob) {
         try {
-          await studioAudioEngine.loadSlot(
+          await studioAudioEngine.loadBlobSlot(
             "primary",
-            signedUrl,
-            reportWithSteps.global_metrics.integrated_lufs
+            cachedBlob,
+            reportWithSteps.global_metrics.integrated_lufs,
+            `idb:${savedRecord?.id || reportWithSteps.report_id}`
+          );
+          activeAudioFileRef.current = new File(
+            [cachedBlob],
+            reportWithSteps.audio_metadata.filename,
+            { type: cachedBlob.type || "audio/wav" }
           );
           return;
         } catch {
-          // Fall through to backend proxy URL / local fallback
+          // Corrupted or unsupported cached blob — continue to Supabase Storage signed URL
         }
       }
     }
 
+    // 3. Cross-device restore from private Supabase Storage signed URL (mix-proxies)
+    if (!fromLiveBackend && savedRecord?.proxy_storage_path) {
+      const downloaded = await fetchSignedMixProxyBlob(savedRecord.proxy_storage_path);
+      if (downloaded) {
+        try {
+          await studioAudioEngine.loadBlobSlot(
+            "primary",
+            downloaded.blob,
+            reportWithSteps.global_metrics.integrated_lufs,
+            downloaded.signedUrl
+          );
+          activeAudioFileRef.current = new File(
+            [downloaded.blob],
+            reportWithSteps.audio_metadata.filename,
+            { type: downloaded.blob.type || "audio/mp4" }
+          );
+          void cacheStudioAudioBlob([savedRecord.id, reportWithSteps.report_id], downloaded.blob);
+          return;
+        } catch {
+          // Fall through to signed URL direct fetch or backend proxy URL
+        }
+      }
+    }
+
+    // 4. Live backend ephemeral proxy URL
     const rawProxyUrl = reportWithSteps.audio_metadata.playback_proxy_url || "";
     if (rawProxyUrl && !rawProxyUrl.startsWith("blob:")) {
       try {
@@ -728,12 +810,16 @@ export function StudioWorkbench() {
           resolveApiUrl(rawProxyUrl),
           reportWithSteps.global_metrics.integrated_lufs
         );
+        if (fallbackFile) {
+          void cacheStudioAudioBlob([savedRecord?.id, reportWithSteps.report_id], fallbackFile);
+        }
         return;
       } catch {
         // Proceed to local File or signed URL fallback
       }
     }
 
+    // 5. Local File passed directly from upload flow
     if (fallbackFile) {
       try {
         await studioAudioEngine.loadFileSlot(
@@ -741,12 +827,14 @@ export function StudioWorkbench() {
           fallbackFile,
           reportWithSteps.global_metrics.integrated_lufs
         );
+        void cacheStudioAudioBlob([savedRecord?.id, reportWithSteps.report_id], fallbackFile);
         return;
       } catch {
         // Proceed to signed cloud proxy fallback
       }
     }
 
+    // 6. Final fallback: Supabase Storage signed URL if fromLiveBackend proxy expired
     if (fromLiveBackend && savedRecord?.proxy_storage_path) {
       const signedUrl = await getSignedMixProxyUrl(savedRecord.proxy_storage_path);
       if (signedUrl) {
@@ -777,6 +865,7 @@ export function StudioWorkbench() {
     ) => {
       cancelBackgroundUpgrade();
       const cycleId = ++bgUpgradeCycleRef.current;
+      setIsUpgradingPrecision(true);
       const MAX_UPGRADE_ATTEMPTS = 6;
       const RETRY_DELAY_MS = 5000;
 
@@ -797,9 +886,11 @@ export function StudioWorkbench() {
               artistVision: targetVision,
             });
             if (bgUpgradeCycleRef.current !== cycleId) return;
+            setIsUpgradingPrecision(false);
             await hydrateSessionReport(serverReport, {
               fromLiveBackend: true,
               isDemo: false,
+              fallbackFile: file,
               preserveRepairSteps: completedRepairStepsRef.current,
             });
             const saved = await persistReportToSupabase(
@@ -819,6 +910,8 @@ export function StudioWorkbench() {
             if (bgUpgradeCycleRef.current !== cycleId) return;
             if (attempt < MAX_UPGRADE_ATTEMPTS) {
               attemptUpgrade(attempt + 1);
+            } else {
+              setIsUpgradingPrecision(false);
             }
           }
         }, RETRY_DELAY_MS);
@@ -872,6 +965,7 @@ export function StudioWorkbench() {
         isDemo: false,
         localAudioBuffer: localRes.audioBuffer,
         localObjectUrl: localRes.objectUrl,
+        fallbackFile: file,
       });
       const savedLocal = await persistReportToSupabase(
         localRes.report,
@@ -967,6 +1061,7 @@ export function StudioWorkbench() {
           isDemo: true,
           localAudioBuffer: localRes.audioBuffer,
           localObjectUrl: localRes.objectUrl,
+          fallbackFile: demoFile,
         });
         const savedDemo = await persistReportToSupabase(
           localRes.report,
@@ -1297,8 +1392,10 @@ export function StudioWorkbench() {
     proxyStoragePath?: string | null
   ) => {
     if (!supabaseUser) return;
+    const targetRow = savedAnalyses.find((item) => item.id === analysisId);
     const deleted = await deleteSavedAnalysis(supabaseUser.id, analysisId, proxyStoragePath);
     if (deleted) {
+      void deleteCachedStudioAudioBlob([analysisId, targetRow?.report_json.report_id]);
       setSavedAnalyses((prev) => prev.filter((item) => item.id !== analysisId));
     }
   };
@@ -1387,6 +1484,7 @@ export function StudioWorkbench() {
   const handlePurgeAccountData = useCallback(async () => {
     if (!supabaseUser) return;
     await purgeUserAccountData(supabaseUser.id);
+    await clearStudioAudioCache();
     setSavedAnalyses([]);
     setHasMoreHistory(false);
     setActiveSavedId(null);
@@ -1461,8 +1559,8 @@ export function StudioWorkbench() {
   if (!authChecked || !supabaseUser) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg-canvas)] text-[var(--text-secondary)]">
-        <div className="flex items-center gap-3 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-5 py-3 text-xs font-semibold">
-          <span className="h-2 w-2 rounded-full bg-[#FFE01B] animate-pulse" />
+        <div className="flex items-center gap-3 rounded-[6px] border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-5 py-3 text-xs font-semibold">
+          <span className="h-2 w-2 rounded-full bg-[#F0B44C] animate-pulse" />
           <span>Verifying Mixit Studio session…</span>
         </div>
       </div>
@@ -1470,304 +1568,152 @@ export function StudioWorkbench() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)]">
-      <StudioHeader
-        mode={mode}
-        onModeChange={(nextMode) => {
+    <StudioShell
+      headerProps={{
+        mode,
+        onModeChange: (nextMode) => {
           setMode(nextMode);
           if (report) handleChangeSubTab("diagnosis");
-        }}
-        report={report}
-        onClearSession={handleClearSession}
-        healthStatus={healthStatus}
-        healthData={healthData}
-        healthError={healthError}
-        wakeAttempt={wakeAttempt}
-        wakeMaxAttempts={24}
-        onRetryHealth={() => void refreshHealth()}
-        supabaseConfigured={supabaseConfigured}
-        userEmail={supabaseUser?.email ?? null}
-        savedCount={savedAnalyses.length}
-        onOpenAuth={() => {
+        },
+        report,
+        sidebarExpanded,
+        onToggleSidebar: handleToggleSidebar,
+        onOpenMobileSidebar: () => setMobileSidebarOpen(true),
+        onOpenAddAudio: () => setAddAudioOpen(true),
+        onOpenMentor: () => setMentorOpen(true),
+        supabaseConfigured,
+        userEmail: supabaseUser?.email ?? null,
+        onOpenAuth: () => {
           setAuthInitialError(null);
           setAuthPromptReason(null);
           setAuthOpen(true);
-        }}
-        onSignOut={() => void handleSignOut()}
-        onOpenHistory={() => setHistoryOpen(true)}
-        onOpenSignedOutHistory={handleOpenSignedOutHistory}
-        onShareReviewLink={handleShareReviewLink}
-        onOpenShortcuts={() => setShortcutsOpen(true)}
-      />
+        },
+      }}
+      sidebarProps={{
+        expanded: sidebarExpanded,
+        mobileOpen: mobileSidebarOpen,
+        onCloseMobile: () => setMobileSidebarOpen(false),
+        report,
+        onClearSession: handleClearSession,
+        healthStatus,
+        healthData,
+        healthError,
+        wakeAttempt,
+        wakeMaxAttempts: 24,
+        onRetryHealth: () => void refreshHealth(),
+        supabaseConfigured,
+        userEmail: supabaseUser?.email ?? null,
+        savedCount: savedAnalyses.length,
+        onOpenAuth: () => {
+          setAuthInitialError(null);
+          setAuthPromptReason(null);
+          setAuthOpen(true);
+        },
+        onSignOut: () => void handleSignOut(),
+        onOpenHistory: () => setHistoryOpen(true),
+        onOpenSignedOutHistory: handleOpenSignedOutHistory,
+        onShareReviewLink: handleShareReviewLink,
+        onOpenShortcuts: () => setShortcutsOpen(true),
+      }}
+      subHeader={
+        report ? (
+          <>
+            <WorkspaceSubNav
+              activeTab={subTab}
+              onChangeTab={handleChangeSubTab}
+              report={report}
+              hasReference={audioState.hasReference}
+              onOpenMentor={() => setMentorOpen(true)}
+              showMentorButton={false}
+            />
 
-      {report && (
-        <WorkspaceSubNav
-          activeTab={subTab}
-          onChangeTab={handleChangeSubTab}
-          report={report}
-          hasReference={audioState.hasReference}
-          onOpenMentor={() => setMentorOpen(true)}
-        />
-      )}
-
-      {report && (
-        <div className="no-print border-b border-[var(--border-hairline)] bg-[var(--bg-elevated)]/85">
-          <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs sm:px-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 font-medium text-[var(--text-secondary)]">
-                <SlidersHorizontal
-                  className="h-3.5 w-3.5 text-[var(--accent-mint)]"
-                  aria-hidden="true"
-                />
-                Live Context:
-              </span>
-              <Select
-                value={genre}
-                disabled={isUpdatingContext}
-                onValueChange={(v) => void handleWorkspaceContextChange(v as GenreType, stage)}
-              >
-                <SelectTrigger className="h-7 w-[170px] text-xs" aria-label="Session Genre Context">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {GENRE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="inline-flex rounded-[10px] bg-[var(--bg-surface)] p-0.5 hairline-border">
-                {(
-                  [
-                    { id: "unmastered_mix", label: "Unmastered" },
-                    { id: "final_master", label: "Master" },
-                  ] as const
-                ).map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
+            <div className="no-print border-b border-[var(--border-hairline)] bg-[var(--bg-elevated)]/85">
+              <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs sm:px-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 font-medium text-[var(--text-secondary)]">
+                    <SlidersHorizontal
+                      className="h-3.5 w-3.5 text-[var(--accent-mint)]"
+                      aria-hidden="true"
+                    />
+                    Live Context:
+                  </span>
+                  <Select
+                    value={genre}
                     disabled={isUpdatingContext}
-                    onClick={() => void handleWorkspaceContextChange(genre, item.id)}
-                    className={`rounded-[7px] px-2.5 py-0.5 text-[11px] font-medium cursor-pointer transition-colors ${
-                      stage === item.id
-                        ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] hairline-border"
-                        : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                    }`}
+                    onValueChange={(v) => void handleWorkspaceContextChange(v as GenreType, stage)}
                   >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-              {isUpdatingContext && (
-                <span className="text-[11px] text-[var(--accent-mint)]">Re-evaluating rules…</span>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {isDemoSession && supabaseUser && (
-                <button
-                  type="button"
-                  disabled={demoSaved}
-                  onClick={() => void handleSaveDemoToHistory()}
-                  className="inline-flex items-center gap-1.5 bg-[var(--accent-mint-soft)] px-2.5 py-1 text-[11px] font-medium text-[var(--accent-mint)] hover:brightness-110 squircle-inner cursor-pointer disabled:opacity-70"
-                >
-                  {demoSaved ? (
-                    <>
-                      <CheckCircle2
-                        className="h-3.5 w-3.5 text-[var(--accent-mint)]"
-                        aria-hidden="true"
-                      />
-                      Demo Saved to History
-                    </>
-                  ) : (
-                    <>
-                      <BookmarkPlus className="h-3.5 w-3.5" aria-hidden="true" />
-                      Save Demo to History
-                    </>
+                    <SelectTrigger className="h-7 w-[170px] text-xs" aria-label="Session Genre Context">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GENRE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="inline-flex rounded-[4px] bg-[var(--bg-surface)] p-0.5 hairline-border">
+                    {(
+                      [
+                        { id: "unmastered_mix", label: "Unmastered" },
+                        { id: "final_master", label: "Master" },
+                      ] as const
+                    ).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        disabled={isUpdatingContext}
+                        onClick={() => void handleWorkspaceContextChange(genre, item.id)}
+                        className={`rounded-[3px] px-2.5 py-0.5 text-[11px] font-medium cursor-pointer transition-colors ${
+                          stage === item.id
+                            ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] hairline-border"
+                            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  {isUpdatingContext && (
+                    <span className="text-[11px] text-[var(--accent-mint)]">
+                      Re-evaluating rules…
+                    </span>
                   )}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+                </div>
 
-      {report && missingArchivedAudio && (
-        <div className="no-print mx-auto mt-3 w-full max-w-[1380px] px-4 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--accent-amber-soft)] px-4 py-2.5 text-xs text-[var(--accent-amber)] border border-[var(--accent-amber)]/30 squircle-inner">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span>
-                Archived session telemetry loaded. Ephemeral audio buffer expired on server —
-                re-attach your local WAV/MP3 to enable waveform auditioning.
-              </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {isDemoSession && supabaseUser && (
+                    <button
+                      type="button"
+                      disabled={demoSaved}
+                      onClick={() => void handleSaveDemoToHistory()}
+                      className="inline-flex items-center gap-1.5 bg-[var(--accent-mint-soft)] px-2.5 py-1 text-[11px] font-medium text-[var(--accent-mint)] hover:brightness-110 squircle-inner cursor-pointer disabled:opacity-70"
+                    >
+                      {demoSaved ? (
+                        <>
+                          <CheckCircle2
+                            className="h-3.5 w-3.5 text-[var(--accent-mint)]"
+                            aria-hidden="true"
+                          />
+                          Demo Saved to History
+                        </>
+                      ) : (
+                        <>
+                          <BookmarkPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                          Save Demo to History
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-            <div>
-              <input
-                ref={reattachInputRef}
-                type="file"
-                accept=".wav,.flac,.mp3,.aiff,.aif,.ogg,.m4a,.aac"
-                className="sr-only"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleAnalyzeFile(file);
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => reattachInputRef.current?.click()}
-                className="bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-primary)] hairline-border squircle-inner cursor-pointer"
-              >
-                Re-attach Local Audio
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <main className={`flex-1 px-4 sm:px-6 ${report ? "pb-28 sm:pb-16" : "pb-10"}`}>
-        {!report ? (
-          <div key="upload-stage">
-            <UploadStage
-              genre={genre}
-              onGenreChange={setGenre}
-              stage={stage}
-              onStageChange={setStage}
-              artistVision={artistVision}
-              onToggleVision={handleToggleVision}
-              isAnalyzing={isAnalyzing}
-              activeStepIndex={activeStepIndex}
-              uploadProgress={uploadProgress}
-              onCancelUpload={handleCancelUpload}
-              errorMessage={uploadError}
-              healthStatus={healthStatus}
-              onRetryHealth={() => void refreshHealth()}
-              onAnalyzeFile={handleAnalyzeFile}
-              onLoadDemo={handleLoadDemo}
-              savedAnalyses={savedAnalyses}
-              onLoadSavedReport={(savedRep) => {
-                const rec = savedAnalyses.find(
-                  (s) => s.report_json.report_id === savedRep.report_id
-                );
-                void hydrateSessionReport(savedRep, {
-                  fromLiveBackend: false,
-                  savedRecord: rec ?? null,
-                });
-              }}
-              onOpenHistory={() => setHistoryOpen(true)}
-            />
-          </div>
-        ) : subTab === "diagnosis" ? (
-          mode === "simple" ? (
-            <div key="simple-view">
-              <SimpleView
-                report={report}
-                isPlaying={audioState.isPlaying}
-                hasAudio={audioState.hasPrimary}
-                activeFindingId={activeFindingId}
-                activeCorrectiveEqId={audioState.activeCorrectiveEqId}
-                completedRepairSteps={completedRepairSteps}
-                onToggleRepairStep={handleToggleRepairStep}
-                onTogglePlay={() => void studioAudioEngine.togglePlay()}
-                onAuditionFinding={(f) => void handleAuditionFinding(f)}
-                onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
-                onRecheckFinding={handleRecheckFinding}
-                onFixInDaw={handleFixInDaw}
-                onToggleCorrectiveEq={(eq: CorrectiveEqConfig) =>
-                  studioAudioEngine.setCorrectiveEq(eq)
-                }
-                onOpenAdvanced={() => setMode("advanced")}
-                onNewUpload={handleClearSession}
-              />
-            </div>
-          ) : (
-            <div key="advanced-workbench">
-              <AdvancedWorkbench
-                report={report}
-                hasAudio={audioState.hasPrimary}
-                activeFindingId={activeFindingId}
-                activeCorrectiveEqId={audioState.activeCorrectiveEqId}
-                completedRepairSteps={completedRepairSteps}
-                onToggleRepairStep={handleToggleRepairStep}
-                loopEnabled={audioState.loopEnabled}
-                loopStartSec={audioState.loopStartSec}
-                loopEndSec={audioState.loopEndSec}
-                onSeek={(sec) => void studioAudioEngine.seek(sec)}
-                onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
-                onAuditionFinding={(f) => void handleAuditionFinding(f)}
-                onRecheckFinding={handleRecheckFinding}
-                onFixInDaw={handleFixInDaw}
-                onToggleCorrectiveEq={(eq: CorrectiveEqConfig) =>
-                  studioAudioEngine.setCorrectiveEq(eq)
-                }
-              />
-            </div>
-          )
-        ) : subTab === "reference" ? (
-          <div key="reference-ab">
-            <ReferenceABView
-              report={report}
-              referenceMeta={referenceMeta}
-              activeSource={audioState.activeSource}
-              matchLoudness={audioState.matchLoudness}
-              loudnessOffsetDb={audioState.loudnessOffsetDb}
-              isUploadingRef={isUploadingRef}
-              onUploadReference={(f) => void handleUploadReference(f)}
-              onLoadDemoReference={() => void handleLoadDemoReference()}
-              onChangeSource={(slot: AudioSourceSlot) =>
-                void studioAudioEngine.setActiveSource(slot)
-              }
-              onToggleMatchLoudness={(val) => studioAudioEngine.setMatchLoudness(val)}
-              onAuditionWindow={(start, end) => void handleAuditionWindow(start, end)}
-            />
-          </div>
-        ) : subTab === "stems" ? (
-          <div key="stems-view">
-            <StemsInspector
-              report={report}
-              isUploading={isUploadingStems}
-              errorMessage={stemError}
-              onUploadStems={(files) => void handleUploadStems(files)}
-              onLoadDemoStems={() => void handleLoadDemoStems()}
-              onSaveDawContext={(ctx) => void handleSaveDawContext(ctx)}
-            />
-          </div>
-        ) : (
-          <div key="revision-view">
-            <RevisionInspector
-              report={report}
-              activeSource={audioState.activeSource}
-              matchLoudness={audioState.matchLoudness}
-              loudnessOffsetDb={audioState.loudnessOffsetDb}
-              hasBaselineAudio={audioState.hasPrimary}
-              hasRevisedAudio={audioState.hasRevised}
-              isUploading={isUploadingRevision || isComparingSaved}
-              errorMessage={revisionError}
-              onUploadRevision={(f) => void handleUploadRevision(f)}
-              onLoadDemoRevision={() => void handleLoadDemoRevision()}
-              onToggleMatchLoudness={(val) => studioAudioEngine.setMatchLoudness(val)}
-              savedAnalyses={savedAnalyses}
-              onCompareWithSavedBaseline={(baseline) =>
-                void handleCompareWithSavedBaseline(baseline)
-              }
-              onAuditionBaseline={() => {
-                void studioAudioEngine.setActiveSource("primary").then(() =>
-                  studioAudioEngine.play()
-                );
-              }}
-              onAuditionRevised={() => {
-                void studioAudioEngine.setActiveSource("revised").then(() =>
-                  studioAudioEngine.play()
-                );
-              }}
-            />
-          </div>
-        )}
-      </main>
-
-      {report && (
-        <>
+          </>
+        ) : null
+      }
+      transportDock={
+        report ? (
           <BottomTransportDock
             durationSec={report.audio_metadata.duration_sec}
             isPlaying={audioState.isPlaying}
@@ -1797,90 +1743,325 @@ export function StudioWorkbench() {
             }
             onToggleMatchLoudness={(val: boolean) => studioAudioEngine.setMatchLoudness(val)}
           />
+        ) : null
+      }
+      footer={
+        <footer className="no-print border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)] py-4 text-[11px] text-[var(--text-muted)]">
+          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 sm:px-5">
+            <span>
+              Mixit Studio · Deterministic DSP Truth · Zero-Audio-by-Default · 60-min ephemeral processing
+            </span>
+            <nav aria-label="Legal and diagnostics links" className="flex items-center gap-4">
+              <Link href="/status" className="font-semibold text-[var(--studio-mint)] hover:underline">
+                System Status
+              </Link>
+              <Link
+                href="/privacy"
+                className="font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              >
+                Privacy Policy
+              </Link>
+              <Link
+                href="/terms"
+                className="font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              >
+                Terms of Use
+              </Link>
+              <Link
+                href="/cookies"
+                className="font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              >
+                Cookie Policy
+              </Link>
+            </nav>
+          </div>
+        </footer>
+      }
+      overlays={
+        <>
+          {report && (
+            <MentorDrawer
+              open={mentorOpen}
+              onClose={() => setMentorOpen(false)}
+              report={report}
+              mentorAdvice={mentorAdvice}
+              isAskingMentor={isAskingMentor}
+              mentorError={mentorError}
+              onDismissMentorError={() => setMentorError(null)}
+              privacyPrefs={privacyPrefs}
+              onPrivacyPrefsChange={handlePrivacyPrefsChange}
+              privacySaveState={privacySaveState}
+              isSignedIn={Boolean(supabaseUser)}
+              onAskMentor={handleAskMentor}
+              onSaveDawContext={(ctx) => void handleSaveDawContext(ctx)}
+              onJumpToEvidence={handleJumpEvidence}
+            />
+          )}
 
-          <MentorDrawer
-            open={mentorOpen}
-            onClose={() => setMentorOpen(false)}
-            report={report}
-            mentorAdvice={mentorAdvice}
-            isAskingMentor={isAskingMentor}
-            mentorError={mentorError}
-            onDismissMentorError={() => setMentorError(null)}
-            privacyPrefs={privacyPrefs}
-            onPrivacyPrefsChange={handlePrivacyPrefsChange}
-            privacySaveState={privacySaveState}
-            isSignedIn={Boolean(supabaseUser)}
-            onAskMentor={handleAskMentor}
-            onSaveDawContext={(ctx) => void handleSaveDawContext(ctx)}
-            onJumpToEvidence={handleJumpEvidence}
+          <AddAudioModal
+            open={addAudioOpen}
+            onClose={() => setAddAudioOpen(false)}
+            genre={genre}
+            onGenreChange={setGenre}
+            stage={stage}
+            onStageChange={setStage}
+            isAnalyzing={isAnalyzing}
+            onAnalyzeFile={handleAnalyzeFile}
+            onLoadDemo={handleLoadDemo}
+          />
+
+          <AuthModal
+            open={authOpen}
+            onOpenChange={setAuthOpen}
+            initialError={authInitialError}
+            promptReason={authPromptReason}
+          />
+          <SavedMixHistoryDrawer
+            open={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            analyses={savedAnalyses}
+            hasMore={hasMoreHistory}
+            isLoading={isLoadingHistory}
+            activeReport={report}
+            isComparingSaved={isComparingSaved}
+            onRefresh={() => {
+              if (supabaseUser) void loadUserCloudData(supabaseUser);
+            }}
+            onLoadMore={() => void handleLoadMoreHistory()}
+            onLoadReport={(record) =>
+              void hydrateSessionReport(record.report_json, {
+                fromLiveBackend: false,
+                savedRecord: record,
+              })
+            }
+            onCompareAgainstActive={(baseline) => void handleCompareWithSavedBaseline(baseline)}
+            onDeleteAnalysis={(id, proxyPath) => void handleDeleteSavedAnalysis(id, proxyPath)}
+            onPurgeAccountData={supabaseUser ? handlePurgeAccountData : undefined}
+            onOpenAddAudio={() => setAddAudioOpen(true)}
+          />
+          <KeyboardShortcutsModal
+            open={shortcutsOpen}
+            onOpenChange={setShortcutsOpen}
+            context="studio"
           />
         </>
+      }
+    >
+      {report && missingArchivedAudio && (
+        <div
+          data-testid="missing-archived-audio-banner"
+          className="no-print mx-auto mt-3 w-full max-w-[1440px] px-4 sm:px-5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--accent-amber-soft)] px-4 py-2.5 text-xs text-[var(--accent-amber)] border border-[var(--accent-amber)]/30 squircle-inner">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                Archived session telemetry loaded. No local or cloud audio proxy was saved for this
+                legacy report — re-attach your local WAV/MP3 to enable waveform auditioning.
+              </span>
+            </div>
+            <div>
+              <input
+                ref={reattachInputRef}
+                type="file"
+                accept=".wav,.flac,.mp3,.aiff,.aif,.ogg,.m4a,.aac"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleAnalyzeFile(file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => reattachInputRef.current?.click()}
+                className="bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-primary)] hairline-border squircle-inner cursor-pointer"
+              >
+                Re-attach Local Audio
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
-      <footer className="no-print border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)] py-4 text-[11px] text-[var(--text-muted)]">
-        <div className="mx-auto flex max-w-[1380px] flex-wrap items-center justify-between gap-3 px-4 sm:px-6">
-          <span>
-            Mixit Studio · Deterministic DSP Truth · Zero-Audio-by-Default · 60-min ephemeral processing
-          </span>
-          <nav aria-label="Legal and diagnostics links" className="flex items-center gap-4">
-            <Link href="/status" className="font-semibold text-[var(--studio-mint)] hover:underline">
-              System Status
-            </Link>
-            <Link
-              href="/privacy"
-              className="font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+      <main className="flex-1 px-4 pb-8 sm:px-5">
+        <AnimatePresence mode="wait" initial={false}>
+          {!report ? (
+            <motion.div
+              key="upload-stage"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.16, ease: STUDIO_EASE }}
             >
-              Privacy Policy
-            </Link>
-            <Link
-              href="/terms"
-              className="font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              <UploadStage
+                genre={genre}
+                onGenreChange={setGenre}
+                stage={stage}
+                onStageChange={setStage}
+                artistVision={artistVision}
+                onToggleVision={handleToggleVision}
+                isAnalyzing={isAnalyzing}
+                activeStepIndex={activeStepIndex}
+                uploadProgress={uploadProgress}
+                onCancelUpload={handleCancelUpload}
+                errorMessage={uploadError}
+                healthStatus={healthStatus}
+                onRetryHealth={() => void refreshHealth()}
+                onAnalyzeFile={handleAnalyzeFile}
+                onLoadDemo={handleLoadDemo}
+                savedAnalyses={savedAnalyses}
+                onLoadSavedReport={(savedRep) => {
+                  const rec = savedAnalyses.find(
+                    (s) => s.report_json.report_id === savedRep.report_id
+                  );
+                  void hydrateSessionReport(savedRep, {
+                    fromLiveBackend: false,
+                    savedRecord: rec ?? null,
+                  });
+                }}
+                onOpenHistory={() => setHistoryOpen(true)}
+              />
+            </motion.div>
+          ) : subTab === "diagnosis" ? (
+            mode === "simple" ? (
+              <motion.div
+                key="simple-view"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: STUDIO_EASE }}
+              >
+                <SimpleView
+                  report={report}
+                  isPlaying={audioState.isPlaying}
+                  hasAudio={audioState.hasPrimary}
+                  isPrecisionUpgradeActive={isUpgradingPrecision}
+                  activeFindingId={activeFindingId}
+                  activeCorrectiveEqId={audioState.activeCorrectiveEqId}
+                  completedRepairSteps={completedRepairSteps}
+                  onToggleRepairStep={handleToggleRepairStep}
+                  onTogglePlay={() => void studioAudioEngine.togglePlay()}
+                  onAuditionFinding={(f) => void handleAuditionFinding(f)}
+                  onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
+                  onRecheckFinding={handleRecheckFinding}
+                  onFixInDaw={handleFixInDaw}
+                  onToggleCorrectiveEq={(eq: CorrectiveEqConfig) =>
+                    studioAudioEngine.setCorrectiveEq(eq)
+                  }
+                  onOpenAdvanced={() => setMode("advanced")}
+                  onNewUpload={() => setAddAudioOpen(true)}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="advanced-workbench"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: STUDIO_EASE }}
+              >
+                <AdvancedWorkbench
+                  report={report}
+                  hasAudio={audioState.hasPrimary}
+                  isPrecisionUpgradeActive={isUpgradingPrecision}
+                  activeFindingId={activeFindingId}
+                  activeCorrectiveEqId={audioState.activeCorrectiveEqId}
+                  completedRepairSteps={completedRepairSteps}
+                  onToggleRepairStep={handleToggleRepairStep}
+                  loopEnabled={audioState.loopEnabled}
+                  loopStartSec={audioState.loopStartSec}
+                  loopEndSec={audioState.loopEndSec}
+                  onSeek={(sec) => void studioAudioEngine.seek(sec)}
+                  onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
+                  onAuditionFinding={(f) => void handleAuditionFinding(f)}
+                  onRecheckFinding={handleRecheckFinding}
+                  onFixInDaw={handleFixInDaw}
+                  onToggleCorrectiveEq={(eq: CorrectiveEqConfig) =>
+                    studioAudioEngine.setCorrectiveEq(eq)
+                  }
+                />
+              </motion.div>
+            )
+          ) : subTab === "reference" ? (
+            <motion.div
+              key="reference-ab"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.16, ease: STUDIO_EASE }}
             >
-              Terms of Use
-            </Link>
-            <Link
-              href="/cookies"
-              className="font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              <ReferenceABView
+                report={report}
+                referenceMeta={referenceMeta}
+                activeSource={audioState.activeSource}
+                matchLoudness={audioState.matchLoudness}
+                loudnessOffsetDb={audioState.loudnessOffsetDb}
+                isUploadingRef={isUploadingRef}
+                onUploadReference={(f) => void handleUploadReference(f)}
+                onLoadDemoReference={() => void handleLoadDemoReference()}
+                onChangeSource={(slot: AudioSourceSlot) =>
+                  void studioAudioEngine.setActiveSource(slot)
+                }
+                onToggleMatchLoudness={(val) => studioAudioEngine.setMatchLoudness(val)}
+                onAuditionWindow={(start, end) => void handleAuditionWindow(start, end)}
+              />
+            </motion.div>
+          ) : subTab === "stems" ? (
+            <motion.div
+              key="stems-view"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.16, ease: STUDIO_EASE }}
             >
-              Cookie Policy
-            </Link>
-          </nav>
-        </div>
-      </footer>
-
-      <AuthModal
-        open={authOpen}
-        onOpenChange={setAuthOpen}
-        initialError={authInitialError}
-        promptReason={authPromptReason}
-      />
-      <SavedMixHistoryDrawer
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        analyses={savedAnalyses}
-        hasMore={hasMoreHistory}
-        isLoading={isLoadingHistory}
-        activeReport={report}
-        isComparingSaved={isComparingSaved}
-        onRefresh={() => {
-          if (supabaseUser) void loadUserCloudData(supabaseUser);
-        }}
-        onLoadMore={() => void handleLoadMoreHistory()}
-        onLoadReport={(record) =>
-          void hydrateSessionReport(record.report_json, {
-            fromLiveBackend: false,
-            savedRecord: record,
-          })
-        }
-        onCompareAgainstActive={(baseline) => void handleCompareWithSavedBaseline(baseline)}
-        onDeleteAnalysis={(id, proxyPath) => void handleDeleteSavedAnalysis(id, proxyPath)}
-        onPurgeAccountData={supabaseUser ? handlePurgeAccountData : undefined}
-      />
-      <KeyboardShortcutsModal
-        open={shortcutsOpen}
-        onOpenChange={setShortcutsOpen}
-        context="studio"
-      />
-    </div>
+              <StemsInspector
+                report={report}
+                isUploading={isUploadingStems}
+                errorMessage={stemError}
+                onUploadStems={(files) => void handleUploadStems(files)}
+                onLoadDemoStems={() => void handleLoadDemoStems()}
+                onSaveDawContext={(ctx) => void handleSaveDawContext(ctx)}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="revision-view"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.16, ease: STUDIO_EASE }}
+            >
+              <RevisionInspector
+                report={report}
+                activeSource={audioState.activeSource}
+                matchLoudness={audioState.matchLoudness}
+                loudnessOffsetDb={audioState.loudnessOffsetDb}
+                hasBaselineAudio={audioState.hasPrimary}
+                hasRevisedAudio={audioState.hasRevised}
+                isUploading={isUploadingRevision || isComparingSaved}
+                errorMessage={revisionError}
+                onUploadRevision={(f) => void handleUploadRevision(f)}
+                onLoadDemoRevision={() => void handleLoadDemoRevision()}
+                onToggleMatchLoudness={(val) => studioAudioEngine.setMatchLoudness(val)}
+                savedAnalyses={savedAnalyses}
+                onCompareWithSavedBaseline={(baseline) =>
+                  void handleCompareWithSavedBaseline(baseline)
+                }
+                onAuditionBaseline={() => {
+                  void studioAudioEngine.setActiveSource("primary").then(() =>
+                    studioAudioEngine.play()
+                  );
+                }}
+                onAuditionRevised={() => {
+                  void studioAudioEngine.setActiveSource("revised").then(() =>
+                    studioAudioEngine.play()
+                  );
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+    </StudioShell>
   );
 }

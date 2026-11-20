@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Radio } from "lucide-react";
 import type { CorrectiveEqConfig } from "@/audio/StudioAudioEngine";
 import { FindingCard } from "@/components/FindingCard";
 import { DiagnosticCharts } from "@/components/advanced/DiagnosticCharts";
+import { AnimatedMetricValue } from "@/components/motion/AnimatedMetricValue";
 import { FlawTimelineBar } from "@/components/studio/FlawTimelineBar";
 import { LiveSpectralGraph } from "@/components/studio/LiveSpectralGraph";
 import type { AnalysisReport, Finding } from "@/types/report";
@@ -12,6 +13,7 @@ import type { AnalysisReport, Finding } from "@/types/report";
 interface AdvancedWorkbenchProps {
   report: AnalysisReport;
   hasAudio?: boolean;
+  isPrecisionUpgradeActive?: boolean;
   activeFindingId: string | null;
   activeCorrectiveEqId?: string | null;
   completedRepairSteps?: Record<string, boolean>;
@@ -30,6 +32,7 @@ interface AdvancedWorkbenchProps {
 export function AdvancedWorkbench({
   report,
   hasAudio = true,
+  isPrecisionUpgradeActive = false,
   activeFindingId,
   activeCorrectiveEqId = null,
   completedRepairSteps = {},
@@ -44,7 +47,8 @@ export function AdvancedWorkbench({
   const m = report.global_metrics;
   const plr = m.plr_db ?? Math.max(0, m.true_peak_dbtp - m.integrated_lufs);
   const subCorr = m.low_end_phase_correlation;
-  const isLocalPreview = report.analysis_source === "local_web_audio_preview";
+  const showUpgradingBanner =
+    report.analysis_source === "local_web_audio_preview" && isPrecisionUpgradeActive;
   const spotifyEst = report.streaming_estimates.find((s) =>
     s.platform.toLowerCase().includes("spotify")
   );
@@ -54,11 +58,11 @@ export function AdvancedWorkbench({
 
   return (
     <div className="mx-auto max-w-[1380px] py-4 space-y-4">
-      {isLocalPreview && (
+      {showUpgradingBanner && (
         <div
           role="status"
           data-testid="local-web-audio-banner"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--studio-amber)]/40 bg-[var(--studio-amber-soft)] px-4 py-3 text-xs text-[var(--studio-amber)]"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-[6px] border border-[var(--studio-amber)]/40 bg-[var(--studio-amber-soft)] px-4 py-3 text-xs text-[var(--studio-amber)]"
         >
           <div className="flex items-center gap-2 font-semibold">
             <Radio className="h-4 w-4 animate-pulse shrink-0" />
@@ -70,12 +74,12 @@ export function AdvancedWorkbench({
         </div>
       )}
 
-      {/* Five Core Deterministic Telemetry Cards */}
+      {/* Five Core Deterministic Telemetry Cards with Smooth Animated Counters */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
           <div className="text-[11px] font-medium text-[var(--text-secondary)]">Integrated LUFS</div>
           <div className="mt-1 whitespace-nowrap text-xl font-semibold text-[var(--text-primary)] tabular-telemetry">
-            {m.integrated_lufs.toFixed(1)}{" "}
+            <AnimatedMetricValue value={m.integrated_lufs} decimals={1} />{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">LUFS</span>
           </div>
           <div className="mt-1 truncate text-[11px] text-[var(--text-secondary)] tabular-telemetry">
@@ -94,8 +98,7 @@ export function AdvancedWorkbench({
                   : "text-[var(--studio-mint)]"
             }`}
           >
-            {m.true_peak_dbtp >= 0 ? "+" : ""}
-            {m.true_peak_dbtp.toFixed(2)}{" "}
+            <AnimatedMetricValue value={m.true_peak_dbtp} decimals={2} signed />{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">dBTP</span>
           </div>
           <div className="mt-1 truncate text-[11px] text-[var(--text-secondary)] tabular-telemetry">
@@ -107,9 +110,10 @@ export function AdvancedWorkbench({
         <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
           <div className="text-[11px] font-medium text-[var(--text-secondary)]">PLR / LRA</div>
           <div className="mt-1 whitespace-nowrap text-xl font-semibold text-[var(--text-primary)] tabular-telemetry">
-            {plr.toFixed(1)} <span className="text-xs font-normal text-[var(--text-muted)]">dB</span>
+            <AnimatedMetricValue value={plr} decimals={1} />{" "}
+            <span className="text-xs font-normal text-[var(--text-muted)]">dB</span>
             <span className="mx-1 text-[var(--text-muted)]">/</span>
-            {m.loudness_range_lu.toFixed(1)}{" "}
+            <AnimatedMetricValue value={m.loudness_range_lu} decimals={1} />{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">LU</span>
           </div>
           <div
@@ -138,8 +142,7 @@ export function AdvancedWorkbench({
                   : "text-[var(--studio-mint)]"
             }`}
           >
-            {m.phase_correlation_avg >= 0 ? "+" : ""}
-            {m.phase_correlation_avg.toFixed(2)}
+            <AnimatedMetricValue value={m.phase_correlation_avg} decimals={2} signed />
             {typeof subCorr === "number" && (
               <span
                 className={`ml-1.5 text-xs font-medium ${
@@ -164,7 +167,11 @@ export function AdvancedWorkbench({
           }
         >
           <div className="flex items-center justify-between gap-1 text-[11px] font-medium text-[var(--text-secondary)]">
-            <span className="truncate">Spotify -14 LUFS Est.</span>
+            <span className="truncate">
+              {typeof report.audio_metadata.bpm === "number" && report.audio_metadata.bpm > 0
+                ? "Tempo / Spotify Est."
+                : "Spotify -14 LUFS Est."}
+            </span>
             {spotifyWarning ? (
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--studio-amber)]" aria-hidden="true" />
             ) : (
@@ -176,9 +183,13 @@ export function AdvancedWorkbench({
               spotifyWarning ? "text-[var(--studio-amber)]" : "text-[var(--text-primary)]"
             }`}
           >
-            {spotifyGain >= 0 ? "+" : ""}
-            {spotifyGain.toFixed(1)}{" "}
+            <AnimatedMetricValue value={spotifyGain} decimals={1} signed />{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">dB</span>
+            {typeof report.audio_metadata.bpm === "number" && report.audio_metadata.bpm > 0 && (
+              <span className="ml-2 text-xs font-medium text-[var(--studio-yellow)]">
+                · <AnimatedMetricValue value={Math.round(report.audio_metadata.bpm)} decimals={0} /> BPM
+              </span>
+            )}
           </div>
           <div className="mt-1 line-clamp-1 text-[11px] text-[var(--text-secondary)]">
             {spotifyWarning
