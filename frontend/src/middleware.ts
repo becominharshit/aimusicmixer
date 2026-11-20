@@ -1,17 +1,25 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const PROTECTED_PREFIXES = ["/studio", "/daw", "/profile"];
+
+function isProtectedPath(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (!pathname.startsWith("/studio")) {
+  if (!isProtectedPath(pathname)) {
     return NextResponse.next();
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 
-  // Strictly enforce auth gate on /studio even when Supabase env vars are unset
+  // Strictly enforce auth gate on /studio, /daw, and /profile even when Supabase env vars are unset
   if (!supabaseUrl || !supabaseAnonKey) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/";
@@ -65,5 +73,12 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/studio", "/studio/:path*"],
+  matcher: [
+    "/studio",
+    "/studio/:path*",
+    "/daw",
+    "/daw/:path*",
+    "/profile",
+    "/profile/:path*",
+  ],
 };

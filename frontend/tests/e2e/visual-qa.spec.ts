@@ -62,16 +62,16 @@ async function assertNoTextClipping(locator: Locator, label: string) {
 }
 
 test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
-  test("auth gate + explicit Sign-Up consent: /studio redirects to /?signin=1 and requires consent checkbox on sign-up", async ({
+  test("auth gate + explicit Sign-Up consent: /studio, /daw, and /profile redirect to /?signin=1", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/studio");
-
-    // Middleware redirects unauthenticated /studio requests straight to /
-    await expect(page).toHaveURL(/\/(\?signin=1)?$/);
-    await expect(page.getByTestId("landing-hero")).toBeVisible();
-    await expect(page.getByTestId("auth-modal")).toBeVisible({ timeout: 10_000 });
+    for (const protectedRoute of ["/daw", "/profile", "/studio"]) {
+      await page.goto(protectedRoute);
+      await expect(page).toHaveURL(/\/(\?signin=1)?$/);
+      await expect(page.getByTestId("landing-hero")).toBeVisible();
+      await expect(page.getByTestId("auth-modal")).toBeVisible({ timeout: 10_000 });
+    }
     await expect(
       page.getByText(/Sign in to launch Mixit Studio and save your mix diagnostics/i)
     ).toBeVisible();
@@ -230,6 +230,9 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
       pageErrors.push(err.message);
     });
 
+    // Reset stateful mock Supabase store so test starts with empty History
+    await page.request.post("http://127.0.0.1:54321/test/reset").catch(() => {});
+
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/studio");
 
@@ -331,15 +334,27 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     );
     await saveShot(page, "07-studio-advanced-1440.png", false);
 
-    // AI Mix Mentor Drawer privacy defaults
-    await page.getByRole("button", { name: /AI Mix Mentor/i }).click();
+    // AI Suggestions Drawer privacy defaults (zero "Gemini 4 Hydrogen" strings)
+    await page.getByRole("button", { name: /AI Suggestions/i }).click();
     await expect(
       page.getByRole("switch", { name: /Toggle A Metrics-Only AI Mentor/i })
     ).toHaveAttribute("aria-checked", "false");
     await expect(
       page.getByRole("switch", { name: /Toggle B Direct Audio Listening Opt-In/i })
     ).toBeDisabled();
-    await page.getByRole("button", { name: /Close AI Mix Mentor/i }).click();
+    await page.getByRole("button", { name: /Close AI Suggestions/i }).click();
+
+    // Tick first DAW Repair Checklist checkbox and verify History badge updated live (>= 1)
+    await page.getByRole("button", { name: "Simple Mix Check", exact: true }).click();
+    const firstCheckbox = page.getByRole("checkbox").first();
+    await expect(firstCheckbox).toBeVisible();
+    await firstCheckbox.click();
+    await expect(firstCheckbox).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("button", { name: /Open saved mix history \(1 saved\)/i })).toBeVisible({
+      timeout: 10_000,
+    });
+    // Wait for debounced checklist sync (350ms)
+    await page.waitForTimeout(500);
 
     // Check 1024px single-row header invariant too
     await page.setViewportSize({ width: 1024, height: 900 });
@@ -364,8 +379,82 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     expect(mobileOverflow).toBeLessThanOrEqual(4);
     await saveShot(page, "08-studio-mobile-390.png", false);
 
-    // Sign Out immediately returns to Landing Page /
+    // Navigate to /daw (Web DAW): verify 16-plugin browser, Load Sample Track, Device Rack, Mixer toggle
     await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("header-web-daw-link").click();
+    await expect(page).toHaveURL(/\/daw$/, { timeout: 15_000 });
+    await expect(page.getByTestId("web-daw-view")).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: /Load Sample Mix Track/i }).click();
+    await expect(page.getByText(/demo-flawed-v1\.wav/i).first()).toBeVisible({ timeout: 15_000 });
+
+    // Add first plugin from browser to Bottom Device Rack
+    await page.getByTestId("daw-plugin-browser").getByRole("button", { name: /EQ/i }).first().click();
+    await expect(page.getByTestId("daw-device-rack")).toBeVisible();
+    await page.waitForTimeout(250);
+    await saveShot(page, "09-daw-arrangement-1440.png", false);
+
+    // Switch to Mixer view and verify zero horizontal overflow
+    await page.getByRole("tab", { name: /Mixer Strips/i }).click();
+    await page.waitForTimeout(250);
+    await saveShot(page, "10-daw-mixer-1440.png", false);
+    const dawOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    );
+    expect(dawOverflow).toBeLessThanOrEqual(4);
+
+    // Mobile 390x844 DAW check
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(250);
+    const dawMobileOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    );
+    expect(dawMobileOverflow).toBeLessThanOrEqual(4);
+    await saveShot(page, "11-daw-mobile-390.png", false);
+
+    // Navigate to /profile via header link AND verify hard reload passes middleware auth gate
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.locator('a[href="/profile"]').first().click();
+    await expect(page).toHaveURL(/\/profile$/, { timeout: 15_000 });
+    await expect(page.getByTestId("profile-page")).toBeVisible({ timeout: 15_000 });
+    await page.reload();
+    await expect(page.getByTestId("profile-page")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("stat-mixes-analyzed")).toHaveText("1");
+    await expect(page.getByTestId("stat-fixes-completed")).toHaveText("1");
+    await page.fill("#profile-display-name", "Harshit Mastering");
+    await page.selectOption("#profile-preferred-daw", "Ableton Live");
+    await page.getByTestId("save-profile-preferences-btn").click();
+    await expect(page.getByTestId("profile-save-status")).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(250);
+    await saveShot(page, "12-profile-1440.png", false);
+
+    // Mobile 390x844 profile check
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(200);
+    const profileMobileOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    );
+    expect(profileMobileOverflow).toBeLessThanOrEqual(4);
+    await saveShot(page, "13-profile-mobile-390.png", false);
+
+    // Sign Out from /profile -> returns to Landing Page /
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name: /^Sign out$/i }).first().click();
+    await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
+    await expect(page.getByTestId("landing-hero")).toBeVisible();
+
+    // Sign back in -> /studio MUST auto-restore last analyzed mix AND its checked DAW repair box!
+    await page.goto(new URL("/studio", page.url()).toString());
+    await expect(page.getByTestId("auth-modal")).toBeVisible({ timeout: 10_000 });
+    await page.fill("#auth-email", "engineer@mixit.studio");
+    await page.fill("#auth-password", "studio-pass-123");
+    await page.getByRole("button", { name: /Sign In with Email/i }).click();
+    await expect(page).toHaveURL(/\/studio/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: /demo-flawed-v1\.wav/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("checkbox").first()).toHaveAttribute("aria-checked", "true");
+
+    // Sign Out cleanly at end
     await page.getByRole("button", { name: /Sign out/i }).click();
     await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
     await expect(page.getByTestId("landing-hero")).toBeVisible();

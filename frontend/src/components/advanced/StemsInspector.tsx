@@ -138,7 +138,7 @@ export function StemsInspector({
             className="mt-3 space-y-2.5 border-t border-[var(--border-hairline)] pt-3"
           >
             <p className="text-[11px] text-[var(--text-secondary)]">
-              Self-reported routing notes help the opt-in AI Mentor tailor workflow experiments. Separated strictly from measured DSP evidence and never treated as audio proof.
+              Self-reported routing notes help opt-in AI Suggestions tailor DAW moves. Separated strictly from measured DSP evidence and never treated as audio proof.
             </p>
             <div className="grid gap-2 sm:grid-cols-3">
               <input

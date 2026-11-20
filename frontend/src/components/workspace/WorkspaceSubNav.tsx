@@ -130,7 +130,7 @@ export function WorkspaceSubNav({
           className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-[#0A0A0A] bg-[#FFE01B] px-3.5 py-1.5 text-xs font-extrabold uppercase tracking-[0.04em] text-[#0A0A0A] transition-colors hover:bg-[#FF3B1F] hover:text-[#0A0A0A] cursor-pointer"
         >
           <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span>AI Mix Mentor</span>
+          <span>AI Suggestions</span>
           <span className="shrink-0 bg-[#0A0A0A] px-2 py-0.5 text-[10px] font-bold text-[#FFE01B]">
             {mentorBadge}
           </span>

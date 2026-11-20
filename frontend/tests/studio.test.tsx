@@ -21,7 +21,13 @@ import { CookieConsentBanner } from "@/components/compliance/CookieConsentBanner
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
 import { askMentor } from "@/lib/api";
 import { analyzePcmChannelsLocal } from "@/lib/clientWebAudioDsp";
+import {
+  consumePendingDawMixdown,
+  hasPendingDawMixdown,
+  setPendingDawMixdown,
+} from "@/lib/pendingDawMixdown";
 import { buildDawRepairSteps } from "@/lib/repairChecklist";
+import { PLUGIN_LIST } from "@/daw";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { computeTransientPunchDb } from "@/server/dsp/dynamics";
 import { computeStereoMetrics } from "@/server/dsp/stereo";
@@ -114,11 +120,16 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(screen.getByRole("heading", { name: "track_v1.wav" })).toBeInTheDocument();
     expect(screen.getByText("ev_low_buildup_01")).toBeInTheDocument();
     expect(screen.getByText("Low-End Buildup Around 60–250 Hz")).toBeInTheDocument();
-    expect(screen.getByText(/What happened:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Why it matters:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Listen:/i)).toBeInTheDocument();
-    expect(screen.getByText(/What to try:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Recheck:/i)).toBeInTheDocument();
+    // Crisp 3-part FindingCard layout: 1-line impact + controls + compact 3-step DAW Repair Checklist (DSP Method collapsed by default)
+    expect(screen.getByText(/Low energy rises \+3\.4 dB in the drop/i)).toBeInTheDocument();
+    expect(screen.getByText(/DAW Repair Checklist/i)).toBeInTheDocument();
+    expect(screen.getByText(/Jump to 00:04 and check Laptop preview/i)).toBeInTheDocument();
+    expect(screen.getByText(/Try a 1\.5 dB cut around 140 Hz/i)).toBeInTheDocument();
+    expect(screen.getByText(/Verify 60–250 Hz moves within/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^DSP Method$/i })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
     expect(screen.getByText(/Platform Loudness Normalization Preview/i)).toBeInTheDocument();
     expect(screen.queryByText(/\/100/)).not.toBeInTheDocument();
   });
@@ -160,7 +171,7 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(toggleB).toBeDisabled();
     expect(toggleC).toHaveAttribute("aria-checked", "false");
 
-    fireEvent.click(screen.getByRole("button", { name: /Run Offline Deterministic Mentor/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Get Offline AI Suggestions/i }));
     expect(onAskMentor).toHaveBeenCalledWith({
       allow_metrics_ai: false,
       allow_audio_ai: false,
@@ -521,13 +532,13 @@ describe("MixBench UI & Privacy Contracts", () => {
       </MotionConfig>
     );
 
-    const submitBtn = screen.getByRole("button", { name: /Run Offline Deterministic Mentor/i });
+    const submitBtn = screen.getByRole("button", { name: /Get Offline AI Suggestions/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
       expect(screen.getByTestId("mentor-error-notice")).toHaveTextContent(/timed out after 28 seconds/i);
     });
-    expect(screen.queryByText(/Generating Coaching\.\.\./i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Generating Suggestions\.\.\./i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Run Offline Fallback Now/i }));
     await waitFor(() => {
@@ -642,6 +653,12 @@ describe("MixBench UI & Privacy Contracts", () => {
 
     expect(screen.getByTestId("dsp-step-tracker")).toBeInTheDocument();
     expect(screen.getByText(/Deterministic DSP Signal Chain/i)).toBeInTheDocument();
+    expect(screen.getByText("1. Decode")).toBeInTheDocument();
+    expect(screen.getByText("2. Loudness")).toBeInTheDocument();
+    expect(screen.getByText("3. Peaks & Phase")).toBeInTheDocument();
+    expect(screen.getByText("4. Spectrum")).toBeInTheDocument();
+    expect(screen.getByText("5. AI Suggestions")).toBeInTheDocument();
+    expect(screen.queryByText(/Gemini 4 Hydrogen/i)).not.toBeInTheDocument();
     expect(screen.getByText("74%")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Cancel/i }));
     expect(onCancel).toHaveBeenCalledTimes(1);
@@ -790,5 +807,71 @@ describe("MixBench UI & Privacy Contracts", () => {
     fireEvent.click(subBtn);
     expect(subBtn).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText(/20–60 Hz/i)).toBeInTheDocument();
+  });
+
+  it("exposes WEB DAW & Profile nav links, AI Suggestions button, decluttered UploadStage, 16 DAW plugins, and /daw -> /studio WAV handoff", () => {
+    render(
+      <>
+        <StudioHeader
+          mode="simple"
+          onModeChange={vi.fn()}
+          report={null}
+          onClearSession={vi.fn()}
+          healthStatus="online"
+          healthData={{ status: "ok", ffmpeg_available: true, gemini_configured: true }}
+          healthError={null}
+          onRetryHealth={vi.fn()}
+          supabaseConfigured={true}
+          userEmail="producer@mixit.studio"
+          savedCount={3}
+          onOpenHistory={vi.fn()}
+          onSignOut={vi.fn()}
+        />
+        <WorkspaceSubNav
+          activeTab="diagnosis"
+          onChangeTab={vi.fn()}
+          report={mockReport}
+          hasReference={false}
+          onOpenMentor={vi.fn()}
+        />
+        <UploadStage
+          genre="electronic"
+          onGenreChange={vi.fn()}
+          stage="unmastered_mix"
+          onStageChange={vi.fn()}
+          artistVision={[]}
+          onToggleVision={vi.fn()}
+          isAnalyzing={false}
+          activeStepIndex={0}
+          errorMessage={null}
+          healthStatus="online"
+          onRetryHealth={vi.fn()}
+          onAnalyzeFile={vi.fn()}
+          onLoadDemo={vi.fn()}
+        />
+      </>
+    );
+
+    expect(screen.getByTestId("header-web-daw-link")).toHaveAttribute("href", "/daw");
+    expect(screen.getByTestId("header-profile-link")).toHaveAttribute("href", "/profile");
+    expect(screen.getByRole("button", { name: /AI Suggestions/i })).toBeInTheDocument();
+    expect(screen.queryByText(/AI Mix Mentor/i)).not.toBeInTheDocument();
+
+    // UploadStage declutter checks
+    expect(screen.getByText("Target genre profile")).toBeInTheDocument();
+    expect(screen.getByText("-6 to -3 dBTP target")).toBeInTheDocument();
+    expect(screen.queryByText(/loads a 12s 44\.1 kHz stereo track/i)).not.toBeInTheDocument();
+
+    // 16 Web DAW plugins registered cleanly
+    expect(PLUGIN_LIST).toHaveLength(16);
+
+    // /daw -> /studio WAV handoff bridge
+    const wavFile = new File(["RIFF"], "mixdown.wav", { type: "audio/wav" });
+    expect(hasPendingDawMixdown()).toBe(false);
+    setPendingDawMixdown(wavFile);
+    expect(hasPendingDawMixdown()).toBe(true);
+    const consumed = consumePendingDawMixdown();
+    expect(consumed?.name).toBe("mixdown.wav");
+    expect(hasPendingDawMixdown()).toBe(false);
   });
 });

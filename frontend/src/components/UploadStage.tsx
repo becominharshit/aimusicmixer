@@ -191,7 +191,7 @@ export function UploadStage({
             </SelectContent>
           </Select>
           <p className="text-xs text-[var(--text-secondary)]">
-            Contextualizes spectral &amp; loudness envelopes without altering measured DSP figures.
+            Target genre profile
           </p>
         </div>
 
@@ -231,10 +231,10 @@ export function UploadStage({
               );
             })}
           </div>
-          <p className="text-xs text-[var(--text-secondary)]">
+          <p className="text-xs text-[var(--text-secondary)] tabular-telemetry">
             {stage === "unmastered_mix"
-              ? "Checks for -6 to -3 dBTP headroom before mastering."
-              : "Checks streaming normalization & <= -1.0 dBTP ceiling."}
+              ? "-6 to -3 dBTP target"
+              : "-1.0 dBTP master ceiling"}
           </p>
         </div>
 
@@ -346,11 +346,6 @@ export function UploadStage({
                 Try Sample Flawed Mix
               </Button>
             </div>
-            <p className="mt-3 max-w-md text-[11px] text-[var(--text-secondary)]">
-              &ldquo;Try Sample Flawed Mix&rdquo; loads a 12s 44.1 kHz stereo track with hot clipping
-              peaks (~0.0 dBTP), 250 Hz low-mid buildup, and partial sub phase inversion to test A/B
-              &amp; v1 → v2 immediately.
-            </p>
           </motion.div>
         )}
 

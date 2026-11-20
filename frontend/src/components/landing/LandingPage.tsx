@@ -111,9 +111,9 @@ const FEATURE_ROWS: FeatureRow[] = [
   },
   {
     num: "03",
-    title: "PRIVACY-FIRST GEMINI 4 MENTOR",
-    sub: "Zero-Audio Default · Evidence-ID Anchored · DAW Repair Checklist",
-    tag: "OPT-IN AI",
+    title: "PRIVACY-FIRST AI SUGGESTIONS & WEB DAW",
+    sub: "Zero-Audio Default · Evidence-ID Anchored · 16-Module Web DAW",
+    tag: "OPT-IN AI + DAW",
     kind: "mentor",
   },
 ];
@@ -362,7 +362,9 @@ export function LandingPage() {
   const engineStatusLabel =
     healthOnline === false
       ? "ENGINE: BROWSER DSP FALLBACK · READY"
-      : `ENGINE: ${(health?.gemini_model || "GEMINI 4 HYDROGEN").toUpperCase()} · ONLINE`;
+      : health?.status === "ok"
+        ? "ENGINE: DETERMINISTIC DSP + AI · ONLINE"
+        : "ENGINE: DETERMINISTIC DSP · READY";
 
   return (
     <div
@@ -732,7 +734,7 @@ export function LandingPage() {
                     ) : (
                       <div className="flex h-full min-h-[168px] flex-col justify-between p-5 text-[#F4F1EA]">
                         <div className="flex items-center justify-between tabular-telemetry text-[10px] font-bold uppercase text-[#A1A8B8]">
-                          <span>GEMINI 4 HYDROGEN</span>
+                          <span>AI SUGGESTIONS</span>
                           <span className="text-[#FFE01B]">OPT-IN ONLY</span>
                         </div>
                         <div className="space-y-2 py-2 text-xs">

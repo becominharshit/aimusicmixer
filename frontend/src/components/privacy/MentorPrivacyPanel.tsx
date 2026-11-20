@@ -11,10 +11,10 @@ import {
 import type { AnalysisReport, MentorChatTurn, MentorRequest, MentorResponse } from "@/types/report";
 
 const QUICK_DAW_PROMPTS = [
-  "How do I apply these fixes with FL Studio stock plugins?",
+  "Give exact Mixit Web DAW moves (Proportional-Q EQ, VCA Comp, Tape, Master Limiter).",
+  "How do I tighten <120 Hz sub phase in Mixit Stereo Imager without losing punch?",
   "Give me an Ableton Live 12 EQ Eight & Glue Compressor chain.",
-  "How should I clean this up using Logic Pro Channel EQ & Multipressor?",
-  "How do I tighten the <120 Hz sub phase without losing punch?",
+  "How do I apply these fixes with FL Studio or Logic Pro stock plugins?",
 ];
 
 interface MentorPrivacyPanelProps {
@@ -134,9 +134,9 @@ export function MentorPrivacyPanel({
 
   const modeAttribution =
     mentorAdvice?.mode === "gemini_multimodal_audio"
-      ? "Live Gemini 4 Audio + Metrics"
+      ? "Live AI · Audio + Metrics"
       : mentorAdvice?.mode === "gemini_metrics_only"
-        ? "Live Gemini 4 Metrics Only"
+        ? "Live AI · Metrics Only"
         : "Offline Deterministic";
 
   return (
@@ -190,7 +190,7 @@ export function MentorPrivacyPanel({
                 2. Direct Audio Snippet Analysis
               </div>
               <p className="text-[11px] leading-relaxed text-[var(--text-secondary)]">
-                Separate opt-in required before sending a compressed 25s clip around the highest-severity section to external Gemini APIs.
+                Separate opt-in required before sending a compressed 25s clip around the highest-severity section for cloud audio analysis.
               </p>
             </div>
             <Switch
@@ -234,8 +234,8 @@ export function MentorPrivacyPanel({
           <div className="flex items-center justify-between gap-2">
             <label htmlFor="mentor-question" className="block text-[11px] font-medium text-[var(--text-secondary)]">
               {conversationHistory.length > 0
-                ? "Ask a follow-up question (grounded in DSP JSON & clip)"
-                : "Ask your Mix Mentor (optional)"}
+                ? "Ask a follow-up (grounded in DSP metrics)"
+                : "Ask for targeted DAW or mix suggestions (optional)"}
             </label>
             {conversationHistory.length > 0 && (
               <button
@@ -253,7 +253,7 @@ export function MentorPrivacyPanel({
             rows={2}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="e.g., How should I address the 250 Hz low-mid buildup in FL Studio or Ableton without losing punch?"
+            placeholder="e.g., Exact Mixit Web DAW EQ, Compressor, or Limiter settings to fix 250 Hz buildup?"
             className="w-full resize-none bg-[var(--bg-inset)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] hairline-border squircle-inner focus:border-[var(--studio-mint)] focus:outline-none"
           />
 
@@ -282,12 +282,12 @@ export function MentorPrivacyPanel({
           >
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
             {isAskingMentor
-              ? "Generating Coaching..."
+              ? "Generating Suggestions..."
               : allowMetricsAi
                 ? allowAudioAi
-                  ? "Ask Gemini 4 Mentor (Metrics + 25s Audio)"
-                  : "Ask Gemini 4 Mentor (Metrics JSON Only)"
-                : "Run Offline Deterministic Mentor"}
+                  ? "Get AI Suggestions (Metrics + 25s Audio)"
+                  : "Get AI Suggestions (Metrics Only)"
+                : "Get Offline AI Suggestions"}
           </Button>
 
           {mentorError && (
@@ -356,7 +356,7 @@ export function MentorPrivacyPanel({
                 }`}
               >
                 <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--studio-mint)]">
-                  {turn.role === "user" ? "You" : "Mix Mentor"}
+                  {turn.role === "user" ? "You" : "AI Suggestions"}
                 </div>
                 {turn.content}
               </div>
@@ -365,12 +365,12 @@ export function MentorPrivacyPanel({
         </div>
       )}
 
-      {/* Mentor Advice Output */}
+      {/* AI Suggestions Output */}
       {mentorAdvice && (
         <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-semibold text-[var(--text-primary)]">
-              Coaching Brief
+              Actionable Mix &amp; DAW Suggestions
             </span>
             <span
               className={`max-w-full break-words px-2 py-0.5 text-[10px] font-medium squircle-inner ${
@@ -379,7 +379,7 @@ export function MentorPrivacyPanel({
                   : "bg-[var(--studio-mint-soft)] text-[var(--studio-mint)]"
               }`}
             >
-              {modeAttribution} · {mentorAdvice.model_used}
+              {modeAttribution}
             </span>
           </div>
 

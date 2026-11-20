@@ -69,7 +69,7 @@ export function MentorDrawer({
       setLocalError(
         err instanceof Error
           ? err.message
-          : "AI Mix Mentor request failed. Please retry or use the Offline Deterministic Mentor."
+          : "AI Suggestions request failed. Please retry or run Offline Deterministic Suggestions."
       );
     } finally {
       setLocalLoading(false);
@@ -97,7 +97,7 @@ export function MentorDrawer({
           key="mentor-sheet"
           role="dialog"
           aria-modal="true"
-          aria-label="AI Mix Mentor and Privacy Consent Controls"
+          aria-label="AI Suggestions and Privacy Consent Controls"
           initial={{ x: "100%" }}
           animate={{ x: 0 }}
           exit={{ x: "100%", transition: { duration: 0.18, ease: STUDIO_EASE } }}
@@ -106,23 +106,23 @@ export function MentorDrawer({
         >
           <div className="flex items-center justify-between border-b border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-4 py-3.5 sm:px-5 sm:py-4">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center bg-[var(--studio-mint-soft)] text-[var(--studio-mint)] squircle-inner">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center bg-[#FFE01B] text-[#0A0A0A]">
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
               </span>
               <div className="min-w-0">
                 <h2 className="text-sm font-bold text-[var(--text-primary)]">
-                  AI Mix Mentor
+                  AI Suggestions
                 </h2>
                 <p className="truncate text-[11px] text-[var(--text-secondary)]">
-                  Evidence-grounded Gemini 4 Hydrogen coaching · Three-tier consent
+                  Concise DAW &amp; mix parameter moves · Three-tier privacy consent
                 </p>
               </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close AI Mix Mentor"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-inset)] hover:text-[var(--text-primary)] squircle-inner cursor-pointer"
+              aria-label="Close AI Suggestions"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-inset)] hover:text-[var(--text-primary)] cursor-pointer"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -137,8 +137,8 @@ export function MentorDrawer({
                 compact
                 statusLabel={
                   combinedLoading
-                    ? "Stage 5: Running Gemini 4 Hydrogen Mentor"
-                    : "Stage 5: Evidence-Grounded Coaching Complete"
+                    ? "Stage 5: Generating AI Suggestions"
+                    : "Stage 5: AI Suggestions Complete"
                 }
               />
             )}

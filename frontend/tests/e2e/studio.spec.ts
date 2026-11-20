@@ -19,6 +19,8 @@ test("full studio journey: Auth Gate -> Sign In -> /studio -> Try Flawed Demo ->
     hydrationErrors.push(err.message);
   });
 
+  await page.request.post("http://127.0.0.1:54321/test/reset").catch(() => {});
+
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/studio");
 
@@ -40,12 +42,15 @@ test("full studio journey: Auth Gate -> Sign In -> /studio -> Try Flawed Demo ->
   // 1. Click "Try Sample Flawed Mix"
   await page.getByRole("button", { name: /Try Sample Flawed Mix/i }).click();
 
-  // Simple Mix Check renders real filename, 5-step pedagogy, and zero fake scores
+  // Simple Mix Check renders real filename, crisp 3-part FindingCard, and zero fake scores
   await expect(page.getByRole("heading", { name: /demo-flawed-v1\.wav/i })).toBeVisible({
     timeout: 25_000,
   });
-  await expect(page.getByText(/What happened:/i).first()).toBeVisible();
-  await expect(page.getByText(/Recheck:/i).first()).toBeVisible();
+  await expect(page.getByText(/DAW Repair Checklist/i).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /^DSP Method$/i }).first()).toHaveAttribute(
+    "aria-expanded",
+    "false"
+  );
   await expect(page.getByText(/\/100/)).toHaveCount(0);
 
   if (shotDir) {
@@ -69,12 +74,12 @@ test("full studio journey: Auth Gate -> Sign In -> /studio -> Try Flawed Demo ->
     await page.screenshot({ path: path.join(shotDir, "03-advanced-desktop.png"), fullPage: true });
   }
 
-  // 4. AI Mix Mentor Drawer: verify 3 toggles off & close
-  await page.getByRole("button", { name: /AI Mix Mentor/i }).click();
+  // 4. AI Suggestions Drawer: verify 3 toggles off & close
+  await page.getByRole("button", { name: /AI Suggestions/i }).click();
   await expect(
     page.getByRole("switch", { name: /Toggle A Metrics-Only AI Mentor/i })
   ).toHaveAttribute("aria-checked", "false");
-  await page.getByRole("button", { name: /Close AI Mix Mentor/i }).click();
+  await page.getByRole("button", { name: /Close AI Suggestions/i }).click();
 
   // Mobile viewport overflow check
   await page.setViewportSize({ width: 390, height: 844 });

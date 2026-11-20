@@ -14,11 +14,11 @@ export interface DspPipelineStep {
 }
 
 export const DEFAULT_DSP_PIPELINE_STEPS: Array<{ id: string; label: string; shortLabel: string }> = [
-  { id: "decode", label: "Audio Decode & Hash", shortLabel: "Decode & Hash" },
-  { id: "loudness", label: "ITU-R Loudness & Punch", shortLabel: "LUFS & Punch" },
-  { id: "peak_phase", label: "4x True Peak & 20–120 Hz Phase", shortLabel: "True Peak & Phase" },
-  { id: "spectral", label: "6-Band Spectral FFT & BPM", shortLabel: "6-Band FFT & BPM" },
-  { id: "mentor", label: "Gemini 4 Hydrogen Mentor", shortLabel: "Gemini 4 Mentor" },
+  { id: "decode", label: "1. Decode", shortLabel: "1. Decode" },
+  { id: "loudness", label: "2. Loudness", shortLabel: "2. Loudness" },
+  { id: "peak_phase", label: "3. Peaks & Phase", shortLabel: "3. Peaks & Phase" },
+  { id: "spectral", label: "4. Spectrum", shortLabel: "4. Spectrum" },
+  { id: "mentor", label: "5. AI Suggestions", shortLabel: "5. AI Suggestions" },
 ];
 
 interface DspStepTrackerProps {
@@ -164,7 +164,7 @@ export function DspStepTracker({
                       `0${index + 1}`
                     )}
                   </span>
-                  <span className="truncate text-[11px] font-bold leading-tight text-[var(--text-primary)]">
+                  <span className="text-[11px] font-bold leading-tight text-[var(--text-primary)] whitespace-nowrap">
                     {compact ? step.shortLabel : step.label}
                   </span>
                 </div>

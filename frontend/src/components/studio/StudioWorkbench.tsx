@@ -48,6 +48,7 @@ import {
   uploadUserStems,
 } from "@/lib/api";
 import { analyzeFileWithWebAudioFallback } from "@/lib/clientWebAudioDsp";
+import { consumePendingDawMixdown, hasPendingDawMixdown } from "@/lib/pendingDawMixdown";
 import { loadRepairChecklist, saveRepairChecklist } from "@/lib/repairChecklist";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
@@ -60,11 +61,12 @@ import {
   purgeUserAccountData,
   saveProfilePrivacyPreferences,
   saveUserAnalysis,
-  updateSavedAnalysisReportJson,
+  updateSavedAnalysisChecklistProgress,
   uploadMixProxyToStorage,
   type PrivacyPreferences,
   type SavedAnalysisRecord,
 } from "@/lib/supabase/storage";
+import { applyStudioTheme } from "@/lib/theme";
 import type {
   AnalysisReport,
   ArtistVisionTag,
@@ -157,8 +159,18 @@ export function StudioWorkbench() {
   const bgUpgradeTimerRef = useRef<number | null>(null);
   const bgUpgradeCycleRef = useRef(0);
   const completedRepairStepsRef = useRef<Record<string, boolean>>({});
+  const reportRef = useRef<AnalysisReport | null>(null);
+  const userClearedRef = useRef(false);
+  const autoRestoredUserIdRef = useRef<string | null>(null);
+  const consumedDawHandoffRef = useRef(false);
+  const checklistDebounceRef = useRef<number | null>(null);
+  const pendingChecklistFlushRef = useRef<(() => Promise<void>) | null>(null);
 
   const reattachInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    reportRef.current = report;
+  }, [report]);
 
   const cancelBackgroundUpgrade = useCallback(() => {
     bgUpgradeCycleRef.current += 1;
@@ -336,9 +348,26 @@ export function StudioWorkbench() {
       }
       window.clearInterval(heartbeatId);
       if (privacyDebounceRef.current) window.clearTimeout(privacyDebounceRef.current);
+      if (checklistDebounceRef.current) window.clearTimeout(checklistDebounceRef.current);
       unsubscribeAudio();
     };
   }, [refreshHealth, clearWakeTimer, setHealthState]);
+
+  const hydrateSessionReportRef = useRef<
+    | ((
+        nextReport: AnalysisReport,
+        options?: {
+          fromLiveBackend?: boolean;
+          isDemo?: boolean;
+          savedRecord?: SavedAnalysisRecord | null;
+          localAudioBuffer?: AudioBuffer;
+          localObjectUrl?: string;
+          fallbackFile?: File;
+          preserveRepairSteps?: Record<string, boolean>;
+        }
+      ) => Promise<void>)
+    | null
+  >(null);
 
   const loadUserCloudData = useCallback(async (user: User | null) => {
     if (!user) {
@@ -346,6 +375,7 @@ export function StudioWorkbench() {
       prevPrivacyPrefsRef.current = DEFAULT_PRIVACY_PREFERENCES;
       setSavedAnalyses([]);
       setHasMoreHistory(false);
+      autoRestoredUserIdRef.current = null;
       return;
     }
 
@@ -363,12 +393,48 @@ export function StudioWorkbench() {
         };
         setPrivacyPrefs(nextPrefs);
         prevPrivacyPrefsRef.current = nextPrefs;
+
+        if (!reportRef.current && profile.default_genre) {
+          const validGenres: GenreType[] = [
+            "electronic",
+            "pop",
+            "hip_hop",
+            "rock",
+            "acoustic",
+            "ambient",
+            "other",
+          ];
+          if (validGenres.includes(profile.default_genre as GenreType)) {
+            setGenre(profile.default_genre as GenreType);
+          }
+        }
+        if (profile.default_theme === "dark" || profile.default_theme === "light") {
+          applyStudioTheme(profile.default_theme);
+        }
       } else {
         setPrivacyPrefs(DEFAULT_PRIVACY_PREFERENCES);
         prevPrivacyPrefsRef.current = DEFAULT_PRIVACY_PREFERENCES;
       }
       setSavedAnalyses(page.records);
       setHasMoreHistory(page.hasMore);
+
+      // Auto-restore the user's most recent saved analysis across sign-out / sign-in
+      if (
+        page.records.length > 0 &&
+        !reportRef.current &&
+        !hasPendingDawMixdown() &&
+        !userClearedRef.current &&
+        autoRestoredUserIdRef.current !== user.id
+      ) {
+        autoRestoredUserIdRef.current = user.id;
+        const latest = page.records[0];
+        if (hydrateSessionReportRef.current) {
+          await hydrateSessionReportRef.current(latest.report_json, {
+            fromLiveBackend: false,
+            savedRecord: latest,
+          });
+        }
+      }
     } finally {
       setIsLoadingHistory(false);
     }
@@ -446,23 +512,31 @@ export function StudioWorkbench() {
       nextReport: AnalysisReport,
       versionLabel: string,
       trackNameOverride?: string,
-      parentAnalysisId?: string | null
+      parentAnalysisId?: string | null,
+      fallbackBlob?: Blob | null
     ): Promise<SavedAnalysisRecord | null> => {
       if (!supabaseUser) return null;
+      const checklistProgress =
+        nextReport.completed_repair_steps ?? completedRepairStepsRef.current;
       const saved = await saveUserAnalysis({
         userId: supabaseUser.id,
         report: nextReport,
         versionLabel,
         trackNameOverride,
         parentAnalysisId,
+        checklistProgress,
       });
       if (saved) {
         setSavedAnalyses((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
-        if (nextReport.audio_metadata.playback_proxy_url) {
+        const rawProxy = nextReport.audio_metadata.playback_proxy_url || "";
+        const resolvedProxyUrl =
+          rawProxy && !rawProxy.startsWith("blob:") ? resolveApiUrl(rawProxy) : undefined;
+        if (resolvedProxyUrl || fallbackBlob) {
           void uploadMixProxyToStorage({
             userId: supabaseUser.id,
             analysisId: saved.id,
-            proxyUrl: resolveApiUrl(nextReport.audio_metadata.playback_proxy_url),
+            proxyUrl: resolvedProxyUrl,
+            fallbackBlob: fallbackBlob ?? null,
           }).then((storagePath) => {
             if (storagePath) {
               setSavedAnalyses((prev) =>
@@ -504,6 +578,17 @@ export function StudioWorkbench() {
   };
 
   const handleSignOut = async () => {
+    if (checklistDebounceRef.current) {
+      window.clearTimeout(checklistDebounceRef.current);
+      checklistDebounceRef.current = null;
+    }
+    if (pendingChecklistFlushRef.current) {
+      const flush = pendingChecklistFlushRef.current;
+      pendingChecklistFlushRef.current = null;
+      await flush().catch(() => {});
+    }
+    userClearedRef.current = false;
+    autoRestoredUserIdRef.current = null;
     resetLocalAudioAndWorkspace();
     const supabase = getSupabaseBrowserClient();
     if (supabase) {
@@ -567,11 +652,12 @@ export function StudioWorkbench() {
 
     const hydratedSteps = {
       ...loadRepairChecklist(nextReport.report_id, nextReport.completed_repair_steps),
+      ...(savedRecord?.checklist_progress ?? {}),
       ...(preserveRepairSteps ?? {}),
     };
     completedRepairStepsRef.current = hydratedSteps;
     setCompletedRepairSteps(hydratedSteps);
-    if (preserveRepairSteps && Object.keys(preserveRepairSteps).length > 0) {
+    if (Object.keys(hydratedSteps).length > 0) {
       saveRepairChecklist(nextReport.report_id, hydratedSteps);
     }
 
@@ -585,7 +671,7 @@ export function StudioWorkbench() {
     setStage(reportWithSteps.context.stage);
     setArtistVision(reportWithSteps.context.artist_vision);
     setIsDemoSession(isDemo);
-    setDemoSaved(false);
+    setDemoSaved(Boolean(savedRecord));
     setActiveSavedId(savedRecord?.id ?? null);
     setMissingArchivedAudio(false);
     setReferenceMeta(null);
@@ -607,45 +693,70 @@ export function StudioWorkbench() {
       return;
     }
 
-    try {
-      await studioAudioEngine.loadSlot(
-        "primary",
-        resolveApiUrl(reportWithSteps.audio_metadata.playback_proxy_url),
-        reportWithSteps.global_metrics.integrated_lufs
-      );
-      return;
-    } catch {
-      // If the browser still holds the freshly uploaded or demo File, decode it directly via Web Audio
-      if (fallbackFile) {
+    // For cloud-restored records, try the private Supabase signed proxy URL first
+    if (!fromLiveBackend && savedRecord?.proxy_storage_path) {
+      const signedUrl = await getSignedMixProxyUrl(savedRecord.proxy_storage_path);
+      if (signedUrl) {
         try {
-          await studioAudioEngine.loadFileSlot(
+          await studioAudioEngine.loadSlot(
             "primary",
-            fallbackFile,
+            signedUrl,
             reportWithSteps.global_metrics.integrated_lufs
           );
           return;
         } catch {
-          // Proceed to signed cloud proxy fallback
+          // Fall through to backend proxy URL / local fallback
         }
       }
-      if (savedRecord?.proxy_storage_path) {
-        const signedUrl = await getSignedMixProxyUrl(savedRecord.proxy_storage_path);
-        if (signedUrl) {
-          try {
-            await studioAudioEngine.loadSlot(
-              "primary",
-              signedUrl,
-              reportWithSteps.global_metrics.integrated_lufs
-            );
-            return;
-          } catch {
-            // Signed audio unavailable
-          }
-        }
-      }
-      setMissingArchivedAudio(true);
     }
+
+    const rawProxyUrl = reportWithSteps.audio_metadata.playback_proxy_url || "";
+    if (rawProxyUrl && !rawProxyUrl.startsWith("blob:")) {
+      try {
+        await studioAudioEngine.loadSlot(
+          "primary",
+          resolveApiUrl(rawProxyUrl),
+          reportWithSteps.global_metrics.integrated_lufs
+        );
+        return;
+      } catch {
+        // Proceed to local File or signed URL fallback
+      }
+    }
+
+    if (fallbackFile) {
+      try {
+        await studioAudioEngine.loadFileSlot(
+          "primary",
+          fallbackFile,
+          reportWithSteps.global_metrics.integrated_lufs
+        );
+        return;
+      } catch {
+        // Proceed to signed cloud proxy fallback
+      }
+    }
+
+    if (fromLiveBackend && savedRecord?.proxy_storage_path) {
+      const signedUrl = await getSignedMixProxyUrl(savedRecord.proxy_storage_path);
+      if (signedUrl) {
+        try {
+          await studioAudioEngine.loadSlot(
+            "primary",
+            signedUrl,
+            reportWithSteps.global_metrics.integrated_lufs
+          );
+          return;
+        } catch {
+          // Signed audio unavailable
+        }
+      }
+    }
+
+    setMissingArchivedAudio(true);
   };
+
+  hydrateSessionReportRef.current = hydrateSessionReport;
 
   const startBackgroundPrecisionUpgrade = useCallback(
     (
@@ -686,7 +797,10 @@ export function StudioWorkbench() {
                 ...serverReport,
                 completed_repair_steps: completedRepairStepsRef.current,
               },
-              "v1"
+              "v1",
+              undefined,
+              undefined,
+              file
             );
             if (saved && bgUpgradeCycleRef.current === cycleId) {
               setActiveSavedId(saved.id);
@@ -726,6 +840,7 @@ export function StudioWorkbench() {
   };
 
   const handleAnalyzeFile = async (file: File) => {
+    userClearedRef.current = false;
     cancelBackgroundUpgrade();
     setUploadError(null);
     setIsAnalyzing(true);
@@ -747,6 +862,14 @@ export function StudioWorkbench() {
         localAudioBuffer: localRes.audioBuffer,
         localObjectUrl: localRes.objectUrl,
       });
+      const savedLocal = await persistReportToSupabase(
+        localRes.report,
+        "v1",
+        undefined,
+        undefined,
+        file
+      );
+      if (savedLocal) setActiveSavedId(savedLocal.id);
       startBackgroundPrecisionUpgrade(file, genre, stage, artistVision);
       void refreshHealth();
     };
@@ -770,7 +893,7 @@ export function StudioWorkbench() {
         isDemo: false,
         fallbackFile: file,
       });
-      const saved = await persistReportToSupabase(next, "v1");
+      const saved = await persistReportToSupabase(next, "v1", undefined, undefined, file);
       if (saved) setActiveSavedId(saved.id);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -793,11 +916,23 @@ export function StudioWorkbench() {
     }
   };
 
+  // Auto-consume 24-bit WAV mixdown handed off from /daw ("Analyze Mix ↗")
+  useEffect(() => {
+    if (!authChecked || !supabaseUser || consumedDawHandoffRef.current) return;
+    if (!hasPendingDawMixdown()) return;
+    const pendingFile = consumePendingDawMixdown();
+    if (!pendingFile) return;
+    consumedDawHandoffRef.current = true;
+    void handleAnalyzeFile(pendingFile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked, supabaseUser]);
+
   const handleCancelUpload = () => {
     uploadAbortRef.current?.abort();
   };
 
   const handleLoadDemo = async () => {
+    userClearedRef.current = false;
     cancelBackgroundUpgrade();
     setUploadError(null);
     setIsAnalyzing(true);
@@ -821,6 +956,17 @@ export function StudioWorkbench() {
           localAudioBuffer: localRes.audioBuffer,
           localObjectUrl: localRes.objectUrl,
         });
+        const savedDemo = await persistReportToSupabase(
+          localRes.report,
+          "v1",
+          undefined,
+          undefined,
+          demoFile
+        );
+        if (savedDemo) {
+          setActiveSavedId(savedDemo.id);
+          setDemoSaved(true);
+        }
         startBackgroundPrecisionUpgrade(demoFile, genre, stage, artistVision);
         void refreshHealth();
         return;
@@ -831,6 +977,11 @@ export function StudioWorkbench() {
         isDemo: true,
         fallbackFile: demoFile,
       });
+      const savedDemo = await persistReportToSupabase(next, "v1", undefined, undefined, demoFile);
+      if (savedDemo) {
+        setActiveSavedId(savedDemo.id);
+        setDemoSaved(true);
+      }
     } catch (err) {
       setUploadError(
         err instanceof Error
@@ -965,7 +1116,8 @@ export function StudioWorkbench() {
           updated,
           "v2",
           updated.revision_comparison.revised_filename,
-          activeSavedId
+          activeSavedId,
+          file
         );
         await studioAudioEngine.loadSlot(
           "revised",
@@ -1058,7 +1210,7 @@ export function StudioWorkbench() {
       setMentorError(
         err instanceof Error
           ? err.message
-          : "AI Mix Mentor request failed. Please retry or use Offline Deterministic Mentor."
+          : "AI Suggestions request failed. Please retry or run Offline Deterministic Suggestions."
       );
     } finally {
       setIsAskingMentor(false);
@@ -1101,7 +1253,27 @@ export function StudioWorkbench() {
       setReport(updatedReport);
 
       if (supabaseUser && activeSavedId) {
-        void updateSavedAnalysisReportJson(supabaseUser.id, activeSavedId, updatedReport);
+        setSavedAnalyses((prev) =>
+          prev.map((item) =>
+            item.id === activeSavedId
+              ? { ...item, checklist_progress: nextSteps, report_json: updatedReport }
+              : item
+          )
+        );
+        const uid = supabaseUser.id;
+        const targetId = activeSavedId;
+        const persist = async () => {
+          await updateSavedAnalysisChecklistProgress(uid, targetId, nextSteps, updatedReport);
+        };
+        pendingChecklistFlushRef.current = persist;
+        if (checklistDebounceRef.current) {
+          window.clearTimeout(checklistDebounceRef.current);
+        }
+        checklistDebounceRef.current = window.setTimeout(() => {
+          checklistDebounceRef.current = null;
+          pendingChecklistFlushRef.current = null;
+          void persist();
+        }, 350);
       }
     },
     [activeSavedId, report, supabaseUser]
@@ -1116,6 +1288,7 @@ export function StudioWorkbench() {
   }, [supabaseUser]);
 
   const handleClearSession = async () => {
+    userClearedRef.current = true;
     const sid = report?.session_id;
     resetLocalAudioAndWorkspace();
     handleChangeSubTab("diagnosis");

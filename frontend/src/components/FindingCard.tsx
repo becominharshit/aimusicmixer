@@ -181,9 +181,17 @@ export function deriveAutoFixEqBands(findings: Finding[]): CorrectiveEqConfig[] 
   return bands;
 }
 
+export function buildOneLineImpact(finding: Finding): string {
+  const source = (finding.what_happened || finding.why_it_matters || "").trim().replace(/\s+/g, " ");
+  if (!source) return finding.measured_value;
+  const firstSentence = source.split(/(?<=[.!?])\s+/)[0] || source;
+  const words = firstSentence.split(/\s+/);
+  if (words.length <= 14) return firstSentence;
+  return `${words.slice(0, 14).join(" ").replace(/[,;:\-–]+$/, "")}…`;
+}
+
 export function FindingCard({
   finding,
-  index,
   isActive = false,
   hasAudio = true,
   isEqActive = false,
@@ -193,15 +201,15 @@ export function FindingCard({
   onToggleCorrectiveEq,
   completedRepairSteps = {},
   onToggleRepairStep,
-  compact = false,
 }: FindingCardProps) {
-  const [learnWhyOpen, setLearnWhyOpen] = useState(!compact && index === 0);
+  const [learnWhyOpen, setLearnWhyOpen] = useState(false);
   const [localChecked, setLocalChecked] = useState<Record<string, boolean>>({});
   const style = SEVERITY_STYLES[finding.severity];
   const Icon = style.icon;
   const suggestedEq = deriveSuggestedEq(finding);
   const classification = resolveFindingClassification(finding);
   const repairSteps = useMemo(() => buildDawRepairSteps(finding), [finding]);
+  const oneLineImpact = useMemo(() => buildOneLineImpact(finding), [finding]);
 
   const isStepChecked = (stepId: string) =>
     Boolean(onToggleRepairStep ? completedRepairSteps[stepId] : localChecked[stepId]);
@@ -221,27 +229,28 @@ export function FindingCard({
     <motion.article
       initial={false}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.22, ease: STUDIO_EASE }}
+      transition={{ duration: 0.2, ease: STUDIO_EASE }}
       onClick={() => onSelect?.(finding)}
-      className={`relative bg-[var(--bg-elevated)] p-5 squircle-outer transition-colors duration-150 ${
+      data-testid={`finding-card-${finding.evidence_id}`}
+      className={`relative bg-[var(--bg-elevated)] p-4 sm:p-5 transition-colors duration-150 ${
         isActive
-          ? "active-hairline-border ring-1 ring-[var(--studio-mint)]/30"
+          ? "active-hairline-border ring-1 ring-[#FFE01B]/40"
           : "hairline-border hover:border-[var(--border-strong)]"
       }`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+      {/* PART 1: Header + Measured Telemetry + 1-Line Impact */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span
-            className={`inline-flex items-center gap-1 border px-2.5 py-0.5 text-[11px] font-semibold squircle-inner ${style.badge}`}
+            className={`inline-flex items-center gap-1 border px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.05em] ${style.badge}`}
           >
             <Icon className="h-3 w-3" aria-hidden="true" />
             {style.label}
           </span>
 
-          {/* Objective Technical Defect vs Stylistic Choice Classification */}
           <span
             data-testid={`finding-classification-${finding.evidence_id}`}
-            className={`inline-flex items-center gap-1 border px-2 py-0.5 text-[11px] font-semibold squircle-inner ${
+            className={`inline-flex items-center gap-1 border px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.05em] ${
               classification === "objective_defect"
                 ? "bg-[var(--studio-vermilion-soft)] text-[var(--studio-vermilion)] border-[var(--studio-vermilion)]/30"
                 : "bg-[var(--studio-cobalt-soft)] text-[var(--studio-cobalt)] border-[var(--studio-cobalt)]/30"
@@ -260,19 +269,34 @@ export function FindingCard({
             )}
           </span>
 
-          <span className="bg-[var(--bg-inset)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] tabular-telemetry squircle-inner">
+          <span className="border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)] tabular-telemetry">
             {finding.evidence_id}
           </span>
-          <span className="bg-[var(--bg-inset)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] tabular-telemetry squircle-inner">
+          <span className="border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)] tabular-telemetry">
             {formatTimecode(finding.timestamp_start_sec)} – {formatTimecode(finding.timestamp_end_sec)}
           </span>
           {isActive && (
-            <span className="bg-[var(--studio-mint-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--studio-mint)] squircle-inner">
+            <span className="bg-[#FFE01B] px-2 py-0.5 text-[10px] font-extrabold uppercase text-[#0A0A0A]">
               Focused
             </span>
           )}
         </div>
 
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h3 className="text-base font-bold text-[var(--text-primary)]">{finding.title}</h3>
+          <span className="text-xs font-bold text-[var(--studio-mint)] tabular-telemetry">
+            {finding.measured_value}
+          </span>
+        </div>
+
+        <p className="text-xs leading-snug text-[var(--text-secondary)]">{oneLineImpact}</p>
+      </div>
+
+      {/* PART 2: Direct Fix & Controls Bar */}
+      <div
+        className="no-print mt-3.5 flex flex-wrap items-center gap-2 border-y border-[var(--border-hairline)] py-2.5"
+        onClick={(e) => e.stopPropagation()}
+      >
         <motion.button
           type="button"
           disabled={!hasAudio}
@@ -282,125 +306,86 @@ export function FindingCard({
               ? `Jump to and loop ${formatTimecode(finding.timestamp_start_sec)}`
               : "Audio proxy unavailable for archived report — upload or re-attach audio to audition"
           }
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             if (hasAudio) onAudition(finding);
           }}
-          className={`no-print inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border squircle-inner transition-colors ${
+          className={`inline-flex h-8 items-center gap-1.5 border px-3 text-xs font-bold transition-colors ${
             hasAudio
-              ? "bg-[var(--studio-mint-soft)] text-[var(--text-primary)] border-[var(--border-active)] hover:brightness-110 cursor-pointer"
-              : "bg-[var(--bg-inset)] text-[var(--text-muted)] border-[var(--border-hairline)] cursor-not-allowed"
+              ? "border-[#0A0A0A] bg-[#FFE01B] text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer"
+              : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-muted)] cursor-not-allowed"
           }`}
         >
-          <Headphones
-            className={`h-3.5 w-3.5 ${hasAudio ? "text-[var(--studio-mint)]" : "text-[var(--text-muted)]"}`}
-            aria-hidden="true"
-          />
+          <Headphones className="h-3.5 w-3.5" aria-hidden="true" />
           <span>
             {hasAudio ? `Jump to ${formatTimecode(finding.timestamp_start_sec)}` : "No Audio"}
           </span>
         </motion.button>
+
+        {suggestedEq && onToggleCorrectiveEq && (
+          <button
+            type="button"
+            disabled={!hasAudio}
+            onClick={() => {
+              if (hasAudio) onToggleCorrectiveEq(suggestedEq);
+            }}
+            aria-pressed={isEqActive}
+            title={
+              hasAudio
+                ? `Preview ${suggestedEq.gainDb >= 0 ? "+" : ""}${suggestedEq.gainDb.toFixed(1)} dB peaking EQ at ${suggestedEq.freqHz} Hz`
+                : "Audio proxy required to audition corrective EQ"
+            }
+            className={`inline-flex h-8 items-center gap-1.5 border px-2.5 text-[11px] font-bold transition-colors ${
+              !hasAudio
+                ? "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-muted)] cursor-not-allowed"
+                : isEqActive
+                  ? "border-[var(--studio-mint)] bg-[var(--studio-mint)] text-[#0A0A0A] cursor-pointer"
+                  : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-primary)] hover:border-[var(--studio-mint)] hover:text-[var(--studio-mint)] cursor-pointer"
+            }`}
+          >
+            <Sliders className="h-3 w-3" aria-hidden="true" />
+            <span>
+              {isEqActive
+                ? `Bypass EQ (${suggestedEq.freqHz} Hz)`
+                : `Audition EQ (${suggestedEq.gainDb >= 0 ? "+" : ""}${suggestedEq.gainDb} dB @ ${suggestedEq.freqHz} Hz)`}
+            </span>
+          </button>
+        )}
+
+        {onRecheck && finding.severity !== "safe" && (
+          <button
+            type="button"
+            onClick={() => onRecheck(finding)}
+            className="inline-flex h-8 items-center gap-1.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2.5 text-[11px] font-semibold text-[var(--text-primary)] transition-colors hover:border-[var(--border-active)] cursor-pointer"
+          >
+            <GitCompare className="h-3 w-3 text-[var(--studio-mint)]" aria-hidden="true" />
+            <span>Recheck in v2</span>
+          </button>
+        )}
       </div>
 
-      <h3 className="mt-3 text-base font-semibold text-[var(--text-primary)]">{finding.title}</h3>
-      <p className="mt-1 text-xs font-medium text-[var(--studio-mint)] tabular-telemetry">
-        {finding.measured_value}
-      </p>
-
-      {/* Complete 5-Step Pedagogical Learning Loop */}
-      <div className="mt-3.5 space-y-2.5 text-sm text-[var(--text-primary)]">
-        <div>
-          <span className="font-semibold text-[var(--text-primary)]">What happened: </span>
-          <span className="text-[var(--text-secondary)]">{finding.what_happened}</span>
-        </div>
-        <div>
-          <span className="font-semibold text-[var(--text-primary)]">Why it matters: </span>
-          <span className="text-[var(--text-secondary)]">{finding.why_it_matters}</span>
-        </div>
-        <div className="bg-[var(--bg-inset)] border border-[var(--border-hairline)] px-3.5 py-2.5 text-xs text-[var(--text-primary)] squircle-inner">
-          <span className="font-semibold text-[var(--studio-mint)]">Listen: </span>
-          <span>{finding.listen_prompt}</span>
-        </div>
-        <div>
-          <span className="font-semibold text-[var(--text-primary)]">What to try: </span>
-          <span className="text-[var(--text-secondary)]">{finding.what_to_try}</span>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-secondary)]">
-          <div>
-            <strong className="font-semibold text-[var(--text-primary)]">Recheck: </strong>
-            <span>{finding.recheck_target}</span>
-          </div>
-
-          <div className="no-print flex flex-wrap items-center gap-2">
-            {suggestedEq && onToggleCorrectiveEq && (
-              <button
-                type="button"
-                disabled={!hasAudio}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (hasAudio) onToggleCorrectiveEq(suggestedEq);
-                }}
-                aria-pressed={isEqActive}
-                title={
-                  hasAudio
-                    ? `Preview ${suggestedEq.gainDb >= 0 ? "+" : ""}${suggestedEq.gainDb.toFixed(1)} dB peaking EQ at ${suggestedEq.freqHz} Hz`
-                    : "Audio proxy required to audition corrective EQ"
-                }
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium squircle-inner transition-colors ${
-                  !hasAudio
-                    ? "bg-[var(--bg-inset)] text-[var(--text-muted)] cursor-not-allowed"
-                    : isEqActive
-                      ? "bg-[var(--studio-mint)] text-[#0B0D11] font-semibold cursor-pointer"
-                      : "bg-[var(--studio-mint-soft)] text-[var(--studio-mint)] hover:brightness-110 cursor-pointer"
-                }`}
-              >
-                <Sliders className="h-3 w-3" aria-hidden="true" />
-                <span>
-                  {isEqActive
-                    ? `Bypass Preview EQ (${suggestedEq.freqHz} Hz)`
-                    : `Audition ${suggestedEq.gainDb >= 0 ? "+" : ""}${suggestedEq.gainDb} dB @ ${suggestedEq.freqHz} Hz`}
-                </span>
-              </button>
-            )}
-
-            {onRecheck && finding.severity !== "safe" && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRecheck(finding);
-                }}
-                className="inline-flex items-center gap-1.5 bg-[var(--bg-inset)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-primary)] hairline-border hover:border-[var(--border-active)] squircle-inner cursor-pointer"
-              >
-                <GitCompare className="h-3 w-3 text-[var(--studio-mint)]" aria-hidden="true" />
-                <span>Recheck in v2</span>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Interactive DAW Repair Checklist */}
-      {finding.severity !== "safe" && (
+      {/* PART 3: Single Compact 3-Step DAW Repair Checklist (zero duplicated prose above) */}
+      {finding.severity !== "safe" ? (
         <div
-          className="no-print mt-3.5 rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-3"
+          className="no-print mt-3 border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-3"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="tabular-telemetry text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">
+            <span className="tabular-telemetry text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">
               DAW Repair Checklist
             </span>
-            <span className="tabular-telemetry text-[10px] font-semibold text-[var(--studio-mint)]">
+            <span className="tabular-telemetry text-[10px] font-bold text-[var(--studio-mint)]">
               {completedCount}/{repairSteps.length} done
             </span>
           </div>
           <div className="space-y-1.5">
             {repairSteps.map((step) => {
               const checked = isStepChecked(step.id);
+              const phaseLabel =
+                step.phase === "listen" ? "Listen" : step.phase === "daw" ? "Fix" : "Verify";
               return (
                 <label
                   key={step.id}
-                  className="flex cursor-pointer items-start gap-2.5 rounded-lg px-1.5 py-1 text-xs transition-colors hover:bg-[var(--bg-elevated)]/60"
+                  className="flex cursor-pointer items-start gap-2.5 px-1.5 py-1 text-xs transition-colors hover:bg-[var(--bg-elevated)]/70"
                 >
                   <button
                     type="button"
@@ -408,9 +393,9 @@ export function FindingCard({
                     aria-checked={checked}
                     aria-label={step.label}
                     onClick={() => handleToggleStep(step.id)}
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border transition-colors ${
                       checked
-                        ? "border-[var(--studio-mint)] bg-[var(--studio-mint)] text-[#0B0D11]"
+                        ? "border-[var(--studio-mint)] bg-[var(--studio-mint)] text-[#0A0A0A]"
                         : "border-[var(--border-strong)] bg-[var(--bg-elevated)]"
                     }`}
                   >
@@ -423,6 +408,9 @@ export function FindingCard({
                         : "text-[var(--text-primary)]"
                     }`}
                   >
+                    <strong className="mr-1.5 tabular-telemetry text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                      {phaseLabel}:
+                    </strong>
                     {step.label}
                   </span>
                 </label>
@@ -430,10 +418,15 @@ export function FindingCard({
             })}
           </div>
         </div>
+      ) : (
+        <p className="mt-3 text-xs text-[var(--text-secondary)]">
+          <strong className="text-[var(--text-primary)]">Target: </strong>
+          {finding.recheck_target}
+        </p>
       )}
 
-      {/* Expandable Learn Why DSP Method Details */}
-      <div className="mt-3 pt-2.5 border-t border-[var(--border-hairline)]">
+      {/* Collapsed DSP Method Accordion (default collapsed) */}
+      <div className="mt-3 border-t border-[var(--border-hairline)] pt-2.5">
         <button
           type="button"
           onClick={(e) => {
@@ -441,9 +434,9 @@ export function FindingCard({
             setLearnWhyOpen((prev) => !prev);
           }}
           aria-expanded={learnWhyOpen}
-          className="inline-flex items-center gap-1 text-xs font-medium text-[var(--studio-mint)] hover:brightness-110 cursor-pointer"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
         >
-          <span>{learnWhyOpen ? "Hide DSP method note" : "Learn why (DSP basis)"}</span>
+          <span>{learnWhyOpen ? "Hide DSP Method" : "DSP Method"}</span>
           <ChevronDown
             className={`h-3.5 w-3.5 transition-transform duration-200 ${
               learnWhyOpen ? "rotate-180" : ""
@@ -458,8 +451,8 @@ export function FindingCard({
               initial={{ opacity: 0, clipPath: "inset(0 0 100% 0)" }}
               animate={{ opacity: 1, clipPath: "inset(0 0 0% 0)" }}
               exit={{ opacity: 0, clipPath: "inset(0 0 100% 0)" }}
-              transition={{ duration: 0.22, ease: STUDIO_EASE }}
-              className="mt-2.5 space-y-1.5 bg-[var(--bg-inset)] p-3 text-xs text-[var(--text-secondary)] hairline-border squircle-inner"
+              transition={{ duration: 0.2, ease: STUDIO_EASE }}
+              className="mt-2.5 space-y-1.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-3 text-xs text-[var(--text-secondary)]"
             >
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
                 <span className="font-semibold text-[var(--text-primary)]">
@@ -470,6 +463,9 @@ export function FindingCard({
                   {formatTimecode(finding.timestamp_end_sec, true)}
                 </span>
               </div>
+              {finding.why_it_matters && (
+                <p className="leading-relaxed text-[var(--text-primary)]">{finding.why_it_matters}</p>
+              )}
               <p className="leading-relaxed">
                 {CATEGORY_TECH_NOTE[finding.category] ||
                   "Computed deterministically from PCM audio waveform samples."}
