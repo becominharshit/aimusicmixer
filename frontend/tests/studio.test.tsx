@@ -18,15 +18,21 @@ import { FlawTimelineBar, buildFlawClusters } from "@/components/studio/FlawTime
 import { LiveSpectralGraph } from "@/components/studio/LiveSpectralGraph";
 import { SpinningDiscPlayer } from "@/components/studio/SpinningDiscPlayer";
 import { CookieConsentBanner } from "@/components/compliance/CookieConsentBanner";
+import { KeyboardShortcutsModal } from "@/components/shared/KeyboardShortcutsModal";
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
 import { askMentor } from "@/lib/api";
 import { analyzePcmChannelsLocal } from "@/lib/clientWebAudioDsp";
 import {
   consumePendingDawMixdown,
+  consumePendingStudioToDawHandoff,
+  deriveDawFixPreset,
   hasPendingDawMixdown,
+  hasPendingStudioToDawHandoff,
   setPendingDawMixdown,
+  setPendingStudioToDawHandoff,
 } from "@/lib/pendingDawMixdown";
 import { buildDawRepairSteps } from "@/lib/repairChecklist";
+import { SCORECARD_HEIGHT, SCORECARD_WIDTH, renderScorecardToCanvas } from "@/lib/scorecardPng";
 import { PLUGIN_LIST } from "@/daw";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { computeTransientPunchDb } from "@/server/dsp/dynamics";
@@ -873,5 +879,108 @@ describe("MixBench UI & Privacy Contracts", () => {
     const consumed = consumePendingDawMixdown();
     expect(consumed?.name).toBe("mixdown.wav");
     expect(hasPendingDawMixdown()).toBe(false);
+  });
+
+  it("supports reverse /studio -> /daw Fix in Web DAW handoff, KeyboardShortcutsModal, Scorecard PNG sizing, and dismissible CookieConsentBanner", () => {
+    // 1. Reverse finding -> plugin mapping across tonal, true_peak, dynamics, stereo_phase
+    const tonalPreset = deriveDawFixPreset(mockReport.findings[0], "unmastered_mix");
+    expect(tonalPreset.suggestedPluginId).toBe("proportional-q-eq");
+    expect(tonalPreset.freqHz).toBe(140);
+
+    const peakFinding: Finding = {
+      ...mockReport.findings[0],
+      evidence_id: "ev_tp_01",
+      category: "true_peak",
+      severity: "alert",
+      title: "Inter-Sample Clipping",
+    };
+    const peakPreset = deriveDawFixPreset(peakFinding, "final_master");
+    expect(peakPreset.suggestedPluginId).toBe("master-limiter");
+    expect(peakPreset.suggestedParams.ceiling).toBe(-1.0);
+
+    const dynFinding: Finding = {
+      ...mockReport.findings[0],
+      evidence_id: "ev_dyn_01",
+      category: "dynamics",
+      severity: "caution",
+      title: "Over-Compressed Transients",
+    };
+    expect(deriveDawFixPreset(dynFinding).suggestedPluginId).toBe("vca-bus-comp");
+
+    const phaseFinding: Finding = {
+      ...mockReport.findings[0],
+      evidence_id: "ev_phase_02",
+      category: "stereo_phase",
+      severity: "alert",
+      title: "Sub Phase Inversion",
+    };
+    expect(deriveDawFixPreset(phaseFinding).suggestedPluginId).toBe("gain-staging-utility");
+
+    // 2. Reverse handoff store lifecycle
+    const srcWav = new File(["RIFF"], "studio_mix.wav", { type: "audio/wav" });
+    setPendingStudioToDawHandoff({
+      ...tonalPreset,
+      file: srcWav,
+      trackName: "studio_mix.wav",
+      findingTitle: mockReport.findings[0].title,
+      evidenceId: mockReport.findings[0].evidence_id,
+    });
+    expect(hasPendingStudioToDawHandoff()).toBe(true);
+    const gotHandoff = consumePendingStudioToDawHandoff();
+    expect(gotHandoff?.suggestedPluginId).toBe("proportional-q-eq");
+    expect(hasPendingStudioToDawHandoff()).toBe(false);
+
+    // 3. Scorecard canvas sets exact 1200x630 dimensions
+    const canvas = document.createElement("canvas");
+    renderScorecardToCanvas(canvas, mockReport);
+    expect(canvas.width).toBe(SCORECARD_WIDTH);
+    expect(canvas.height).toBe(SCORECARD_HEIGHT);
+
+    // 4. FindingCard Fix in Web DAW button, CookieConsentBanner dismiss & Essential Only, Shortcuts Modal
+    window.localStorage.removeItem("mixit_cookie_consent_v1");
+    const onFixInDaw = vi.fn();
+    const onOpenShortcuts = vi.fn();
+    const { rerender } = render(
+      <>
+        <StudioHeader
+          mode="simple"
+          onModeChange={vi.fn()}
+          report={mockReport}
+          onClearSession={vi.fn()}
+          healthStatus="online"
+          healthData={{ status: "ok", ffmpeg_available: true, gemini_configured: true }}
+          healthError={null}
+          onRetryHealth={vi.fn()}
+          onOpenShortcuts={onOpenShortcuts}
+        />
+        <FindingCard
+          finding={mockReport.findings[0]}
+          index={0}
+          hasAudio={true}
+          onAudition={vi.fn()}
+          onFixInDaw={onFixInDaw}
+        />
+        <CookieConsentBanner />
+        <KeyboardShortcutsModal open={false} onOpenChange={vi.fn()} context="studio" />
+      </>
+    );
+
+    fireEvent.click(screen.getByTestId("fix-in-daw-ev_low_buildup_01"));
+    expect(onFixInDaw).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId("header-export-menu-btn"));
+    expect(screen.getByRole("menuitem", { name: /Export Scorecard PNG/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("shortcuts-help-btn"));
+    expect(onOpenShortcuts).toHaveBeenCalledTimes(1);
+
+    expect(screen.getByRole("button", { name: /Dismiss cookie notice/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Use essential cookies only/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Dismiss cookie notice/i }));
+    expect(window.localStorage.getItem("mixit_cookie_consent_v1")).toBe("dismissed");
+
+    rerender(<KeyboardShortcutsModal open={true} onOpenChange={vi.fn()} context="studio" />);
+    expect(screen.getByTestId("keyboard-shortcuts-modal")).toBeInTheDocument();
+    expect(screen.getByText(/Toggle Mono Fold/i)).toBeInTheDocument();
   });
 });

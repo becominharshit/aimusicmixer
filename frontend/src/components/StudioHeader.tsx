@@ -10,7 +10,9 @@ import {
   CheckCircle2,
   ChevronDown,
   Download,
+  HelpCircle,
   History,
+  ImageDown,
   Link2,
   LogIn,
   LogOut,
@@ -27,6 +29,7 @@ import { MixitLogo } from "@/components/brand/MixitLogo";
 import { deriveAutoFixEqBands } from "@/components/FindingCard";
 import { API_BASE_URL } from "@/lib/api";
 import { STUDIO_EASE, STUDIO_SPRING, TACTILE_TAP } from "@/lib/motion";
+import { downloadScorecardPng } from "@/lib/scorecardPng";
 import { getCurrentStudioTheme, toggleStudioTheme } from "@/lib/theme";
 import { formatTimecode } from "@/lib/utils";
 import type { AnalysisReport, BackendHealth } from "@/types/report";
@@ -53,6 +56,7 @@ interface StudioHeaderProps {
   onOpenHistory?: () => void;
   onOpenSignedOutHistory?: () => void;
   onShareReviewLink?: () => Promise<boolean>;
+  onOpenShortcuts?: () => void;
 }
 
 export function StudioHeader({
@@ -74,6 +78,7 @@ export function StudioHeader({
   onOpenHistory,
   onOpenSignedOutHistory,
   onShareReviewLink,
+  onOpenShortcuts,
 }: StudioHeaderProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -426,6 +431,25 @@ export function StudioHeader({
                     <button
                       type="button"
                       role="menuitem"
+                      aria-label="Export Scorecard PNG"
+                      onClick={() => {
+                        setExportOpen(false);
+                        if (report) void downloadScorecardPng(report);
+                      }}
+                      className="flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-xs font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-inset)] cursor-pointer"
+                    >
+                      <ImageDown className="h-3.5 w-3.5 text-[#FFE01B]" aria-hidden="true" />
+                      <div>
+                        <div>Export Scorecard PNG</div>
+                        <div className="text-[10px] font-normal text-[var(--text-muted)]">
+                          1200×630 shareable Swiss proof card
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
                       aria-label="Print PDF report"
                       onClick={handlePrintPdf}
                       className="flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-xs font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-inset)] cursor-pointer"
@@ -576,6 +600,21 @@ export function StudioHeader({
               )}
             </AnimatePresence>
           </div>
+
+          {/* Keyboard Shortcuts (?) Trigger */}
+          {onOpenShortcuts && (
+            <motion.button
+              type="button"
+              data-testid="shortcuts-help-btn"
+              whileTap={TACTILE_TAP}
+              onClick={onOpenShortcuts}
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+              className="inline-flex h-8 w-7 shrink-0 items-center justify-center border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-xs font-bold text-[var(--text-secondary)] transition-colors hover:border-[#FFE01B] hover:text-[var(--text-primary)] sm:w-8 cursor-pointer"
+            >
+              <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            </motion.button>
+          )}
 
           {/* 1-Click PAPER / INK Console Theme Toggle */}
           <motion.button

@@ -13,6 +13,7 @@ import {
   Download,
   FileAudio,
   FolderOpen,
+  HelpCircle,
   Layers,
   LogOut,
   Moon,
@@ -24,17 +25,25 @@ import {
   Repeat,
   Save,
   SlidersHorizontal,
+  Sparkles,
   Square,
   Sun,
   Trash2,
   Upload,
   User as UserIcon,
+  X,
 } from "lucide-react";
 import { MixitLogo } from "@/components/brand/MixitLogo";
+import { KeyboardShortcutsModal } from "@/components/shared/KeyboardShortcutsModal";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { TACTILE_TAP } from "@/lib/motion";
-import { setPendingDawMixdown } from "@/lib/pendingDawMixdown";
+import {
+  consumePendingStudioToDawHandoff,
+  hasPendingStudioToDawHandoff,
+  setPendingDawMixdown,
+  type StudioToDawHandoff,
+} from "@/lib/pendingDawMixdown";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getCurrentStudioTheme, toggleStudioTheme } from "@/lib/theme";
 import {
@@ -539,11 +548,19 @@ function ReturnBusStrip({
   );
 }
 
+const DAW_ONBOARDING_KEY = "mixit_daw_onboarding_dismissed_v1";
+
 export function WebDawView() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [isDarkTheme, setIsDarkTheme] = useState(true);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [studioHandoffBanner, setStudioHandoffBanner] = useState<Pick<
+    StudioToDawHandoff,
+    "findingTitle" | "evidenceId" | "summary"
+  > | null>(null);
 
   const [mainView, setMainView] = useState<MainDawView>("arrangement");
   const [browserOpen, setBrowserOpen] = useState(true);
@@ -558,6 +575,27 @@ export function WebDawView() {
 
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const relinkInputRef = useRef<HTMLInputElement | null>(null);
+  const consumedStudioHandoffRef = useRef(false);
+
+  // Show lightweight 3-step Swiss onboarding callout on first visit to /daw
+  useEffect(() => {
+    try {
+      if (!window.localStorage.getItem(DAW_ONBOARDING_KEY)) {
+        setShowOnboarding(true);
+      }
+    } catch {
+      setShowOnboarding(true);
+    }
+  }, []);
+
+  const dismissOnboarding = useCallback(() => {
+    setShowOnboarding(false);
+    try {
+      window.localStorage.setItem(DAW_ONBOARDING_KEY, "1");
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
 
   // Strict client-side Supabase auth gate mirroring /studio
   useEffect(() => {
@@ -634,29 +672,95 @@ export function WebDawView() {
     }
   }, [project.tracks, selectedChainId]);
 
-  // Global Spacebar transport shortcut
+  // Reverse closed-loop handoff: consume /studio "Fix in Web DAW ↗" payload on mount
+  useEffect(() => {
+    if (!authChecked || !supabaseUser || !snapshot.ready || consumedStudioHandoffRef.current) {
+      return;
+    }
+    if (!hasPendingStudioToDawHandoff()) return;
+    const handoff = consumePendingStudioToDawHandoff();
+    if (!handoff) return;
+    consumedStudioHandoffRef.current = true;
+
+    void (async () => {
+      try {
+        const trackId = await daw.importFile(handoff.file);
+        const targetChain: ChainId =
+          handoff.targetChain === "master" ? CHAIN_MASTER : trackId;
+        if (
+          handoff.suggestedPluginId === "master-limiter" &&
+          targetChain === CHAIN_MASTER &&
+          daw.controller.getSnapshot().project.master.limiter
+        ) {
+          const limiterId = daw.controller.getSnapshot().project.master.limiter.instanceId;
+          daw.setPluginBypass(CHAIN_MASTER, limiterId, false);
+          for (const [paramId, value] of Object.entries(handoff.suggestedParams)) {
+            daw.setPluginParam(CHAIN_MASTER, limiterId, paramId, value);
+          }
+        } else {
+          daw.addPlugin(targetChain, handoff.suggestedPluginId, undefined, handoff.suggestedParams);
+        }
+        setSelectedChainId(targetChain);
+        setStudioHandoffBanner({
+          findingTitle: handoff.findingTitle,
+          evidenceId: handoff.evidenceId,
+          summary: handoff.summary,
+        });
+      } catch {
+        // Error surfaced in snapshot.error
+      }
+    })();
+  }, [authChecked, daw, snapshot.ready, supabaseUser]);
+
+  // Global DAW keyboard shortcuts: ? (Help), Space (Play/Pause), L (Loop toggle)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       if (
         el &&
         (el.tagName === "INPUT" ||
           el.tagName === "TEXTAREA" ||
           el.tagName === "SELECT" ||
-          el.tagName === "BUTTON" ||
           el.isContentEditable)
       ) {
         return;
       }
-      e.preventDefault();
-      if (snapshot.ready && project.tracks.length > 0) {
-        void daw.togglePlay();
+
+      if (e.key === "?") {
+        e.preventDefault();
+        setShortcutsOpen((prev) => !prev);
+        return;
+      }
+
+      if (e.code === "Space" && el?.tagName !== "BUTTON") {
+        e.preventDefault();
+        if (snapshot.ready && project.tracks.length > 0) {
+          void daw.togglePlay();
+        }
+        return;
+      }
+
+      if ((e.key === "l" || e.key === "L") && snapshot.ready && project.tracks.length > 0) {
+        e.preventDefault();
+        const dur = Math.max(4, transport.durationSec || 0);
+        const start = transport.loopStartSec || 0;
+        const end =
+          transport.loopEndSec > start + 0.25 ? transport.loopEndSec : dur;
+        daw.setLoop(start, end, !transport.loopEnabled);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [daw, project.tracks.length, snapshot.ready]);
+  }, [
+    daw,
+    project.tracks.length,
+    snapshot.ready,
+    transport.durationSec,
+    transport.loopEnabled,
+    transport.loopEndSec,
+    transport.loopStartSec,
+  ]);
 
   const handleToggleTheme = () => {
     const next = toggleStudioTheme();
@@ -861,6 +965,17 @@ export function WebDawView() {
           <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               type="button"
+              data-testid="shortcuts-help-btn"
+              onClick={() => setShortcutsOpen(true)}
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+              className="inline-flex h-8 w-8 items-center justify-center border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors hover:border-[#FFE01B] hover:text-[var(--text-primary)] cursor-pointer"
+            >
+              <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+
+            <button
+              type="button"
               data-testid="theme-toggle"
               onClick={handleToggleTheme}
               aria-label={isDarkTheme ? "Switch to PAPER light mode" : "Switch to INK dark mode"}
@@ -900,6 +1015,70 @@ export function WebDawView() {
           </div>
         </div>
       </header>
+
+      {/* First-Time 3-Step Swiss Quick-Start Onboarding Callout */}
+      {showOnboarding ? (
+        <div
+          data-testid="daw-onboarding-banner"
+          role="region"
+          aria-label="Web DAW Quick-Start Guide"
+          className="border-b-[1.5px] border-[#0A0A0A] bg-[#FFE01B] px-3 py-2 text-[#0A0A0A] sm:px-5"
+        >
+          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-bold">
+              <span className="border border-[#0A0A0A] bg-[#0A0A0A] px-2 py-0.5 tabular-telemetry text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#FFE01B]">
+                QUICK START
+              </span>
+              <span>
+                1. Import Audio or Open Mix → 2. Add Plugins &amp; Toggle Delta Listen → 3. Click{" "}
+                <span className="underline decoration-[1.5px] underline-offset-2">
+                  Analyze Mix ↗
+                </span>{" "}
+                to Verify
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={dismissOnboarding}
+              aria-label="Dismiss Web DAW quick-start guide"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center border border-[#0A0A0A] bg-[#FFFFFF] text-[#0A0A0A] transition-colors hover:bg-[#0A0A0A] hover:text-[#FFE01B] cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Studio → Web DAW Pre-Loaded Fix Confirmation Banner */}
+      {studioHandoffBanner ? (
+        <div
+          data-testid="daw-studio-handoff-banner"
+          role="status"
+          className="border-b border-[var(--border-hairline)] bg-[var(--studio-mint-soft)] px-3 py-2 text-xs text-[var(--text-primary)] sm:px-5"
+        >
+          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--studio-mint)]" aria-hidden="true" />
+              <span className="font-bold">Studio Fix Pre-Loaded:</span>
+              <span>{studioHandoffBanner.findingTitle}</span>
+              <span className="border border-[var(--studio-mint)]/40 bg-[var(--bg-elevated)] px-2 py-0.5 tabular-telemetry text-[10px] font-bold text-[var(--studio-mint)]">
+                {studioHandoffBanner.summary}
+              </span>
+              <span className="text-[var(--text-secondary)]">
+                Tweak below, toggle Δ Delta Listen, then click Analyze Mix ↗ to verify v2.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStudioHandoffBanner(null)}
+              aria-label="Dismiss studio fix banner"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:border-[var(--border-active)] hover:text-[var(--text-primary)] cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* Row 2 — Ableton-Inspired Top Transport & Project Bar */}
       <div
@@ -1727,6 +1906,12 @@ export function WebDawView() {
           )}
         </DialogContent>
       </Dialog>
+
+      <KeyboardShortcutsModal
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
+        context="daw"
+      />
     </div>
   );
 }

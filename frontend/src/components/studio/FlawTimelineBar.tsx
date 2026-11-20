@@ -333,7 +333,7 @@ export function FlawTimelineBar({
       const isHot = amp > 0.94;
       if (isHot) {
         ctx.fillStyle = "#FF3B1F";
-      } else if (x <= playheadX) {
+      } else if (currentTime > 0 && x < playheadX) {
         ctx.fillStyle = "#FFE01B";
       } else {
         ctx.fillStyle = "#3E4759";

@@ -23,6 +23,7 @@ interface SimpleViewProps {
   onAuditionFinding: (finding: Finding) => void;
   onSelectFinding: (finding: Finding) => void;
   onRecheckFinding?: (finding: Finding) => void;
+  onFixInDaw?: (finding: Finding) => void | Promise<void>;
   onToggleCorrectiveEq?: (eq: CorrectiveEqConfig) => void;
   onOpenAdvanced: () => void;
   onNewUpload: () => void;
@@ -72,6 +73,7 @@ export function SimpleView({
   onAuditionFinding,
   onSelectFinding,
   onRecheckFinding,
+  onFixInDaw,
   onToggleCorrectiveEq,
   onOpenAdvanced,
   onNewUpload,
@@ -329,6 +331,7 @@ export function SimpleView({
             onSelect={onSelectFinding}
             onAudition={onAuditionFinding}
             onRecheck={onRecheckFinding}
+            onFixInDaw={onFixInDaw}
             onToggleCorrectiveEq={onToggleCorrectiveEq}
           />
         ))}

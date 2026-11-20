@@ -104,12 +104,83 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
 
-    // Essential Cookie Consent Banner renders & dismisses cleanly
+    // Compact bottom-right Cookie Consent card renders cleanly and NEVER obscures footer legal links
     const cookieBanner = page.getByTestId("cookie-consent-banner");
     await expect(cookieBanner).toBeVisible();
     await expect(cookieBanner.getByText(/Essential Cookies Only/i)).toBeVisible();
+    await expect(cookieBanner.getByRole("button", { name: /Dismiss cookie notice/i })).toBeVisible();
+    await expect(cookieBanner.getByRole("button", { name: /Use essential cookies only/i })).toBeVisible();
+
+    const bannerBoxDesktop = await cookieBanner.boundingBox();
+    expect(bannerBoxDesktop).not.toBeNull();
+    expect(bannerBoxDesktop!.width).toBeLessThanOrEqual(400);
+    expect(bannerBoxDesktop!.x).toBeGreaterThan(950);
+
+    // Scroll to footer while Cookie Consent card is STILL OPEN and assert zero overlap with legal links
+    const footer = page.getByTestId("landing-footer");
+    await footer.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(250);
+    await saveShot(page, "00-landing-footer-cookie-1440.png", false);
+
+    const openBannerBox = await cookieBanner.boundingBox();
+    const legalNav = page.getByTestId("landing-footer-legal-nav");
+    for (const linkLabel of ["Privacy Policy", "Terms of Use", "Cookie Policy", "System Status"]) {
+      const link = legalNav.getByRole("link", { name: new RegExp(`^${linkLabel}$`, "i") });
+      await expect(link).toBeVisible();
+      const linkBox = await link.boundingBox();
+      expect(linkBox, `Footer link ${linkLabel} must have a bounding box`).not.toBeNull();
+      if (openBannerBox && linkBox) {
+        const horizOverlap =
+          Math.min(openBannerBox.x + openBannerBox.width, linkBox.x + linkBox.width) -
+          Math.max(openBannerBox.x, linkBox.x);
+        const vertOverlap =
+          Math.min(openBannerBox.y + openBannerBox.height, linkBox.y + linkBox.height) -
+          Math.max(openBannerBox.y, linkBox.y);
+        expect(
+          horizOverlap > 1 && vertOverlap > 1,
+          `Cookie Consent card overlapped footer link "${linkLabel}"`
+        ).toBe(false);
+      }
+    }
+
     await cookieBanner.getByRole("button", { name: /Accept essential cookies/i }).click();
     await expect(cookieBanner).toBeHidden();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(250);
+
+    // Assert Hero Live Demo Deck metric cells have generous horizontal padding & right breathing room
+    const heroMetrics = page.getByTestId("hero-metric-cell");
+    const metricCount = await heroMetrics.count();
+    expect(metricCount).toBe(3);
+    for (let i = 0; i < metricCount; i++) {
+      const cell = heroMetrics.nth(i);
+      const metricsCheck = await cell.evaluate((el) => {
+        const style = getComputedStyle(el);
+        const padLeft = parseFloat(style.paddingLeft);
+        const padRight = parseFloat(style.paddingRight);
+        const cellRect = el.getBoundingClientRect();
+        const children = Array.from(el.children);
+        const maxChildRight = children.reduce(
+          (acc, child) => Math.max(acc, child.getBoundingClientRect().right),
+          cellRect.left
+        );
+        return {
+          padLeft,
+          padRight,
+          rightClearance: cellRect.right - maxChildRight,
+          scrollWidth: el.scrollWidth,
+          clientWidth: el.clientWidth,
+        };
+      });
+      expect(metricsCheck.padLeft).toBeGreaterThanOrEqual(14);
+      expect(metricsCheck.padRight).toBeGreaterThanOrEqual(14);
+      expect(metricsCheck.rightClearance).toBeGreaterThanOrEqual(10);
+      expect(metricsCheck.scrollWidth).toBeLessThanOrEqual(metricsCheck.clientWidth + 1);
+    }
+
+    // Assert dark hero demo container clips cleanly with zero stray edge strips
+    const darkPanel = page.getByTestId("landing-dark-demo-panel");
+    expect(await darkPanel.evaluate((el) => getComputedStyle(el).overflow)).toBe("hidden");
 
     // Hero headline and CTAs render immediately visible at opacity === 1
     const heroHeading = page.locator("h1").first();
@@ -192,8 +263,31 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
 
     const cookieBanner = page.getByTestId("cookie-consent-banner");
     if (await cookieBanner.isVisible()) {
+      // Scroll to bottom on mobile 390x844 and assert Cookie card NEVER obscures footer legal links
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(250);
+      const mobileBannerBox = await cookieBanner.boundingBox();
+      const legalNav = page.getByTestId("landing-footer-legal-nav");
+      for (const linkLabel of ["Privacy Policy", "Terms of Use", "Cookie Policy", "System Status"]) {
+        const linkBox = await legalNav
+          .getByRole("link", { name: new RegExp(`^${linkLabel}$`, "i") })
+          .boundingBox();
+        if (mobileBannerBox && linkBox) {
+          const horizOverlap =
+            Math.min(mobileBannerBox.x + mobileBannerBox.width, linkBox.x + linkBox.width) -
+            Math.max(mobileBannerBox.x, linkBox.x);
+          const vertOverlap =
+            Math.min(mobileBannerBox.y + mobileBannerBox.height, linkBox.y + linkBox.height) -
+            Math.max(mobileBannerBox.y, linkBox.y);
+          expect(
+            horizOverlap > 1 && vertOverlap > 1,
+            `Mobile Cookie Consent card overlapped footer link "${linkLabel}"`
+          ).toBe(false);
+        }
+      }
       await cookieBanner.getByRole("button", { name: /Accept essential cookies/i }).click();
       await expect(cookieBanner).toBeHidden();
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.waitForTimeout(250);
     }
 
@@ -303,13 +397,21 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
       await assertNoButtonOverlap(dockDeviceGroup, `Dock Device Group (${label} active)`);
     }
 
-    // Export / Share dropdown exposes EQ Preset, JSON, and PDF cleanly
+    // Export / Share dropdown exposes EQ Preset, JSON, Scorecard PNG, and PDF cleanly
     await page.getByTestId("header-export-menu-btn").click();
     await expect(page.getByRole("menuitem", { name: /Download EQ Preset/i })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: /Export JSON report/i })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: /Export Scorecard PNG/i })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: /Print PDF report/i })).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(240);
+    await page.waitForTimeout(200);
+
+    // Keyboard Shortcuts (?) modal opens via header button and closes on Escape
+    await page.getByTestId("shortcuts-help-btn").click();
+    await expect(page.getByTestId("keyboard-shortcuts-modal")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("keyboard-shortcuts-modal")).toBeHidden();
+    await page.waitForTimeout(180);
 
     await saveShot(page, "06-studio-simple-1440.png", false);
 
@@ -379,17 +481,26 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     expect(mobileOverflow).toBeLessThanOrEqual(4);
     await saveShot(page, "08-studio-mobile-390.png", false);
 
-    // Navigate to /daw (Web DAW): verify 16-plugin browser, Load Sample Track, Device Rack, Mixer toggle
+    // Closed-loop /studio -> /daw bridge: click "Fix in Web DAW ↗" on first actionable FindingCard
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.getByTestId("header-web-daw-link").click();
-    await expect(page).toHaveURL(/\/daw$/, { timeout: 15_000 });
+    const firstFixBtn = page.locator('[data-testid^="fix-in-daw-"]').first();
+    await expect(firstFixBtn).toBeEnabled({ timeout: 10_000 });
+    await firstFixBtn.click();
+    await expect(page).toHaveURL(/\/daw\?from=studio&plugin=/, { timeout: 15_000 });
     await expect(page.getByTestId("web-daw-view")).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: /Load Sample Mix Track/i }).click();
+    await expect(page.getByTestId("daw-onboarding-banner")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("daw-studio-handoff-banner")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("daw-device-rack")).toBeVisible();
     await expect(page.getByText(/demo-flawed-v1\.wav/i).first()).toBeVisible({ timeout: 15_000 });
 
-    // Add first plugin from browser to Bottom Device Rack
-    await page.getByTestId("daw-plugin-browser").getByRole("button", { name: /EQ/i }).first().click();
-    await expect(page.getByTestId("daw-device-rack")).toBeVisible();
+    // Dismiss onboarding banner and verify shortcuts modal works inside /daw too
+    await page.getByRole("button", { name: /Dismiss Web DAW quick-start guide/i }).click();
+    await expect(page.getByTestId("daw-onboarding-banner")).toBeHidden();
+    await page.getByTestId("shortcuts-help-btn").click();
+    await expect(page.getByTestId("keyboard-shortcuts-modal")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("keyboard-shortcuts-modal")).toBeHidden();
+
     await page.waitForTimeout(250);
     await saveShot(page, "09-daw-arrangement-1440.png", false);
 

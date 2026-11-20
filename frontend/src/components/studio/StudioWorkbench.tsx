@@ -22,6 +22,7 @@ import { StemsInspector } from "@/components/advanced/StemsInspector";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { SavedMixHistoryDrawer } from "@/components/auth/SavedMixHistoryDrawer";
 import { MentorDrawer } from "@/components/privacy/MentorDrawer";
+import { KeyboardShortcutsModal } from "@/components/shared/KeyboardShortcutsModal";
 import { SimpleView } from "@/components/simple/SimpleView";
 import { ReferenceABView } from "@/components/workspace/ReferenceABView";
 import { WorkspaceSubNav, type WorkspaceSubTab } from "@/components/workspace/WorkspaceSubNav";
@@ -48,7 +49,13 @@ import {
   uploadUserStems,
 } from "@/lib/api";
 import { analyzeFileWithWebAudioFallback } from "@/lib/clientWebAudioDsp";
-import { consumePendingDawMixdown, hasPendingDawMixdown } from "@/lib/pendingDawMixdown";
+import {
+  audioBufferToWavFile,
+  consumePendingDawMixdown,
+  deriveDawFixPreset,
+  hasPendingDawMixdown,
+  setPendingStudioToDawHandoff,
+} from "@/lib/pendingDawMixdown";
 import { loadRepairChecklist, saveRepairChecklist } from "@/lib/repairChecklist";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
@@ -102,6 +109,7 @@ export function StudioWorkbench() {
   const [authInitialError, setAuthInitialError] = useState<string | null>(null);
   const [authPromptReason, setAuthPromptReason] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [privacyPrefs, setPrivacyPrefs] = useState<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
@@ -165,6 +173,7 @@ export function StudioWorkbench() {
   const consumedDawHandoffRef = useRef(false);
   const checklistDebounceRef = useRef<number | null>(null);
   const pendingChecklistFlushRef = useRef<(() => Promise<void>) | null>(null);
+  const activeAudioFileRef = useRef<File | null>(null);
 
   const reattachInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -191,6 +200,7 @@ export function StudioWorkbench() {
     cancelBackgroundUpgrade();
     revokeLocalObjectUrl();
     uploadAbortRef.current?.abort();
+    activeAudioFileRef.current = null;
     studioAudioEngine.reset();
     setReport(null);
     setIsDemoSession(false);
@@ -841,6 +851,7 @@ export function StudioWorkbench() {
 
   const handleAnalyzeFile = async (file: File) => {
     userClearedRef.current = false;
+    activeAudioFileRef.current = file;
     cancelBackgroundUpgrade();
     setUploadError(null);
     setIsAnalyzing(true);
@@ -943,6 +954,7 @@ export function StudioWorkbench() {
         "/demo/demo-flawed-v1.wav",
         "demo-flawed-v1.wav"
       );
+      activeAudioFileRef.current = demoFile;
       if (healthStatusRef.current !== "online") {
         const localRes = await analyzeFileWithWebAudioFallback({
           file: demoFile,
@@ -1042,6 +1054,99 @@ export function StudioWorkbench() {
     if (!audioState.hasPrimary) return;
     await studioAudioEngine.auditionRange(startSec, endSec);
   };
+
+  // Reverse closed-loop bridge: /studio FindingCard ("Fix in Web DAW ↗") → /daw
+  const handleFixInDaw = useCallback(
+    async (finding: Finding) => {
+      if (!report) return;
+      let handoffFile: File | null = activeAudioFileRef.current;
+
+      if (!handoffFile) {
+        const buffer = studioAudioEngine.getSlotBuffer("primary");
+        if (buffer) {
+          handoffFile = audioBufferToWavFile(buffer, report.audio_metadata.filename);
+        }
+      }
+
+      if (!handoffFile) {
+        const url = studioAudioEngine.getSlotUrl("primary");
+        if (url) {
+          try {
+            const res = await fetch(url);
+            if (res.ok) {
+              const blob = await res.blob();
+              handoffFile = new File([blob], report.audio_metadata.filename, {
+                type: blob.type || "audio/wav",
+              });
+            }
+          } catch {
+            // Fall through if fetch fails
+          }
+        }
+      }
+
+      if (!handoffFile) return;
+
+      studioAudioEngine.pause();
+      const preset = deriveDawFixPreset(finding, report.context.stage);
+      setPendingStudioToDawHandoff({
+        ...preset,
+        file: handoffFile,
+        trackName: report.audio_metadata.filename,
+        findingTitle: finding.title,
+        evidenceId: finding.evidence_id,
+        timestampStartSec: finding.timestamp_start_sec,
+        timestampEndSec: finding.timestamp_end_sec,
+      });
+
+      const params = new URLSearchParams();
+      params.set("from", "studio");
+      params.set("plugin", preset.suggestedPluginId);
+      if (typeof preset.freqHz === "number") params.set("freq", String(preset.freqHz));
+      if (typeof preset.gainDb === "number") params.set("gain", String(preset.gainDb));
+      router.push(`/daw?${params.toString()}`);
+    },
+    [report, router]
+  );
+
+  // Studio keyboard shortcuts: ? (Help), Space (Play/Pause), M (Mono Fold), L (Loop)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.tagName === "SELECT" ||
+          el.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.key === "?") {
+        e.preventDefault();
+        setShortcutsOpen((prev) => !prev);
+        return;
+      }
+
+      if (!report || !audioState.hasPrimary) return;
+
+      if (e.code === "Space" && el?.tagName !== "BUTTON") {
+        e.preventDefault();
+        void studioAudioEngine.togglePlay();
+      } else if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        const current = studioAudioEngine.getState().stereoMode;
+        studioAudioEngine.setStereoMode(current === "mono" ? "stereo" : "mono");
+      } else if (e.key === "l" || e.key === "L") {
+        e.preventDefault();
+        studioAudioEngine.setLoop(!studioAudioEngine.getState().loopEnabled);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [audioState.hasPrimary, report]);
 
   const handleUploadReference = async (file: File) => {
     if (!report) return;
@@ -1392,6 +1497,7 @@ export function StudioWorkbench() {
         onOpenHistory={() => setHistoryOpen(true)}
         onOpenSignedOutHistory={handleOpenSignedOutHistory}
         onShareReviewLink={handleShareReviewLink}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
       />
 
       {report && (
@@ -1567,6 +1673,7 @@ export function StudioWorkbench() {
                 onAuditionFinding={(f) => void handleAuditionFinding(f)}
                 onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
                 onRecheckFinding={handleRecheckFinding}
+                onFixInDaw={handleFixInDaw}
                 onToggleCorrectiveEq={(eq: CorrectiveEqConfig) =>
                   studioAudioEngine.setCorrectiveEq(eq)
                 }
@@ -1590,6 +1697,7 @@ export function StudioWorkbench() {
                 onSelectFinding={(f) => setActiveFindingId(f.evidence_id)}
                 onAuditionFinding={(f) => void handleAuditionFinding(f)}
                 onRecheckFinding={handleRecheckFinding}
+                onFixInDaw={handleFixInDaw}
                 onToggleCorrectiveEq={(eq: CorrectiveEqConfig) =>
                   studioAudioEngine.setCorrectiveEq(eq)
                 }
@@ -1767,6 +1875,11 @@ export function StudioWorkbench() {
         onCompareAgainstActive={(baseline) => void handleCompareWithSavedBaseline(baseline)}
         onDeleteAnalysis={(id, proxyPath) => void handleDeleteSavedAnalysis(id, proxyPath)}
         onPurgeAccountData={supabaseUser ? handlePurgeAccountData : undefined}
+      />
+      <KeyboardShortcutsModal
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
+        context="studio"
       />
     </div>
   );

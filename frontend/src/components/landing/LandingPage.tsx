@@ -369,10 +369,10 @@ export function LandingPage() {
   return (
     <div
       ref={rootRef}
-      className="min-h-screen bg-[#FFFFFF] text-[#0A0A0A] selection:bg-[#FFE01B] selection:text-[#0A0A0A]"
+      className="min-h-screen bg-[#FFFFFF] pb-28 text-[#0A0A0A] selection:bg-[#FFE01B] selection:text-[#0A0A0A] sm:pb-24"
     >
-      {/* Architectural Outer Swiss Frame */}
-      <div className="mx-auto max-w-[1440px] border-x-[1.5px] border-[#0A0A0A] bg-[#FFFFFF]">
+      {/* Architectural Outer Swiss Frame — flush 2px solid #0A0A0A grid alignment */}
+      <div className="mx-auto max-w-[1440px] overflow-x-clip border-x-2 border-b-2 border-[#0A0A0A] bg-[#FFFFFF]">
         {/* ROW 1 — Compartmentalized Grid Topbar */}
         <header
           data-testid="landing-topbar"
@@ -491,9 +491,13 @@ export function LandingPage() {
           </div>
 
           {/* Right Hero Column: Spec + Vermilion Rotating Emblem + Pure #0A0A0A Interactive Audio Console */}
-          <div id="demo-deck" data-testid="landing-demo-showcase" className="flex flex-col lg:col-span-6">
+          <div
+            id="demo-deck"
+            data-testid="landing-demo-showcase"
+            className="flex flex-col overflow-hidden lg:col-span-6"
+          >
             {/* Top Strip: 1-Sentence Spec + Solid Vermilion Rotating Wireframe Emblem */}
-            <div className="grid grid-cols-[1fr_auto] border-b-[1.5px] border-[#0A0A0A]">
+            <div className="grid grid-cols-[1fr_auto] border-b-2 border-[#0A0A0A]">
               <div className="flex flex-col justify-between gap-3 p-5 sm:p-6">
                 <p className="max-w-sm text-xs font-bold uppercase leading-[1.4] tracking-[0.04em] text-[#0A0A0A]">
                   CALIBRATED ITU-R BS.1770, 4X TRUE PEAK &amp; 20–120 HZ PHASE DIAGNOSTICS.
@@ -520,7 +524,7 @@ export function LandingPage() {
               {/* Solid Swiss Vermilion Rotating Wireframe / Waveform Emblem */}
               <div
                 aria-hidden="true"
-                className="flex w-24 items-center justify-center border-l-[1.5px] border-[#0A0A0A] bg-[#FF3B1F] p-4 sm:w-28"
+                className="flex w-24 items-center justify-center border-l-2 border-[#0A0A0A] bg-[#FF3B1F] p-4 sm:w-28"
               >
                 <svg
                   viewBox="0 0 80 80"
@@ -537,10 +541,13 @@ export function LandingPage() {
               </div>
             </div>
 
-            {/* Pure #0A0A0A Hardware Instrument Inset — Playable Right on Landing Page */}
-            <div className="flex flex-1 flex-col gap-3 bg-[#0A0A0A] p-4 sm:p-5">
+            {/* Pure #0A0A0A Hardware Instrument Inset — overflow-hidden, zero stray edge strip */}
+            <div
+              data-testid="landing-dark-demo-panel"
+              className="flex flex-1 flex-col gap-3 overflow-hidden bg-[#0A0A0A] p-4 sm:p-5"
+            >
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
-                <div className="sm:col-span-5">
+                <div className="min-w-0 sm:col-span-6">
                   <SpinningDiscPlayer
                     title="demo-flawed-v1.wav"
                     subtitle="Click spindle to spin stereo demo"
@@ -555,10 +562,10 @@ export function LandingPage() {
                     className="h-full"
                   />
                 </div>
-                <div className="flex flex-col justify-between gap-3 sm:col-span-7">
+                <div className="flex min-w-0 flex-col justify-between gap-3 sm:col-span-6">
                   <LiveSpectralGraph
                     spectralBands={DEMO_SPECTRAL_BANDS}
-                    height={146}
+                    height={156}
                     compact
                   />
                   <FlawTimelineBar
@@ -566,7 +573,7 @@ export function LandingPage() {
                     durationSec={12}
                     clippingTimestamps={[3.4, 4.1, 4.8]}
                     findings={DEMO_FINDINGS}
-                    height={76}
+                    height={84}
                   />
                 </div>
               </div>
@@ -875,8 +882,11 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* ROW 6 — Clean 3-Column Swiss Grid Footer */}
-        <footer className="grid grid-cols-1 divide-y-[1.5px] divide-[#0A0A0A] md:grid-cols-12 md:divide-x-[1.5px] md:divide-y-0">
+        {/* ROW 6 — Clean 3-Column Swiss Grid Footer (with bottom clearance so floating cookie card never intersects legal links) */}
+        <footer
+          data-testid="landing-footer"
+          className="grid grid-cols-1 divide-y-[1.5px] divide-[#0A0A0A] pb-16 md:grid-cols-12 md:divide-x-[1.5px] md:divide-y-0 md:pb-0"
+        >
           {/* Column 1: Solid Vermilion CTA Block */}
           <motion.button
             type="button"
@@ -896,20 +906,21 @@ export function LandingPage() {
           <div className="flex flex-col justify-between gap-4 p-6 md:col-span-5 sm:p-8">
             <MixitLogo variant="full" tone="light" heightClass="h-6" />
             <nav
+              data-testid="landing-footer-legal-nav"
               aria-label="Legal and status links"
               className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-extrabold uppercase tracking-[0.06em] text-[#0A0A0A]"
             >
               <Link href="/privacy" className="hover:text-[#FF3B1F] hover:underline">
-                Privacy
+                Privacy Policy
               </Link>
               <Link href="/terms" className="hover:text-[#FF3B1F] hover:underline">
-                Terms
+                Terms of Use
               </Link>
               <Link href="/cookies" className="hover:text-[#FF3B1F] hover:underline">
-                Cookies
+                Cookie Policy
               </Link>
               <Link href="/status" className="hover:text-[#FF3B1F] hover:underline">
-                Status
+                System Status
               </Link>
             </nav>
           </div>

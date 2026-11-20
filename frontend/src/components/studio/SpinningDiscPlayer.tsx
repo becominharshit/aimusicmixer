@@ -370,14 +370,21 @@ export function SpinningDiscPlayer({
         </div>
       </div>
 
-      {/* Calibrated Single-Line Telemetry Strip — zero 3-line wrapping */}
+      {/* Calibrated Single-Line Telemetry Strip — generous horizontal breathing room */}
       {typeof lufs === "number" || typeof truePeak === "number" || typeof bpm === "number" ? (
-        <div className="mt-3 grid grid-cols-3 gap-1.5 border-t border-[#262B36] pt-3">
-          <div className="min-w-0 border border-[#262B36] bg-[#12151C] px-2 py-2">
-            <div className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.04em] text-[#A1A8B8]">
+        <div
+          className={`mt-3 grid gap-2 border-t border-[#262B36] pt-3 ${
+            compact ? "grid-cols-2" : "grid-cols-3"
+          }`}
+        >
+          <div
+            data-testid="hero-metric-cell"
+            className="min-w-0 border border-[#262B36] bg-[#12151C] px-4 py-3"
+          >
+            <div className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.06em] text-[#A1A8B8]">
               Loudness
             </div>
-            <div className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold text-[#F4F1EA]">
+            <div className="mt-1 whitespace-nowrap tabular-telemetry tabular-nums text-xs font-semibold text-[#F4F1EA]">
               {typeof lufs === "number" ? (
                 <>
                   {lufs.toFixed(1)}{" "}
@@ -389,12 +396,15 @@ export function SpinningDiscPlayer({
             </div>
           </div>
 
-          <div className="min-w-0 border border-[#262B36] bg-[#12151C] px-2 py-2">
-            <div className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.04em] text-[#A1A8B8]">
+          <div
+            data-testid="hero-metric-cell"
+            className="min-w-0 border border-[#262B36] bg-[#12151C] px-4 py-3"
+          >
+            <div className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.06em] text-[#A1A8B8]">
               True Peak
             </div>
             <div
-              className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold"
+              className="mt-1 whitespace-nowrap tabular-telemetry tabular-nums text-xs font-semibold"
               style={{
                 color:
                   typeof truePeak === "number" && truePeak > -0.2 ? "#FF3B1F" : "#F4F1EA",
@@ -412,11 +422,20 @@ export function SpinningDiscPlayer({
             </div>
           </div>
 
-          <div className="min-w-0 border border-[#262B36] bg-[#12151C] px-2 py-2">
-            <div className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.04em] text-[#A1A8B8]">
+          <div
+            data-testid="hero-metric-cell"
+            className={`min-w-0 border border-[#262B36] bg-[#12151C] px-4 py-3 ${
+              compact ? "col-span-2 flex items-center justify-between gap-3" : ""
+            }`}
+          >
+            <div className="whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.06em] text-[#A1A8B8]">
               Tempo
             </div>
-            <div className="mt-0.5 whitespace-nowrap tabular-telemetry text-xs font-semibold text-[#F4F1EA]">
+            <div
+              className={`whitespace-nowrap tabular-telemetry tabular-nums text-xs font-semibold text-[#F4F1EA] ${
+                compact ? "" : "mt-1"
+              }`}
+            >
               {typeof bpm === "number" ? (
                 <>
                   {Math.round(bpm)}{" "}

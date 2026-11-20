@@ -853,6 +853,14 @@ export class StudioAudioEngine {
     this.emit();
   }
 
+  getSlotBuffer(slot: AudioSourceSlot = "primary"): AudioBuffer | null {
+    return this.slots[slot]?.buffer ?? null;
+  }
+
+  getSlotUrl(slot: AudioSourceSlot = "primary"): string | null {
+    return this.slots[slot]?.url ?? null;
+  }
+
   reset(): void {
     this.stopCurrentSourceNode();
     this.isPlaying = false;

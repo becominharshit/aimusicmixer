@@ -23,6 +23,7 @@ interface AdvancedWorkbenchProps {
   onSelectFinding: (finding: Finding) => void;
   onAuditionFinding: (finding: Finding) => void;
   onRecheckFinding?: (finding: Finding) => void;
+  onFixInDaw?: (finding: Finding) => void | Promise<void>;
   onToggleCorrectiveEq?: (eq: CorrectiveEqConfig) => void;
 }
 
@@ -37,6 +38,7 @@ export function AdvancedWorkbench({
   onSelectFinding,
   onAuditionFinding,
   onRecheckFinding,
+  onFixInDaw,
   onToggleCorrectiveEq,
 }: AdvancedWorkbenchProps) {
   const m = report.global_metrics;
@@ -230,6 +232,7 @@ export function AdvancedWorkbench({
                   onSelect={onSelectFinding}
                   onAudition={onAuditionFinding}
                   onRecheck={onRecheckFinding}
+                  onFixInDaw={onFixInDaw}
                   onToggleCorrectiveEq={onToggleCorrectiveEq}
                 />
               ))}

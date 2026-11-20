@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   GitCompare,
   Headphones,
+  ImageDown,
   Minus,
   Scale,
   Sparkles,
@@ -14,6 +15,7 @@ import {
 import type { AudioSourceSlot } from "@/audio/StudioAudioEngine";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { downloadScorecardPng } from "@/lib/scorecardPng";
 import type { SavedAnalysisRecord } from "@/lib/supabase/storage";
 import type { AnalysisReport } from "@/types/report";
 
@@ -103,6 +105,16 @@ export function RevisionInspector({
               Load Sample Revised Mix (v2)
             </Button>
           )}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            data-testid="export-scorecard-png-btn"
+            onClick={() => void downloadScorecardPng(report)}
+          >
+            <ImageDown className="h-3.5 w-3.5 text-[#FFE01B]" aria-hidden="true" />
+            Export Scorecard PNG
+          </Button>
         </div>
       </div>
 

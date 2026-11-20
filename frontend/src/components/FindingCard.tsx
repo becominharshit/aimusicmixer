@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   AlertOctagon,
   AlertTriangle,
+  ArrowUpRight,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -29,6 +30,7 @@ interface FindingCardProps {
   onSelect?: (finding: Finding) => void;
   onAudition: (finding: Finding) => void;
   onRecheck?: (finding: Finding) => void;
+  onFixInDaw?: (finding: Finding) => void | Promise<void>;
   onToggleCorrectiveEq?: (eq: CorrectiveEqConfig) => void;
   completedRepairSteps?: Record<string, boolean>;
   onToggleRepairStep?: (stepId: string, checked: boolean) => void;
@@ -198,6 +200,7 @@ export function FindingCard({
   onSelect,
   onAudition,
   onRecheck,
+  onFixInDaw,
   onToggleCorrectiveEq,
   completedRepairSteps = {},
   onToggleRepairStep,
@@ -348,6 +351,30 @@ export function FindingCard({
                 ? `Bypass EQ (${suggestedEq.freqHz} Hz)`
                 : `Audition EQ (${suggestedEq.gainDb >= 0 ? "+" : ""}${suggestedEq.gainDb} dB @ ${suggestedEq.freqHz} Hz)`}
             </span>
+          </button>
+        )}
+
+        {onFixInDaw && finding.severity !== "safe" && (
+          <button
+            type="button"
+            disabled={!hasAudio}
+            data-testid={`fix-in-daw-${finding.evidence_id}`}
+            title={
+              hasAudio
+                ? "Open this mix in Mixit Web DAW with the matching processor pre-loaded"
+                : "Audio buffer required to open this mix in Web DAW"
+            }
+            onClick={() => {
+              if (hasAudio) void onFixInDaw(finding);
+            }}
+            className={`inline-flex h-8 items-center gap-1.5 border px-2.5 text-[11px] font-bold transition-colors ${
+              hasAudio
+                ? "border-[#FFE01B]/65 bg-[var(--bg-inset)] text-[#FFE01B] hover:border-[#0A0A0A] hover:bg-[#FFE01B] hover:text-[#0A0A0A] cursor-pointer"
+                : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-muted)] cursor-not-allowed"
+            }`}
+          >
+            <span>Fix in Web DAW</span>
+            <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
           </button>
         )}
 
