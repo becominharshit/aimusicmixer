@@ -37,10 +37,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  COMPARE_REQUEST_TIMEOUT_MS,
+  PRECISION_SYNC_TIMEOUT_MS,
   analyzeMixFile,
   askMentor,
+  askMentorStandalone,
   checkBackendHealth,
   clearSession,
+  compareDemoRevision,
   compareRevisedMix,
   compareSavedReports,
   fetchPublicDemoFile,
@@ -125,6 +129,7 @@ export function StudioWorkbench() {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isUpgradingPrecision, setIsUpgradingPrecision] = useState(false);
+  const [precisionUpgradeError, setPrecisionUpgradeError] = useState<string | null>(null);
 
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [privacyPrefs, setPrivacyPrefs] = useState<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
@@ -180,7 +185,15 @@ export function StudioWorkbench() {
   const prevPrivacyPrefsRef = useRef<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
   const localObjectUrlRef = useRef<string | null>(null);
   const bgUpgradeTimerRef = useRef<number | null>(null);
+  const bgUpgradeAbortRef = useRef<AbortController | null>(null);
   const bgUpgradeCycleRef = useRef(0);
+  const pendingPrecisionUpgradeRef = useRef<{
+    file: File;
+    genre: GenreType;
+    stage: StageType;
+    artistVision: ArtistVisionTag[];
+  } | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const completedRepairStepsRef = useRef<Record<string, boolean>>({});
   const reportRef = useRef<AnalysisReport | null>(null);
   const userClearedRef = useRef(false);
@@ -221,6 +234,9 @@ export function StudioWorkbench() {
   const cancelBackgroundUpgrade = useCallback(() => {
     bgUpgradeCycleRef.current += 1;
     setIsUpgradingPrecision(false);
+    setPrecisionUpgradeError(null);
+    bgUpgradeAbortRef.current?.abort();
+    bgUpgradeAbortRef.current = null;
     if (bgUpgradeTimerRef.current !== null) {
       window.clearTimeout(bgUpgradeTimerRef.current);
       bgUpgradeTimerRef.current = null;
@@ -274,21 +290,39 @@ export function StudioWorkbench() {
     }
   }, []);
 
-  const handleChangeSubTab = useCallback((nextTab: WorkspaceSubTab) => {
-    setSubTab(nextTab);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("tab", nextTab);
-      window.history.replaceState({}, "", url.toString());
-    }
+  const resetStudioScrollToTop = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
   }, []);
+
+  const handleChangeSubTab = useCallback(
+    (nextTab: WorkspaceSubTab) => {
+      setSubTab(nextTab);
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("tab", nextTab);
+        window.history.replaceState({}, "", url.toString());
+      }
+      if (nextTab === "revisions") {
+        resetStudioScrollToTop();
+      }
+    },
+    [resetStudioScrollToTop]
+  );
+
+  useEffect(() => {
+    if (subTab === "revisions") {
+      resetStudioScrollToTop();
+    }
+  }, [subTab, resetStudioScrollToTop]);
 
   const handleRecheckFinding = useCallback(() => {
     handleChangeSubTab("revisions");
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }, [handleChangeSubTab]);
+    resetStudioScrollToTop();
+  }, [handleChangeSubTab, resetStudioScrollToTop]);
 
   const autoFixBands = useMemo(
     () => (report ? deriveAutoFixEqBands(report.findings) : []),
@@ -865,63 +899,102 @@ export function StudioWorkbench() {
     ) => {
       cancelBackgroundUpgrade();
       const cycleId = ++bgUpgradeCycleRef.current;
+      pendingPrecisionUpgradeRef.current = {
+        file,
+        genre: targetGenre,
+        stage: targetStage,
+        artistVision: targetVision,
+      };
+      setPrecisionUpgradeError(null);
       setIsUpgradingPrecision(true);
-      const MAX_UPGRADE_ATTEMPTS = 6;
-      const RETRY_DELAY_MS = 5000;
 
-      const attemptUpgrade = (attempt: number) => {
-        bgUpgradeTimerRef.current = window.setTimeout(async () => {
+      const runUpgrade = async () => {
+        if (bgUpgradeCycleRef.current !== cycleId) return;
+        const controller = new AbortController();
+        bgUpgradeAbortRef.current = controller;
+        let timedOut = false;
+        const timeoutId = window.setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, PRECISION_SYNC_TIMEOUT_MS);
+
+        try {
+          const serverReport = await analyzeMixFile({
+            file,
+            genre: targetGenre,
+            stage: targetStage,
+            artistVision: targetVision,
+            signal: controller.signal,
+            endpoint: "/api/v1/analyze",
+          });
           if (bgUpgradeCycleRef.current !== cycleId) return;
-          try {
-            const health = await checkBackendHealth();
-            if (bgUpgradeCycleRef.current !== cycleId) return;
-            setHealthData(health);
-            setHealthError(null);
-            setHealthState("online");
 
-            const serverReport = await analyzeMixFile({
-              file,
-              genre: targetGenre,
-              stage: targetStage,
-              artistVision: targetVision,
-            });
-            if (bgUpgradeCycleRef.current !== cycleId) return;
-            setIsUpgradingPrecision(false);
-            await hydrateSessionReport(serverReport, {
-              fromLiveBackend: true,
-              isDemo: false,
-              fallbackFile: file,
-              preserveRepairSteps: completedRepairStepsRef.current,
-            });
-            const saved = await persistReportToSupabase(
-              {
-                ...serverReport,
-                completed_repair_steps: completedRepairStepsRef.current,
-              },
-              "v1",
-              undefined,
-              undefined,
-              file
-            );
-            if (saved && bgUpgradeCycleRef.current === cycleId) {
-              setActiveSavedId(saved.id);
-            }
-          } catch {
-            if (bgUpgradeCycleRef.current !== cycleId) return;
-            if (attempt < MAX_UPGRADE_ATTEMPTS) {
-              attemptUpgrade(attempt + 1);
-            } else {
-              setIsUpgradingPrecision(false);
-            }
+          setHealthError(null);
+          setHealthState("online");
+          setIsUpgradingPrecision(false);
+          setPrecisionUpgradeError(null);
+
+          await hydrateSessionReport(serverReport, {
+            fromLiveBackend: true,
+            isDemo: false,
+            fallbackFile: file,
+            preserveRepairSteps: completedRepairStepsRef.current,
+          });
+          const saved = await persistReportToSupabase(
+            {
+              ...serverReport,
+              completed_repair_steps: completedRepairStepsRef.current,
+            },
+            "v1",
+            undefined,
+            undefined,
+            file
+          );
+          if (saved && bgUpgradeCycleRef.current === cycleId) {
+            setActiveSavedId(saved.id);
           }
-        }, RETRY_DELAY_MS);
+        } catch (err) {
+          if (bgUpgradeCycleRef.current !== cycleId) return;
+          setIsUpgradingPrecision(false);
+          const isAbort =
+            timedOut ||
+            (err instanceof DOMException && err.name === "AbortError") ||
+            (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError"));
+          setPrecisionUpgradeError(
+            isAbort
+              ? "Precision server sync timed out"
+              : "Precision server sync timed out — server unreachable"
+          );
+        } finally {
+          window.clearTimeout(timeoutId);
+          if (bgUpgradeAbortRef.current === controller) {
+            bgUpgradeAbortRef.current = null;
+          }
+        }
       };
 
-      attemptUpgrade(1);
+      void runUpgrade();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [cancelBackgroundUpgrade, persistReportToSupabase, setHealthState]
   );
+
+  const handleRetryPrecisionSync = useCallback(() => {
+    const pending = pendingPrecisionUpgradeRef.current;
+    if (pending) {
+      startBackgroundPrecisionUpgrade(
+        pending.file,
+        pending.genre,
+        pending.stage,
+        pending.artistVision
+      );
+      return;
+    }
+    const fallbackFile = activeAudioFileRef.current;
+    if (fallbackFile) {
+      startBackgroundPrecisionUpgrade(fallbackFile, genre, stage, artistVision);
+    }
+  }, [artistVision, genre, stage, startBackgroundPrecisionUpgrade]);
 
   const shouldFallbackToWebAudio = (err: unknown): boolean => {
     if (err instanceof DOMException && err.name === "AbortError") return false;
@@ -1028,6 +1101,13 @@ export function StudioWorkbench() {
     const pendingFile = consumePendingDawMixdown();
     if (!pendingFile) return;
     consumedDawHandoffRef.current = true;
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("from")) {
+        url.searchParams.delete("from");
+        window.history.replaceState({}, "", url.toString());
+      }
+    }
     void handleAnalyzeFile(pendingFile);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked, supabaseUser]);
@@ -1309,7 +1389,55 @@ export function StudioWorkbench() {
     setRevisionError(null);
     setIsUploadingRevision(true);
     try {
-      const updated = await compareRevisedMix(report.session_id, file);
+      const hasLiveSession = Boolean(report.session_id && !report.session_id.startsWith("local_"));
+      let updated: AnalysisReport;
+
+      if (hasLiveSession) {
+        try {
+          updated = await compareRevisedMix(report.session_id, file);
+        } catch (sessionErr) {
+          const msg = sessionErr instanceof Error ? sessionErr.message.toLowerCase() : "";
+          if (msg.includes("404") || msg.includes("expired") || msg.includes("not found")) {
+            const v2Controller = new AbortController();
+            const v2Timer = window.setTimeout(
+              () => v2Controller.abort(),
+              COMPARE_REQUEST_TIMEOUT_MS
+            );
+            try {
+              const revisedReport = await analyzeMixFile({
+                file,
+                genre: report.context.genre,
+                stage: report.context.stage,
+                artistVision: report.context.artist_vision,
+                signal: v2Controller.signal,
+              });
+              const comparison = await compareSavedReports(report, revisedReport);
+              updated = { ...report, revision_comparison: comparison };
+            } finally {
+              window.clearTimeout(v2Timer);
+            }
+          } else {
+            throw sessionErr;
+          }
+        }
+      } else {
+        const v2Controller = new AbortController();
+        const v2Timer = window.setTimeout(() => v2Controller.abort(), COMPARE_REQUEST_TIMEOUT_MS);
+        try {
+          const revisedReport = await analyzeMixFile({
+            file,
+            genre: report.context.genre,
+            stage: report.context.stage,
+            artistVision: report.context.artist_vision,
+            signal: v2Controller.signal,
+          });
+          const comparison = await compareSavedReports(report, revisedReport);
+          updated = { ...report, revision_comparison: comparison };
+        } finally {
+          window.clearTimeout(v2Timer);
+        }
+      }
+
       setReport(updated);
       if (updated.revision_comparison) {
         void persistReportToSupabase(
@@ -1319,12 +1447,16 @@ export function StudioWorkbench() {
           activeSavedId,
           file
         );
-        await studioAudioEngine.loadSlot(
-          "revised",
-          resolveApiUrl(updated.revision_comparison.revised_playback_proxy_url),
-          updated.global_metrics.integrated_lufs +
-            updated.revision_comparison.metric_deltas.integrated_lufs_delta
-        );
+        try {
+          await studioAudioEngine.loadSlot(
+            "revised",
+            resolveApiUrl(updated.revision_comparison.revised_playback_proxy_url),
+            updated.global_metrics.integrated_lufs +
+              updated.revision_comparison.metric_deltas.integrated_lufs_delta
+          );
+        } catch {
+          // Keep deterministic comparison deltas visible even if proxy playback decode fails
+        }
       }
     } catch (err) {
       setRevisionError(err instanceof Error ? err.message : "Revision upload failed.");
@@ -1338,19 +1470,31 @@ export function StudioWorkbench() {
     setRevisionError(null);
     setIsUploadingRevision(true);
     try {
-      const demoV2 = await fetchPublicDemoFile(
-        "/demo/demo-revised-v2.wav",
-        "demo-revised-v2.wav"
-      );
-      const updated = await compareRevisedMix(report.session_id, demoV2);
+      const updated = await compareDemoRevision(report.session_id, report);
       setReport(updated);
       if (updated.revision_comparison) {
-        await studioAudioEngine.loadSlot(
-          "revised",
-          resolveApiUrl(updated.revision_comparison.revised_playback_proxy_url),
-          updated.global_metrics.integrated_lufs +
-            updated.revision_comparison.metric_deltas.integrated_lufs_delta
-        );
+        const proxyPath =
+          updated.revision_comparison.revised_playback_proxy_url || "/demo/demo-revised-v2.wav";
+        const proxyUrl = proxyPath.startsWith("/demo/") ? proxyPath : resolveApiUrl(proxyPath);
+        try {
+          await studioAudioEngine.loadSlot(
+            "revised",
+            proxyUrl,
+            updated.global_metrics.integrated_lufs +
+              updated.revision_comparison.metric_deltas.integrated_lufs_delta
+          );
+        } catch {
+          try {
+            await studioAudioEngine.loadSlot(
+              "revised",
+              "/demo/demo-revised-v2.wav",
+              updated.global_metrics.integrated_lufs +
+                updated.revision_comparison.metric_deltas.integrated_lufs_delta
+            );
+          } catch {
+            // Keep comparison scorecard visible even if browser audio decode fails
+          }
+        }
       }
     } catch (err) {
       setRevisionError(err instanceof Error ? err.message : "Sample revision comparison failed.");
@@ -1400,20 +1544,87 @@ export function StudioWorkbench() {
     }
   };
 
+  const buildLocalOfflineMentorFallback = (
+    activeReport: AnalysisReport,
+    req: MentorRequest,
+    reason: string
+  ): MentorResponse => {
+    const m = activeReport.global_metrics;
+    const actions = activeReport.findings.slice(0, 3).map((finding, idx) => ({
+      evidence_id: finding.evidence_id,
+      priority: idx + 1,
+      headline: finding.title,
+      coaching_note: `${finding.what_happened} ${finding.why_it_matters}`,
+      daw_experiment: `${finding.listen_prompt} Then test: ${finding.what_to_try}`,
+      verification_step: finding.recheck_target,
+    }));
+    return {
+      mode: "deterministic_fallback",
+      model_used: "deterministic-dsp-mentor-v1",
+      fallback_reason: reason,
+      summary: `[${reason}] Measured ${m.integrated_lufs.toFixed(1)} LUFS integrated, ${
+        m.true_peak_dbtp >= 0 ? "+" : ""
+      }${m.true_peak_dbtp.toFixed(2)} dBTP True Peak, LRA ${m.loudness_range_lu.toFixed(
+        1
+      )} LU, and ${m.phase_correlation_avg >= 0 ? "+" : ""}${m.phase_correlation_avg.toFixed(
+        2
+      )} phase correlation across '${activeReport.audio_metadata.filename}'.`,
+      vision_alignment_note: `Offline deterministic coaching targets clean ${activeReport.context.genre} (${activeReport.context.stage.replace(
+        /_/g,
+        " "
+      )}) translation without external network calls.`,
+      prioritized_actions: actions,
+      cited_evidence_ids: actions.map((a) => a.evidence_id),
+      privacy_audit: {
+        raw_audio_sent_to_ai: false,
+        external_ai_enabled: false,
+        training_opt_in: Boolean(req.allow_training_opt_in),
+        retention_policy: "100% local deterministic coaching; zero audio or telemetry left your browser.",
+      },
+    };
+  };
+
   const handleAskMentor = async (req: MentorRequest) => {
     if (!report) return;
     setMentorError(null);
     setIsAskingMentor(true);
     try {
-      const advice = await askMentor(report.session_id, req);
+      const hasLiveSession = Boolean(report.session_id && !report.session_id.startsWith("local_"));
+      let advice: MentorResponse;
+      if (!hasLiveSession) {
+        advice = await askMentorStandalone(report, req);
+      } else {
+        try {
+          advice = await askMentor(report.session_id, req);
+        } catch (sessionErr) {
+          const msg = sessionErr instanceof Error ? sessionErr.message.toLowerCase() : "";
+          if (msg.includes("404") || msg.includes("expired") || msg.includes("not found")) {
+            advice = await askMentorStandalone(report, req);
+          } else {
+            throw sessionErr;
+          }
+        }
+      }
       setMentorAdvice(advice);
       setReport((prev) => (prev ? { ...prev, privacy_audit: advice.privacy_audit } : prev));
     } catch (err) {
-      setMentorError(
-        err instanceof Error
-          ? err.message
-          : "AI Suggestions request failed. Please retry or run Offline Deterministic Suggestions."
-      );
+      if (!req.allow_metrics_ai) {
+        const offlineFallback = buildLocalOfflineMentorFallback(
+          report,
+          req,
+          "Offline Mentor active (local fallback)"
+        );
+        setMentorAdvice(offlineFallback);
+        setReport((prev) =>
+          prev ? { ...prev, privacy_audit: offlineFallback.privacy_audit } : prev
+        );
+      } else {
+        setMentorError(
+          err instanceof Error
+            ? err.message
+            : "AI Suggestions request failed. Please retry or run Offline Deterministic Suggestions."
+        );
+      }
     } finally {
       setIsAskingMentor(false);
     }
@@ -1569,6 +1780,7 @@ export function StudioWorkbench() {
 
   return (
     <StudioShell
+      scrollContainerRef={scrollContainerRef}
       headerProps={{
         mode,
         onModeChange: (nextMode) => {
@@ -1936,6 +2148,8 @@ export function StudioWorkbench() {
                   isPlaying={audioState.isPlaying}
                   hasAudio={audioState.hasPrimary}
                   isPrecisionUpgradeActive={isUpgradingPrecision}
+                  precisionUpgradeError={precisionUpgradeError}
+                  onRetryPrecisionSync={handleRetryPrecisionSync}
                   activeFindingId={activeFindingId}
                   activeCorrectiveEqId={audioState.activeCorrectiveEqId}
                   completedRepairSteps={completedRepairSteps}
@@ -1964,6 +2178,8 @@ export function StudioWorkbench() {
                   report={report}
                   hasAudio={audioState.hasPrimary}
                   isPrecisionUpgradeActive={isUpgradingPrecision}
+                  precisionUpgradeError={precisionUpgradeError}
+                  onRetryPrecisionSync={handleRetryPrecisionSync}
                   activeFindingId={activeFindingId}
                   activeCorrectiveEqId={audioState.activeCorrectiveEqId}
                   completedRepairSteps={completedRepairSteps}

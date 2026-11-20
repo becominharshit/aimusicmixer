@@ -674,3 +674,106 @@ def test_security_headers_middleware_attached() -> None:
     assert "content-security-policy" in res.headers
 
 
+def test_standalone_mentor_timeout_and_evicted_session_fallback(monkeypatch) -> None:
+    import time
+
+    import google.genai as real_genai
+
+    import app.ai.mentor as mentor_mod
+    import app.api.v1.routes as routes_mod
+
+    mock_report = get_mock_report()
+
+    class HangingModels:
+        def generate_content(self, **kwargs):
+            time.sleep(0.4)
+            return SimpleNamespace(text="{}")
+
+    class HangingClient:
+        def __init__(self, api_key: str, http_options=None) -> None:
+            self.models = HangingModels()
+
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key-123")
+    monkeypatch.setattr(real_genai, "Client", HangingClient)
+    monkeypatch.setattr(mentor_mod, "GEMINI_REQUEST_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(routes_mod, "GEMINI_REQUEST_TIMEOUT_SEC", 0.05)
+
+    started = time.monotonic()
+    timeout_resp = _run_coro_sync(
+        standalone_ai_mentor(
+            MentorStandaloneRequest(
+                session_id="sess_evicted_123",
+                report=mock_report,
+                allow_metrics_ai=True,
+                allow_audio_ai=True,
+                allow_training_opt_in=False,
+                question="Fix headroom on evicted session",
+            ),
+            _fake_request(),  # type: ignore[arg-type]
+        )
+    )
+    elapsed = time.monotonic() - started
+    assert elapsed < 0.35
+    assert timeout_resp.mode == "deterministic_fallback"
+    assert timeout_resp.fallback_reason is not None and "Timeout" in timeout_resp.fallback_reason
+    assert timeout_resp.privacy_audit.raw_audio_sent_to_ai is False
+
+    class ClientError(Exception):
+        def __init__(self, msg: str) -> None:
+            super().__init__(msg)
+            self.code = 429
+
+    class ErrorModels:
+        def generate_content(self, **kwargs):
+            raise ClientError("RESOURCE_EXHAUSTED")
+
+    class ErrorClient:
+        def __init__(self, api_key: str, http_options=None) -> None:
+            self.models = ErrorModels()
+
+    monkeypatch.setattr(real_genai, "Client", ErrorClient)
+    err_resp = _run_coro_sync(
+        standalone_ai_mentor(
+            MentorStandaloneRequest(
+                report=mock_report,
+                allow_metrics_ai=True,
+                allow_audio_ai=False,
+                allow_training_opt_in=False,
+                question="Check rate limit fallback",
+            ),
+            _fake_request(),  # type: ignore[arg-type]
+        )
+    )
+    assert err_resp.mode == "deterministic_fallback"
+    assert err_resp.fallback_reason is not None and "ClientError 429" in err_resp.fallback_reason
+
+
+def test_compare_demo_evicted_session_and_stateless_compare_fallback() -> None:
+    from app.api.v1.routes import compare_reports_endpoint
+    from app.schemas.report import CompareDemoFallbackRequest, CompareReportsRequest
+
+    mock_report = get_mock_report()
+    req = _fake_request()
+
+    # Evicted session WITH baseline report falls back cleanly to demo v2 comparison
+    fallback_report = compare_demo_revised_mix(
+        "sess_evicted_or_local",
+        req,  # type: ignore[arg-type]
+        CompareDemoFallbackRequest(baseline=mock_report),
+    )
+    assert fallback_report.revision_comparison is not None
+    assert fallback_report.revision_comparison.revised_filename == "revised_mix_v2.wav"
+    assert fallback_report.revision_comparison.revised_playback_proxy_url == "/demo/demo-revised-v2.wav"
+    assert len(fallback_report.revision_comparison.finding_statuses) >= 1
+
+    # Stateless POST /api/compare with revised=None also compares against demo v2
+    stateless_comp = compare_reports_endpoint(
+        CompareReportsRequest(baseline=mock_report, revised=None)
+    )
+    assert stateless_comp.revised_filename == "revised_mix_v2.wav"
+    assert stateless_comp.revised_playback_proxy_url == "/demo/demo-revised-v2.wav"
+
+    # Evicted session WITHOUT baseline report still raises 404 cleanly
+    with pytest.raises(HTTPException) as exc_info:
+        compare_demo_revised_mix("sess_evicted_no_baseline", req)  # type: ignore[arg-type]
+    assert exc_info.value.status_code == 404

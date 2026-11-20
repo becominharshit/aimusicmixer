@@ -260,7 +260,11 @@ class MentorResponse(BaseModel):
 
 class CompareReportsRequest(BaseModel):
     baseline: AnalysisReport
-    revised: AnalysisReport
+    revised: AnalysisReport | None = None
+
+
+class CompareDemoFallbackRequest(BaseModel):
+    baseline: AnalysisReport | None = None
 
 
 class ContextUpdateRequest(BaseModel):

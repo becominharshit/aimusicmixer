@@ -22,7 +22,7 @@ import { AddAudioModal } from "@/components/studio/AddAudioModal";
 import { CookieConsentBanner } from "@/components/compliance/CookieConsentBanner";
 import { KeyboardShortcutsModal } from "@/components/shared/KeyboardShortcutsModal";
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
-import { askMentor } from "@/lib/api";
+import { askMentor, askMentorStandalone, compareDemoRevision } from "@/lib/api";
 import { analyzePcmChannelsLocal } from "@/lib/clientWebAudioDsp";
 import {
   cacheStudioAudioBlob,
@@ -1084,5 +1084,112 @@ describe("MixBench UI & Privacy Contracts", () => {
     expect(screen.getByTestId("add-audio-modal")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Load Sample Mix/i }));
     expect(onLoadDemo).toHaveBeenCalledTimes(1);
+  });
+
+  it("enforces AbortController timeouts on askMentorStandalone and compareDemoRevision, falls back to /api/compare on local sessions, and cleans up loading states with retry UI", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    try {
+      // 1. askMentorStandalone enforces AbortController timeout
+      fetchSpy.mockImplementationOnce(
+        (_input, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("Aborted", "AbortError"));
+            });
+          })
+      );
+      await expect(
+        askMentorStandalone(
+          mockReport,
+          {
+            allow_metrics_ai: true,
+            allow_audio_ai: false,
+            allow_training_opt_in: false,
+            question: "Test timeout",
+          },
+          30
+        )
+      ).rejects.toThrow(/timed out/i);
+
+      // 2. compareDemoRevision on local_ session directly calls /api/compare with baseline JSON
+      const localReport: AnalysisReport = {
+        ...mockReport,
+        session_id: "local_daw_preview_1",
+      };
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            baseline_filename: localReport.audio_metadata.filename,
+            revised_filename: "revised_mix_v2.wav",
+            revised_playback_proxy_url: "/demo/demo-revised-v2.wav",
+            metric_deltas: {
+              integrated_lufs_delta: -2.1,
+              true_peak_dbtp_delta: -4.6,
+              psr_db_delta: 2.3,
+              loudness_range_lu_delta: 1.2,
+              phase_correlation_delta: 0.25,
+            },
+            finding_statuses: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      );
+      const compared = await compareDemoRevision(localReport.session_id, localReport, 5000);
+      expect(compared.revision_comparison?.revised_filename).toBe("revised_mix_v2.wav");
+      expect(fetchSpy).toHaveBeenLastCalledWith(
+        "/api/compare",
+        expect.objectContaining({ method: "POST" })
+      );
+
+      // 3. RevisionInspector clears Comparing v2... in finally and shows retryable alert on error
+      const failingDemoCompare = vi.fn().mockRejectedValueOnce(new Error("Sample v2 comparison timed out"));
+      render(
+        <RevisionInspector
+          report={localReport}
+          isUploading={false}
+          errorMessage={null}
+          onUploadRevision={vi.fn()}
+          onLoadDemoRevision={failingDemoCompare}
+          onAuditionRevised={vi.fn()}
+        />
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Load Sample Revised Mix \(v2\)/i }));
+      await waitFor(() => {
+        expect(screen.getByTestId("revision-error-alert")).toHaveTextContent(/timed out/i);
+      });
+      expect(screen.getByRole("button", { name: /Retry Comparison/i })).toBeInTheDocument();
+      expect(screen.queryByText(/Comparing v2\.\.\./i)).not.toBeInTheDocument();
+
+      // 4. SimpleView shows Precision server sync timed out notice + working Retry Server Sync button
+      const onRetrySync = vi.fn();
+      const timedOutPreviewReport: AnalysisReport = {
+        ...localReport,
+        analysis_source: "local_web_audio_preview",
+      };
+      render(
+        <MotionConfig reducedMotion="user">
+          <SimpleView
+            report={timedOutPreviewReport}
+            isPlaying={false}
+            isPrecisionUpgradeActive={false}
+            precisionUpgradeError="Precision server sync timed out"
+            onRetryPrecisionSync={onRetrySync}
+            activeFindingId={null}
+            onTogglePlay={vi.fn()}
+            onAuditionFinding={vi.fn()}
+            onSelectFinding={vi.fn()}
+            onOpenAdvanced={vi.fn()}
+            onNewUpload={vi.fn()}
+          />
+        </MotionConfig>
+      );
+      expect(screen.getByTestId("precision-sync-timeout-banner")).toHaveTextContent(
+        "Precision server sync timed out"
+      );
+      fireEvent.click(screen.getByTestId("retry-precision-sync-btn"));
+      expect(onRetrySync).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });

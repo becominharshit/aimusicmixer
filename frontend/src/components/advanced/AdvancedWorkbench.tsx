@@ -1,19 +1,22 @@
 "use client";
 
 import React from "react";
-import { AlertTriangle, CheckCircle2, Radio } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Radio, RotateCcw } from "lucide-react";
 import type { CorrectiveEqConfig } from "@/audio/StudioAudioEngine";
 import { FindingCard } from "@/components/FindingCard";
 import { DiagnosticCharts } from "@/components/advanced/DiagnosticCharts";
 import { AnimatedMetricValue } from "@/components/motion/AnimatedMetricValue";
 import { FlawTimelineBar } from "@/components/studio/FlawTimelineBar";
 import { LiveSpectralGraph } from "@/components/studio/LiveSpectralGraph";
+import { Button } from "@/components/ui/button";
 import type { AnalysisReport, Finding } from "@/types/report";
 
 interface AdvancedWorkbenchProps {
   report: AnalysisReport;
   hasAudio?: boolean;
   isPrecisionUpgradeActive?: boolean;
+  precisionUpgradeError?: string | null;
+  onRetryPrecisionSync?: () => void;
   activeFindingId: string | null;
   activeCorrectiveEqId?: string | null;
   completedRepairSteps?: Record<string, boolean>;
@@ -33,6 +36,8 @@ export function AdvancedWorkbench({
   report,
   hasAudio = true,
   isPrecisionUpgradeActive = false,
+  precisionUpgradeError = null,
+  onRetryPrecisionSync,
   activeFindingId,
   activeCorrectiveEqId = null,
   completedRepairSteps = {},
@@ -49,6 +54,10 @@ export function AdvancedWorkbench({
   const subCorr = m.low_end_phase_correlation;
   const showUpgradingBanner =
     report.analysis_source === "local_web_audio_preview" && isPrecisionUpgradeActive;
+  const showUpgradeErrorBanner =
+    report.analysis_source === "local_web_audio_preview" &&
+    !isPrecisionUpgradeActive &&
+    Boolean(precisionUpgradeError);
   const spotifyEst = report.streaming_estimates.find((s) =>
     s.platform.toLowerCase().includes("spotify")
   );
@@ -71,6 +80,31 @@ export function AdvancedWorkbench({
           <span className="tabular-telemetry text-[11px] opacity-90">
             Deterministic browser ITU-R &amp; 4x peak estimates · Precision server sync queued
           </span>
+        </div>
+      )}
+
+      {showUpgradeErrorBanner && (
+        <div
+          role="alert"
+          data-testid="precision-sync-timeout-banner"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-[6px] border border-[var(--studio-vermilion)]/40 bg-[var(--studio-vermilion-soft)] px-4 py-3 text-xs text-[var(--studio-vermilion)]"
+        >
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{precisionUpgradeError}</span>
+          </div>
+          {onRetryPrecisionSync && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              data-testid="retry-precision-sync-btn"
+              onClick={onRetryPrecisionSync}
+            >
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+              Retry Server Sync
+            </Button>
+          )}
         </div>
       )}
 

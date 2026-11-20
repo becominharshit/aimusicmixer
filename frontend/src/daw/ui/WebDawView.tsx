@@ -108,7 +108,7 @@ function TransportTimecode({
     <span
       ref={spanRef}
       data-testid="daw-timecode"
-      className="min-w-[116px] shrink-0 whitespace-nowrap border border-[var(--border-hairline)] bg-[#0A0A0A] px-2.5 py-1 text-center tabular-telemetry text-xs font-bold text-[#F0B44C]"
+      className="min-w-[100px] shrink-0 whitespace-nowrap border border-[var(--border-hairline)] bg-[#0A0A0A] px-1.5 py-1 text-center tabular-telemetry text-[11px] font-bold text-[#F0B44C] xl:min-w-[108px] xl:px-2 xl:text-xs"
     >
       00:00.0 / {formatDawClock(durationSec)}
     </span>
@@ -1083,41 +1083,44 @@ export function WebDawView() {
       {/* Row 2 — Ableton-Inspired Top Transport & Project Bar */}
       <div
         data-testid="daw-transport-bar"
-        className="border-b-[1.5px] border-[var(--border-hairline)] bg-[var(--bg-surface)] px-3 py-2 sm:px-5"
+        className="border-b-[1.5px] border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2.5 py-2 xl:px-5"
       >
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-2.5">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-1 min-[1000px]:flex-nowrap xl:gap-2.5">
           {/* Project Controls */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1 min-[1000px]:flex-nowrap xl:gap-1.5 shrink-0">
             <input
               type="text"
               aria-label="Project name"
               value={project.name}
               onChange={(e) => daw.renameProject(e.target.value)}
-              className="h-8 w-40 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2.5 text-xs font-extrabold text-[var(--text-primary)] focus:border-[#F0B44C] focus:outline-none sm:w-48"
+              className="h-8 w-[92px] shrink-0 border border-[var(--border-hairline)] bg-[var(--bg-elevated)] px-2 text-xs font-extrabold text-[var(--text-primary)] focus:border-[#F0B44C] focus:outline-none xl:w-44"
             />
             <Button
               type="button"
               variant="secondary"
               size="sm"
+              className="px-2 gap-1 whitespace-nowrap shrink-0"
               onClick={() => void daw.newProject("Untitled Mix")}
             >
-              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              <Plus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               New
             </Button>
             <Button
               type="button"
               variant="secondary"
               size="sm"
+              className="px-2 gap-1 whitespace-nowrap shrink-0"
               onClick={() => void handleOpenProjectsModal()}
             >
-              <FolderOpen className="h-3.5 w-3.5 text-[#F0B44C]" aria-hidden="true" />
+              <FolderOpen className="h-3.5 w-3.5 shrink-0 text-[#F0B44C]" aria-hidden="true" />
               Open
             </Button>
             <button
               type="button"
+              data-testid="daw-autosave-badge"
               onClick={() => void daw.saveNow()}
               aria-label={`Project auto-save status: ${autosaveLabel}. Click to save now`}
-              className={`inline-flex h-8 items-center gap-1 border px-2 tabular-telemetry text-[10px] font-bold uppercase cursor-pointer ${
+              className={`inline-flex h-8 min-w-[74px] shrink-0 items-center justify-center gap-1 whitespace-nowrap border px-1.5 text-center tabular-telemetry text-[10px] font-bold uppercase cursor-pointer ${
                 autosave.status === "error"
                   ? "border-[#EF6B63] bg-[#EF6B63]/15 text-[#EF6B63]"
                   : autosave.status === "saved"
@@ -1125,29 +1128,31 @@ export function WebDawView() {
                     : "border-[var(--border-hairline)] bg-[var(--bg-inset)] text-[var(--text-secondary)]"
               }`}
             >
-              <Save className="h-3 w-3" aria-hidden="true" />
+              <Save className="h-3 w-3 shrink-0" aria-hidden="true" />
               {autosaveLabel}
             </button>
           </div>
 
           {/* Center Transport Controls + 60 fps Timecode + Master Meter */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1 min-[1000px]:flex-nowrap xl:gap-1.5 shrink-0">
             <Button
               type="button"
+              data-testid="daw-play-btn"
               variant="primary"
               size="sm"
+              className="min-w-[82px] shrink-0 whitespace-nowrap"
               disabled={!snapshot.ready || project.tracks.length === 0}
               onClick={() => void daw.togglePlay()}
               aria-label={transport.playing ? "Pause DAW playback" : "Play DAW mix"}
             >
               {transport.playing ? (
                 <>
-                  <Pause className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                  <Pause className="h-3.5 w-3.5 shrink-0 fill-current" aria-hidden="true" />
                   Pause
                 </>
               ) : (
                 <>
-                  <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                  <Play className="h-3.5 w-3.5 shrink-0 fill-current" aria-hidden="true" />
                   Play
                 </>
               )}
@@ -1157,6 +1162,7 @@ export function WebDawView() {
               type="button"
               variant="secondary"
               size="sm"
+              className="px-2 shrink-0"
               disabled={!snapshot.ready}
               onClick={() => daw.stop()}
               aria-label="Stop playback and return to zero"
@@ -1168,6 +1174,7 @@ export function WebDawView() {
               type="button"
               variant={transport.loopEnabled ? "soft" : "secondary"}
               size="sm"
+              className="px-2 gap-1 shrink-0 whitespace-nowrap"
               aria-pressed={transport.loopEnabled}
               aria-label="Toggle loop playback"
               onClick={() =>
@@ -1180,13 +1187,13 @@ export function WebDawView() {
                 )
               }
             >
-              <Repeat className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden sm:inline">Loop</span>
+              <Repeat className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="hidden xl:inline">Loop</span>
             </Button>
 
             <TransportTimecode durationSec={effectiveDuration} controller={controller} />
 
-            <div className="hidden items-center gap-1.5 border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-2 py-1 sm:flex">
+            <div className="hidden shrink-0 items-center gap-1 border border-[var(--border-hairline)] bg-[var(--bg-inset)] px-1.5 py-1 sm:flex">
               <span className="tabular-telemetry text-[9px] font-bold uppercase text-[var(--text-muted)]">
                 MST
               </span>
@@ -1195,7 +1202,7 @@ export function WebDawView() {
                 controller={controller}
                 orientation="horizontal"
                 showGainReduction
-                width={126}
+                width={64}
                 height={18}
                 label="Master stereo peak and limiter gain reduction meter"
               />
@@ -1203,15 +1210,16 @@ export function WebDawView() {
           </div>
 
           {/* Right Export WAV + Analyze Mix ↗ */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1 min-[1000px]:flex-nowrap xl:gap-1.5 shrink-0">
             <Button
               type="button"
               variant="secondary"
               size="sm"
+              className="px-2.5 gap-1.5 whitespace-nowrap shrink-0"
               disabled={project.tracks.length === 0 || exportState.status === "rendering"}
               onClick={() => void handleExportWav()}
             >
-              <Download className="h-3.5 w-3.5" aria-hidden="true" />
+              <Download className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               {exportState.status === "rendering"
                 ? `Rendering ${Math.round(exportState.progress * 100)}%`
                 : "Export WAV"}
@@ -1222,6 +1230,7 @@ export function WebDawView() {
               data-testid="daw-analyze-mix-btn"
               variant="primary"
               size="sm"
+              className="px-2.5 gap-1.5 whitespace-nowrap shrink-0"
               disabled={
                 project.tracks.length === 0 ||
                 exportState.status === "rendering" ||
@@ -1229,9 +1238,9 @@ export function WebDawView() {
               }
               onClick={() => void handleAnalyzeMix()}
             >
-              <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+              <Activity className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>{isSendingToStudio ? "Sending…" : "Analyze Mix"}</span>
-              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+              <ArrowUpRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             </Button>
           </div>
         </div>

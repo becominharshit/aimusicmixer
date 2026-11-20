@@ -15,10 +15,11 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from app.ai import generate_mentor_advice_async
+from app.ai import build_deterministic_mentor_response, generate_mentor_advice_async
+from app.ai.mentor import GEMINI_REQUEST_TIMEOUT_SEC
 from app.core.config import settings
 from app.dsp import (
     AudioIngestionError,
@@ -41,6 +42,7 @@ from app.schemas.report import (
     AnalysisReport,
     ArtistVisionTag,
     AudioMetadata,
+    CompareDemoFallbackRequest,
     CompareReportsRequest,
     ContextUpdateRequest,
     Finding,
@@ -985,77 +987,131 @@ async def compare_revised_mix(
         tmp_v2_path.unlink(missing_ok=True)
 
 
+def _build_demo_v2_report(
+    *,
+    session_id: str,
+    context: AnalysisContext,
+    proxy_dir: Path | None = None,
+    proxy_url_override: str | None = None,
+) -> tuple[AnalysisReport, Path | None, str]:
+    """Analyze or hydrate the cached demo revised_mix_v2.wav fixture for deterministic v1 -> v2 checks."""
+    v2_src = settings.sample_assets_dir / "revised_mix_v2.wav"
+    if not v2_src.exists():
+        raise HTTPException(status_code=404, detail="Demo revised_mix_v2.wav missing.")
+
+    src_mtime = v2_src.stat().st_mtime
+    cache_key = str(v2_src.resolve())
+    with _demo_cache_lock:
+        cached = _demo_mix_cache.get(cache_key)
+
+    temp_proxy_dir: Path | None = None
+    target_proxy_dir = proxy_dir
+    if target_proxy_dir is None:
+        temp_proxy_dir = Path(tempfile.mkdtemp(prefix="mixbench_demo_v2_"))
+        target_proxy_dir = temp_proxy_dir
+
+    try:
+        if cached is not None and cached[0] == src_mtime:
+            _, loaded, snapshot, gm, ts, proxy_bytes, proxy_ext = cached
+            revised_report, proxy_path = _instantiate_report_from_cached_demo(
+                session_id=session_id,
+                original_filename="revised_mix_v2.wav",
+                proxy_dir=target_proxy_dir,
+                proxy_name="v2",
+                context=context.model_copy(deep=True),
+                loaded=loaded,
+                snapshot=snapshot,
+                global_metrics=gm,
+                time_series=ts,
+                proxy_bytes=proxy_bytes,
+                proxy_ext=proxy_ext,
+            )
+            actual_proxy = proxy_path.name
+        else:
+            revised_report, loaded, snapshot = analyze_audio_to_report(
+                session_id=session_id,
+                source_path=v2_src,
+                original_filename="revised_mix_v2.wav",
+                proxy_dir=target_proxy_dir,
+                proxy_name="v2",
+                proxy_url=proxy_url_override or f"/api/v1/sessions/{session_id}/proxy/v2",
+                context=context.model_copy(deep=True),
+                return_snapshot=True,
+            )
+            actual_proxy = _proxy_filename(target_proxy_dir, "v2")
+            proxy_path = target_proxy_dir / actual_proxy
+            revised_report.audio_metadata.playback_proxy_url = (
+                proxy_url_override or f"/api/v1/sessions/{session_id}/proxy/{actual_proxy}"
+            )
+            if proxy_path.exists():
+                with _demo_cache_lock:
+                    _demo_mix_cache[cache_key] = (
+                        src_mtime,
+                        loaded,
+                        snapshot,
+                        revised_report.global_metrics,
+                        revised_report.time_series,
+                        proxy_path.read_bytes(),
+                        proxy_path.suffix,
+                    )
+
+        if proxy_url_override:
+            revised_report.audio_metadata.playback_proxy_url = proxy_url_override
+        return revised_report, (None if temp_proxy_dir is not None else proxy_path), actual_proxy
+    finally:
+        if temp_proxy_dir is not None:
+            shutil.rmtree(temp_proxy_dir, ignore_errors=True)
+
+
 @compat_router.post(
     "/api/compare",
     response_model=RevisionComparison,
     dependencies=[Depends(enforce_rate_limit("compare"))],
 )
 def compare_reports_endpoint(payload: CompareReportsRequest) -> RevisionComparison:
-    """Stateless deterministic comparison between a baseline v1 report and revised v2 report."""
-    return compare_revisions(payload.baseline, payload.revised)
+    """Stateless deterministic comparison between a baseline v1 report and revised v2 (or cached demo v2) report."""
+    revised = payload.revised
+    if revised is None:
+        revised, _, _ = _build_demo_v2_report(
+            session_id=payload.baseline.session_id,
+            context=payload.baseline.context,
+            proxy_dir=None,
+            proxy_url_override="/demo/demo-revised-v2.wav",
+        )
+    return compare_revisions(payload.baseline, revised)
 
 
 @router.post("/sessions/{session_id}/compare/demo", response_model=AnalysisReport)
-def compare_demo_revised_mix(session_id: str, request: Request) -> AnalysisReport:
+def compare_demo_revised_mix(
+    session_id: str,
+    request: Request,
+    payload: CompareDemoFallbackRequest | None = Body(default=None),
+) -> AnalysisReport:
     rec = session_store.get_session(session_id)
     if rec is None or rec.primary_report is None:
+        if isinstance(payload, CompareDemoFallbackRequest) and payload.baseline is not None:
+            baseline = payload.baseline.model_copy(deep=True)
+            revised_report, _, _ = _build_demo_v2_report(
+                session_id=baseline.session_id,
+                context=baseline.context,
+                proxy_dir=None,
+                proxy_url_override="/demo/demo-revised-v2.wav",
+            )
+            baseline.revision_comparison = compare_revisions(baseline, revised_report)
+            return baseline
         raise HTTPException(status_code=404, detail="Session expired or not found.")
     _assert_session_access(rec, request)
 
-    v2_src = settings.sample_assets_dir / "revised_mix_v2.wav"
-    if not v2_src.exists():
-        raise HTTPException(status_code=404, detail="Demo revised_mix_v2.wav missing.")
-
     proxy_dir = rec.directory / "proxies"
-    src_mtime = v2_src.stat().st_mtime
-    cache_key = str(v2_src.resolve())
-    with _demo_cache_lock:
-        cached = _demo_mix_cache.get(cache_key)
+    revised_report, proxy_path, actual_proxy = _build_demo_v2_report(
+        session_id=session_id,
+        context=rec.primary_report.context,
+        proxy_dir=proxy_dir,
+    )
 
-    if cached is not None and cached[0] == src_mtime:
-        _, loaded, snapshot, gm, ts, proxy_bytes, proxy_ext = cached
-        revised_report, proxy_path = _instantiate_report_from_cached_demo(
-            session_id=session_id,
-            original_filename="revised_mix_v2.wav",
-            proxy_dir=proxy_dir,
-            proxy_name="v2",
-            context=rec.primary_report.context.model_copy(deep=True),
-            loaded=loaded,
-            snapshot=snapshot,
-            global_metrics=gm,
-            time_series=ts,
-            proxy_bytes=proxy_bytes,
-            proxy_ext=proxy_ext,
-        )
-        actual_proxy = proxy_path.name
-    else:
-        revised_report, loaded, snapshot = analyze_audio_to_report(
-            session_id=session_id,
-            source_path=v2_src,
-            original_filename="revised_mix_v2.wav",
-            proxy_dir=proxy_dir,
-            proxy_name="v2",
-            proxy_url=f"/api/v1/sessions/{session_id}/proxy/v2",
-            context=rec.primary_report.context.model_copy(deep=True),
-            return_snapshot=True,
-        )
-        actual_proxy = _proxy_filename(proxy_dir, "v2")
-        proxy_path = proxy_dir / actual_proxy
-        revised_report.audio_metadata.playback_proxy_url = f"/api/v1/sessions/{session_id}/proxy/{actual_proxy}"
-        if proxy_path.exists():
-            with _demo_cache_lock:
-                _demo_mix_cache[cache_key] = (
-                    src_mtime,
-                    loaded,
-                    snapshot,
-                    revised_report.global_metrics,
-                    revised_report.time_series,
-                    proxy_path.read_bytes(),
-                    proxy_path.suffix,
-                )
-
-    rec.proxy_files[actual_proxy] = proxy_path
-    rec.revised_audio_path = proxy_path
+    if proxy_path is not None:
+        rec.proxy_files[actual_proxy] = proxy_path
+        rec.revised_audio_path = proxy_path
     rec.revised_report = revised_report
 
     comparison = compare_revisions(rec.primary_report, revised_report)
@@ -1109,6 +1165,40 @@ def update_user_reported_context(
     return rec.primary_report
 
 
+async def _run_mentor_with_guaranteed_fallback(
+    *,
+    report: AnalysisReport,
+    mentor_request: MentorRequest,
+    primary_audio_path: Path | None = None,
+    fallback_proxy_path: Path | None = None,
+) -> MentorResponse:
+    """Invoke generate_mentor_advice_async under the shared 35.0s asyncio.wait_for guard."""
+    try:
+        return await asyncio.wait_for(
+            generate_mentor_advice_async(
+                report=report,
+                request=mentor_request,
+                primary_audio_path=primary_audio_path,
+                fallback_proxy_path=fallback_proxy_path,
+                timeout_sec=GEMINI_REQUEST_TIMEOUT_SEC,
+            ),
+            timeout=GEMINI_REQUEST_TIMEOUT_SEC + 0.5,
+        )
+    except (asyncio.TimeoutError, TimeoutError):
+        return build_deterministic_mentor_response(
+            report,
+            mentor_request,
+            fallback_reason=f"Offline Mentor fallback (Timeout after {int(round(GEMINI_REQUEST_TIMEOUT_SEC))}s)",
+        )
+    except Exception as exc:
+        logger.warning("AI Mix Mentor route fallback (%s): %s", type(exc).__name__, exc)
+        return build_deterministic_mentor_response(
+            report,
+            mentor_request,
+            fallback_reason=f"Offline Mentor fallback ({type(exc).__name__})",
+        )
+
+
 @router.post(
     "/sessions/{session_id}/mentor",
     response_model=MentorResponse,
@@ -1125,9 +1215,9 @@ async def run_ai_mentor(
     _assert_session_access(rec, request)
 
     fallback_proxy = rec.proxy_files.get("proxy.m4a") or rec.proxy_files.get("proxy.wav")
-    advice = await generate_mentor_advice_async(
+    advice = await _run_mentor_with_guaranteed_fallback(
         report=rec.primary_report,
-        request=payload,
+        mentor_request=payload,
         primary_audio_path=rec.primary_audio_path or fallback_proxy,
         fallback_proxy_path=fallback_proxy,
     )
@@ -1150,18 +1240,19 @@ async def standalone_ai_mentor(payload: MentorStandaloneRequest, request: Reques
     )
     if payload.session_id:
         rec = session_store.get_session(payload.session_id)
-        if rec is None or rec.primary_report is None:
+        if rec is not None and rec.primary_report is not None:
+            _assert_session_access(rec, request)
+            fallback_proxy = rec.proxy_files.get("proxy.m4a") or rec.proxy_files.get("proxy.wav")
+            advice = await _run_mentor_with_guaranteed_fallback(
+                report=payload.report or rec.primary_report,
+                mentor_request=req,
+                primary_audio_path=rec.primary_audio_path or fallback_proxy,
+                fallback_proxy_path=fallback_proxy,
+            )
+            rec.primary_report.privacy_audit = advice.privacy_audit
+            return advice
+        if payload.report is None:
             raise HTTPException(status_code=404, detail="Session expired or not found.")
-        _assert_session_access(rec, request)
-        fallback_proxy = rec.proxy_files.get("proxy.m4a") or rec.proxy_files.get("proxy.wav")
-        advice = await generate_mentor_advice_async(
-            report=payload.report or rec.primary_report,
-            request=req,
-            primary_audio_path=rec.primary_audio_path or fallback_proxy,
-            fallback_proxy_path=fallback_proxy,
-        )
-        rec.primary_report.privacy_audit = advice.privacy_audit
-        return advice
 
     if payload.report is None:
         raise HTTPException(status_code=422, detail="Provide either 'session_id' or a full DSP 'report'.")
@@ -1175,7 +1266,10 @@ async def standalone_ai_mentor(payload: MentorStandaloneRequest, request: Reques
             question=req.question,
             conversation_history=req.conversation_history,
         )
-    return await generate_mentor_advice_async(report=payload.report, request=req)
+    return await _run_mentor_with_guaranteed_fallback(
+        report=payload.report,
+        mentor_request=req,
+    )
 
 
 @router.get("/sessions/{session_id}/proxy/{proxy_filename}")

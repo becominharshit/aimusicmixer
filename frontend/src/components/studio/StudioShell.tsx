@@ -12,6 +12,7 @@ interface StudioShellProps {
   transportDock?: React.ReactNode;
   footer?: React.ReactNode;
   overlays?: React.ReactNode;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 /**
@@ -28,6 +29,7 @@ export function StudioShell({
   transportDock,
   footer,
   overlays,
+  scrollContainerRef,
 }: StudioShellProps) {
   return (
     <div
@@ -36,7 +38,11 @@ export function StudioShell({
     >
       <StudioSidebar {...sidebarProps} />
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+      <div
+        ref={scrollContainerRef}
+        data-testid="studio-scroll-container"
+        className="flex min-h-screen min-w-0 flex-1 flex-col"
+      >
         <StudioHeader {...headerProps} />
         {subHeader}
         <div className="flex flex-1 flex-col">{children}</div>

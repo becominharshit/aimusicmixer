@@ -8,6 +8,10 @@ import { ArrowDown, ArrowRight, ArrowUpRight, Pause, Play, Plus } from "lucide-r
 import { studioAudioEngine } from "@/audio/StudioAudioEngine";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { MixitLogo } from "@/components/brand/MixitLogo";
+import {
+  COOKIE_CONSENT_EVENT,
+  COOKIE_CONSENT_KEY,
+} from "@/components/compliance/CookieConsentBanner";
 import { KineticHeadline } from "@/components/motion/KineticHeadline";
 import { FlawTimelineBar } from "@/components/studio/FlawTimelineBar";
 import { LiveSpectralGraph } from "@/components/studio/LiveSpectralGraph";
@@ -161,8 +165,28 @@ export function LandingPage() {
   const [openAccordion, setOpenAccordion] = useState<string | null>("01");
   const [health, setHealth] = useState<BackendHealth | null>(null);
   const [healthOnline, setHealthOnline] = useState<boolean | null>(null);
+  const [cookieBannerVisible, setCookieBannerVisible] = useState(true);
 
   const supabaseReady = isSupabaseConfigured();
+
+  // Sync dynamic footer bottom padding with floating Cookie Consent Banner visibility
+  useEffect(() => {
+    const syncCookieBannerState = () => {
+      try {
+        setCookieBannerVisible(!window.localStorage.getItem(COOKIE_CONSENT_KEY));
+      } catch {
+        setCookieBannerVisible(true);
+      }
+    };
+    syncCookieBannerState();
+    const handleConsentChange = () => setCookieBannerVisible(false);
+    window.addEventListener(COOKIE_CONSENT_EVENT, handleConsentChange);
+    window.addEventListener("storage", syncCookieBannerState);
+    return () => {
+      window.removeEventListener(COOKIE_CONSENT_EVENT, handleConsentChange);
+      window.removeEventListener("storage", syncCookieBannerState);
+    };
+  }, []);
 
   // Check current Supabase session so signed-in users see "ENTER STUDIO ↗" directly
   useEffect(() => {
@@ -385,7 +409,7 @@ export function LandingPage() {
   return (
     <div
       ref={rootRef}
-      className="min-h-screen bg-[#F9F8F4] pb-28 text-[#14171F] selection:bg-[#F5C451] selection:text-[#14171F] sm:pb-24"
+      className="min-h-screen bg-[#F9F8F4] pb-10 text-[#14171F] selection:bg-[#F5C451] selection:text-[#14171F]"
     >
       {/* Architectural Outer Gallery Frame — crisp 1.5px #14171F alignment on Warm Ivory */}
       <div className="mx-auto max-w-[1440px] overflow-x-clip border-x-[1.5px] border-b-[1.5px] border-[#14171F] bg-[#F9F8F4]">
@@ -922,10 +946,12 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* ROW 6 — Clean 3-Column Architectural Footer (with bottom clearance so floating cookie card never intersects legal links) */}
+        {/* ROW 6 — Clean 3-Column Architectural Footer (dynamic bottom clearance for floating cookie card) */}
         <footer
           data-testid="landing-footer"
-          className="grid grid-cols-1 divide-y-[1.5px] divide-[#14171F] bg-[#F9F8F4] pb-16 md:grid-cols-12 md:divide-x-[1.5px] md:divide-y-0 md:pb-0"
+          className={`grid grid-cols-1 divide-y-[1.5px] divide-[#14171F] bg-[#F9F8F4] transition-[padding] duration-200 md:grid-cols-12 md:divide-x-[1.5px] md:divide-y-0 ${
+            cookieBannerVisible ? "pb-36" : "pb-12"
+          }`}
         >
           {/* Column 1: Warm Terracotta Coral CTA Block */}
           <motion.button

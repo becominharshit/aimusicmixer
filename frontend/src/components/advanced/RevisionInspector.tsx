@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -8,6 +8,7 @@ import {
   Headphones,
   ImageDown,
   Minus,
+  RotateCcw,
   Scale,
   Sparkles,
   Upload,
@@ -28,8 +29,8 @@ interface RevisionInspectorProps {
   hasRevisedAudio?: boolean;
   isUploading: boolean;
   errorMessage: string | null;
-  onUploadRevision: (file: File) => void;
-  onLoadDemoRevision: () => void;
+  onUploadRevision: (file: File) => void | Promise<void>;
+  onLoadDemoRevision: () => void | Promise<void>;
   onAuditionRevised: () => void;
   onAuditionBaseline?: () => void;
   onToggleMatchLoudness?: (val: boolean) => void;
@@ -55,6 +56,49 @@ export function RevisionInspector({
   onCompareWithSavedBaseline,
 }: RevisionInspectorProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const lastFileRef = useRef<File | null>(null);
+  const lastActionRef = useRef<"demo" | "upload" | null>(null);
+  const [localComparing, setLocalComparing] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLocalComparing(false);
+    setLocalError(null);
+  }, [report.report_id]);
+
+  const handleLoadDemoSafe = async () => {
+    lastActionRef.current = "demo";
+    setLocalError(null);
+    setLocalComparing(true);
+    try {
+      await onLoadDemoRevision();
+    } catch (err) {
+      setLocalError(
+        err instanceof Error ? err.message : "Sample revision comparison failed. Please retry."
+      );
+    } finally {
+      setLocalComparing(false);
+    }
+  };
+
+  const handleUploadSafe = async (file: File) => {
+    lastActionRef.current = "upload";
+    lastFileRef.current = file;
+    setLocalError(null);
+    setLocalComparing(true);
+    try {
+      await onUploadRevision(file);
+    } catch (err) {
+      setLocalError(
+        err instanceof Error ? err.message : "Revision comparison failed. Please retry."
+      );
+    } finally {
+      setLocalComparing(false);
+    }
+  };
+
+  const combinedUploading = isUploading || localComparing;
+  const combinedError = errorMessage || localError;
   const comp = report.revision_comparison;
   const comparableSaved = savedAnalyses.filter(
     (item) => item.report_json.report_id !== report.report_id
@@ -79,7 +123,9 @@ export function RevisionInspector({
           accept=".wav,.flac,.mp3,.aiff,.aif,.ogg,.m4a,.aac"
           className="sr-only"
           onChange={(e) => {
-            if (e.target.files?.[0]) onUploadRevision(e.target.files[0]);
+            const selected = e.target.files?.[0];
+            e.target.value = "";
+            if (selected) void handleUploadSafe(selected);
           }}
         />
         <div className="no-print flex flex-wrap items-center gap-2">
@@ -87,22 +133,24 @@ export function RevisionInspector({
             type="button"
             variant="primary"
             size="sm"
-            disabled={isUploading}
+            disabled={combinedUploading}
             onClick={() => inputRef.current?.click()}
           >
             <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-            {isUploading ? "Comparing v2..." : comp ? "Upload Newer Revision" : "Upload Revised Mix"}
+            {combinedUploading ? "Comparing v2..." : comp ? "Upload Newer Revision" : "Upload Revised Mix"}
           </Button>
           {!comp && (
             <Button
               type="button"
               variant="soft"
               size="sm"
-              disabled={isUploading}
-              onClick={onLoadDemoRevision}
+              disabled={combinedUploading}
+              onClick={() => void handleLoadDemoSafe()}
             >
               <Sparkles className="h-3.5 w-3.5 text-[var(--studio-mint)]" aria-hidden="true" />
-              Load Sample Revised Mix (v2)
+              {combinedUploading && lastActionRef.current === "demo"
+                ? "Comparing v2..."
+                : "Load Sample Revised Mix (v2)"}
             </Button>
           )}
           <Button
@@ -118,12 +166,29 @@ export function RevisionInspector({
         </div>
       </div>
 
-      {errorMessage && (
+      {combinedError && (
         <div
           role="alert"
-          className="bg-[var(--studio-vermilion-soft)] p-4 text-xs text-[var(--studio-vermilion)] border border-[var(--studio-vermilion)]/35 squircle-inner"
+          data-testid="revision-error-alert"
+          className="flex flex-wrap items-center justify-between gap-3 bg-[var(--studio-vermilion-soft)] p-4 text-xs text-[var(--studio-vermilion)] border border-[var(--studio-vermilion)]/35 squircle-inner"
         >
-          {errorMessage}
+          <span>{combinedError}</span>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={combinedUploading}
+            onClick={() => {
+              if (lastActionRef.current === "upload" && lastFileRef.current) {
+                void handleUploadSafe(lastFileRef.current);
+              } else {
+                void handleLoadDemoSafe();
+              }
+            }}
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+            Retry Comparison
+          </Button>
         </div>
       )}
 

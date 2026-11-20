@@ -45,19 +45,21 @@ export async function POST(request: Request) {
 
     if (body.session_id) {
       const rec = await sessionStore.getSession(body.session_id);
-      if (!rec || !rec.primaryReport) {
+      if (rec && rec.primaryReport) {
+        const fallbackProxy =
+          rec.proxyFiles.get("proxy.m4a") ?? rec.proxyFiles.get("proxy.wav") ?? null;
+        const advice = await generateMentorAdvice(
+          body.report ?? rec.primaryReport,
+          req,
+          rec.primaryAudioPath ?? fallbackProxy,
+          fallbackProxy
+        );
+        rec.primaryReport.privacy_audit = advice.privacy_audit;
+        return NextResponse.json(advice);
+      }
+      if (!body.report) {
         throw new HttpStatusError(404, "Session expired or not found.");
       }
-      const fallbackProxy =
-        rec.proxyFiles.get("proxy.m4a") ?? rec.proxyFiles.get("proxy.wav") ?? null;
-      const advice = await generateMentorAdvice(
-        body.report ?? rec.primaryReport,
-        req,
-        rec.primaryAudioPath ?? fallbackProxy,
-        fallbackProxy
-      );
-      rec.primaryReport.privacy_audit = advice.privacy_audit;
-      return NextResponse.json(advice);
     }
 
     if (!body.report) {

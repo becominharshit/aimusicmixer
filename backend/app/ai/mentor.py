@@ -359,6 +359,26 @@ def _resolve_clip_source(
     return None
 
 
+def _format_fallback_note(exc: Exception) -> str:
+    """Format a concise, user-safe diagnostic note for ClientError, ServerError, TimeoutError, or generic exceptions."""
+    exc_name = type(exc).__name__
+    status_code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return f"Offline Mentor fallback (Timeout after {int(round(GEMINI_REQUEST_TIMEOUT_SEC))}s)"
+    if exc_name in {"ClientError", "ServerError", "APIError"}:
+        code_suffix = f" {status_code}" if status_code is not None else ""
+        return f"Offline Mentor fallback ({exc_name}{code_suffix})"
+    try:
+        from google.genai import errors as genai_errors
+
+        if isinstance(exc, (genai_errors.ClientError, genai_errors.ServerError, genai_errors.APIError)):
+            code_suffix = f" {status_code}" if status_code is not None else ""
+            return f"Offline Mentor fallback ({exc_name}{code_suffix})"
+    except Exception:
+        pass
+    return f"Offline Mentor fallback ({exc_name})"
+
+
 def generate_mentor_advice(
     report: AnalysisReport,
     request: MentorRequest,
@@ -382,11 +402,12 @@ def generate_mentor_advice(
     try:
         return _invoke_gemini_sync(report, request, clip_source, use_audio)
     except Exception as exc:
+        note = _format_fallback_note(exc)
         logger.warning("AI Mix Mentor fallback (%s): %s", type(exc).__name__, exc)
         return build_deterministic_mentor_response(
             report,
             request,
-            fallback_reason=f"Offline Mentor fallback ({type(exc).__name__})",
+            fallback_reason=note,
         )
 
 
@@ -401,7 +422,8 @@ async def generate_mentor_advice_async(
     Async FastAPI mentor entry point:
     - Enforces three-tier consent before any network call.
     - Offloads synchronous Google GenAI SDK work via asyncio.to_thread so the event loop never blocks.
-    - Enforces a strict 35.0s timeout with asyncio.wait_for and returns deterministic fallback immediately on timeout/error.
+    - Enforces a strict 35.0s timeout with asyncio.wait_for and returns deterministic fallback immediately on
+      TimeoutError, ClientError, ServerError, or any other Exception.
     """
     if not request.allow_metrics_ai:
         return build_deterministic_mentor_response(report, request)
@@ -434,9 +456,10 @@ async def generate_mentor_advice_async(
             fallback_reason=f"Offline Mentor fallback (Timeout after {int(round(timeout_sec))}s)",
         )
     except Exception as exc:
+        note = _format_fallback_note(exc)
         logger.warning("AI Mix Mentor fallback (%s): %s", type(exc).__name__, exc)
         return build_deterministic_mentor_response(
             report,
             request,
-            fallback_reason=f"Offline Mentor fallback ({type(exc).__name__})",
+            fallback_reason=note,
         )

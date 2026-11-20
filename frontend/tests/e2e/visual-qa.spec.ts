@@ -116,33 +116,50 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     expect(bannerBoxDesktop!.width).toBeLessThanOrEqual(400);
     expect(bannerBoxDesktop!.x).toBeGreaterThan(950);
 
-    // Scroll to footer while Cookie Consent card is STILL OPEN and assert zero overlap with legal links
+    // Scroll to footer while Cookie Consent card is STILL OPEN and assert zero overlap with legal links AND right column at 1440x900 and 1024x768
     const footer = page.getByTestId("landing-footer");
-    await footer.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(250);
-    await saveShot(page, "00-landing-footer-cookie-1440.png", false);
+    for (const vp of [
+      { width: 1440, height: 900 },
+      { width: 1024, height: 768 },
+    ]) {
+      await page.setViewportSize(vp);
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.waitForTimeout(250);
+      await saveShot(page, `00-landing-footer-cookie-${vp.width}.png`, false);
 
-    const openBannerBox = await cookieBanner.boundingBox();
-    const legalNav = page.getByTestId("landing-footer-legal-nav");
-    for (const linkLabel of ["Privacy Policy", "Terms of Use", "Cookie Policy", "System Status"]) {
-      const link = legalNav.getByRole("link", { name: new RegExp(`^${linkLabel}$`, "i") });
-      await expect(link).toBeVisible();
-      const linkBox = await link.boundingBox();
-      expect(linkBox, `Footer link ${linkLabel} must have a bounding box`).not.toBeNull();
-      if (openBannerBox && linkBox) {
-        const horizOverlap =
-          Math.min(openBannerBox.x + openBannerBox.width, linkBox.x + linkBox.width) -
-          Math.max(openBannerBox.x, linkBox.x);
-        const vertOverlap =
-          Math.min(openBannerBox.y + openBannerBox.height, linkBox.y + linkBox.height) -
-          Math.max(openBannerBox.y, linkBox.y);
-        expect(
-          horizOverlap > 1 && vertOverlap > 1,
-          `Cookie Consent card overlapped footer link "${linkLabel}"`
-        ).toBe(false);
+      const openBannerBox = await cookieBanner.boundingBox();
+      expect(openBannerBox, `Cookie banner box missing at ${vp.width}px`).not.toBeNull();
+
+      const legalNav = page.getByTestId("landing-footer-legal-nav");
+      const footerCheckTargets: Array<{ label: string; locator: Locator }> = [
+        { label: "Privacy Policy", locator: legalNav.getByRole("link", { name: /^Privacy Policy$/i }) },
+        { label: "Terms of Use", locator: legalNav.getByRole("link", { name: /^Terms of Use$/i }) },
+        { label: "Cookie Policy", locator: legalNav.getByRole("link", { name: /^Cookie Policy$/i }) },
+        { label: "System Status", locator: legalNav.getByRole("link", { name: /^System Status$/i }) },
+        { label: "MIXIT STUDIO · 100% FREE", locator: footer.getByText(/MIXIT STUDIO · 100% FREE/i) },
+        { label: "ZERO AD TRACKERS.", locator: footer.getByText(/ZERO AD TRACKERS\./i) },
+      ];
+
+      for (const target of footerCheckTargets) {
+        await expect(target.locator).toBeVisible();
+        const box = await target.locator.boundingBox();
+        expect(box, `Footer target ${target.label} must have a bounding box`).not.toBeNull();
+        if (openBannerBox && box) {
+          const horizOverlap =
+            Math.min(openBannerBox.x + openBannerBox.width, box.x + box.width) -
+            Math.max(openBannerBox.x, box.x);
+          const vertOverlap =
+            Math.min(openBannerBox.y + openBannerBox.height, box.y + box.height) -
+            Math.max(openBannerBox.y, box.y);
+          expect(
+            horizOverlap > 1 && vertOverlap > 1,
+            `Cookie Consent card overlapped footer "${target.label}" at ${vp.width}x${vp.height}`
+          ).toBe(false);
+        }
       }
     }
 
+    await page.setViewportSize({ width: 1440, height: 900 });
     await cookieBanner.getByRole("button", { name: /Accept essential cookies/i }).click();
     await expect(cookieBanner).toBeHidden();
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -507,6 +524,29 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await expect(page.getByTestId("missing-archived-audio-banner")).toHaveCount(0);
     await expect(page.getByTestId("local-web-audio-banner")).toHaveCount(0);
 
+    // Bug 4 check: Scroll down to a Finding Card, click Recheck in v2, assert scrollTop resets to 0
+    await page.setViewportSize({ width: 1024, height: 768 });
+    const recheckBtn = page.getByRole("button", { name: /Recheck in v2/i }).first();
+    await recheckBtn.scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, 520));
+    await page.waitForTimeout(150);
+    await recheckBtn.click();
+    await expect(page.getByRole("heading", { name: /Revision Check \(v1 → v2\)/i })).toBeVisible({
+      timeout: 10_000,
+    });
+    await page.waitForTimeout(450);
+    const scrollPositions = await page.evaluate(() => {
+      const scroller = document.querySelector('[data-testid="studio-scroll-container"]');
+      return {
+        windowY: window.scrollY,
+        containerTop: scroller ? scroller.scrollTop : 0,
+      };
+    });
+    expect(scrollPositions.windowY).toBeLessThanOrEqual(4);
+    expect(scrollPositions.containerTop).toBeLessThanOrEqual(4);
+    await page.getByRole("button", { name: "Simple Mix Check", exact: true }).click();
+    await page.setViewportSize({ width: 1440, height: 900 });
+
     // Check 1024px single-row header invariant too (zero clipping)
     await page.setViewportSize({ width: 1024, height: 900 });
     await page.waitForTimeout(200);
@@ -562,6 +602,48 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
 
     await page.waitForTimeout(250);
     await saveShot(page, "09-daw-arrangement-1440.png", false);
+
+    // Bug 6 check: DAW Top Transport Bar stays single-row at 1024x768 & 1440x900 when toggling Play/Pause and UNSAVED
+    for (const vp of [
+      { width: 1024, height: 768 },
+      { width: 1440, height: 900 },
+    ]) {
+      await page.setViewportSize(vp);
+      await page.waitForTimeout(200);
+      const bar = page.getByTestId("daw-transport-bar");
+      const checkSingleRow = async (phase: string) => {
+        const barBox = await bar.boundingBox();
+        expect(barBox, `DAW transport bar box missing at ${vp.width} (${phase})`).not.toBeNull();
+        expect(
+          barBox!.height,
+          `DAW transport bar wrapped onto 2 rows at ${vp.width} (${phase}): height=${barBox!.height}`
+        ).toBeLessThanOrEqual(58);
+      };
+      await checkSingleRow("initial");
+
+      // Dirty project name -> triggers UNSAVED badge
+      const projectInput = bar.getByLabel("Project name");
+      const origName = await projectInput.inputValue();
+      await projectInput.fill(`${origName} v2`);
+      await page.waitForTimeout(100);
+      await checkSingleRow("unsaved");
+
+      // Toggle Play/Pause -> Play button width must stay stable and bar must remain single-row
+      const playBtn = page.getByTestId("daw-play-btn");
+      const beforePlayBox = await playBtn.boundingBox();
+      await playBtn.click();
+      await page.waitForTimeout(150);
+      await checkSingleRow("playing");
+      const duringPlayBox = await playBtn.boundingBox();
+      expect(Math.abs((duringPlayBox?.width ?? 0) - (beforePlayBox?.width ?? 0))).toBeLessThanOrEqual(2);
+      await playBtn.click();
+      await page.waitForTimeout(100);
+      await checkSingleRow("paused");
+
+      if (vp.width === 1024) {
+        await saveShot(page, "09b-daw-transport-1024.png", false);
+      }
+    }
 
     // Switch to Mixer view and verify zero horizontal overflow
     await page.getByRole("tab", { name: /Mixer Strips/i }).click();

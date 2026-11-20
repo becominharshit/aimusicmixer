@@ -7,7 +7,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { ShieldCheck, X } from "lucide-react";
 import { STUDIO_EASE } from "@/lib/motion";
 
-const COOKIE_CONSENT_KEY = "mixit_cookie_consent_v1";
+export const COOKIE_CONSENT_KEY = "mixit_cookie_consent_v1";
+export const COOKIE_CONSENT_EVENT = "mixit:cookie-consent-change";
 
 export function CookieConsentBanner() {
   const pathname = usePathname();
@@ -33,6 +34,11 @@ export function CookieConsentBanner() {
       // Ignore private browsing storage errors
     }
     setVisible(false);
+    try {
+      window.dispatchEvent(new CustomEvent(COOKIE_CONSENT_EVENT, { detail: choice }));
+    } catch {
+      // Ignore environments without CustomEvent
+    }
   };
 
   useEffect(() => {

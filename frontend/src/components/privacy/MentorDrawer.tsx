@@ -59,6 +59,12 @@ export function MentorDrawer({
     setLocalLoading(false);
   }, [report.report_id]);
 
+  useEffect(() => {
+    if (!open) {
+      setLocalLoading(false);
+    }
+  }, [open]);
+
   const handleAskMentorSafe = async (req: MentorRequest) => {
     setLocalError(null);
     onDismissMentorError?.();
@@ -129,7 +135,7 @@ export function MentorDrawer({
           </div>
 
           <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-5 space-y-4">
-            {(combinedLoading || mentorAdvice) && (
+            {(combinedLoading || (mentorAdvice && !combinedError)) && (
               <DspStepTracker
                 activeStageIndex={4}
                 mentorActive={combinedLoading}
