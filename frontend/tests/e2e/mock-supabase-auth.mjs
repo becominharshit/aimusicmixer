@@ -181,6 +181,16 @@ const server = http.createServer(async (req, res) => {
     const idFilter = parseEqFilter(url, "id");
     const userFilter = parseEqFilter(url, "user_id");
 
+    if (req.method === "HEAD") {
+      let rows = [...analysesRows];
+      if (userFilter) rows = rows.filter((r) => r.user_id === userFilter);
+      if (idFilter) rows = rows.filter((r) => r.id === idFilter);
+      res.statusCode = 200;
+      res.setHeader("Content-Range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
+      res.end();
+      return;
+    }
+
     if (req.method === "GET") {
       let rows = [...analysesRows];
       if (userFilter) rows = rows.filter((r) => r.user_id === userFilter);

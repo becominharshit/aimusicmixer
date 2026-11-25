@@ -23,8 +23,10 @@ import { TACTILE_TAP } from "@/lib/motion";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   DEFAULT_PRIVACY_PREFERENCES,
+  countCompletedFixesFromAnalyses,
   fetchOrCreateUserProfile,
   fetchSavedAnalyses,
+  fetchUserAnalysesCount,
   fetchUserDawProjectCount,
   normalizePrivacyPreferences,
   purgeUserAccountData,
@@ -80,9 +82,9 @@ export function ProfileView() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [privacyStatus, setPrivacyStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
-  const [mixesCount, setMixesCount] = useState(0);
-  const [dawProjectsCount, setDawProjectsCount] = useState(0);
-  const [fixesCompletedCount, setFixesCompletedCount] = useState(0);
+  const [mixesCount, setMixesCount] = useState<number | null>(null);
+  const [dawProjectsCount, setDawProjectsCount] = useState<number | null>(null);
+  const [fixesCompletedCount, setFixesCompletedCount] = useState<number | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   const [confirmPurge, setConfirmPurge] = useState(false);
@@ -94,14 +96,17 @@ export function ProfileView() {
   }, []);
 
   const loadProfileData = useCallback(async (activeUser: User) => {
+    if (!activeUser.id) return;
     setIsLoadingStats(true);
     try {
-      const [profile, analysesPage, cloudDawCount] = await Promise.all([
+      const [profileRes, analysesCountRes, analysesPageRes, dawCountRes] = await Promise.allSettled([
         fetchOrCreateUserProfile(activeUser),
+        fetchUserAnalysesCount(activeUser.id),
         fetchSavedAnalyses(activeUser.id, 0, 100),
         fetchUserDawProjectCount(activeUser.id),
       ]);
 
+      const profile = profileRes.status === "fulfilled" ? profileRes.value : null;
       if (profile) {
         setDisplayName(
           profile.display_name ||
@@ -126,17 +131,26 @@ export function ProfileView() {
         setDisplayName(activeUser.email?.split("@")[0] || "");
       }
 
-      setMixesCount(analysesPage.records.length);
-      setDawProjectsCount(Math.max(cloudDawCount, countLocalDawProjects()));
-
-      let totalFixes = 0;
-      for (const rec of analysesPage.records) {
-        const steps = rec.checklist_progress ?? rec.report_json.completed_repair_steps ?? {};
-        for (const checked of Object.values(steps)) {
-          if (checked) totalFixes += 1;
-        }
+      if (analysesCountRes.status === "fulfilled") {
+        setMixesCount(analysesCountRes.value);
+      } else if (analysesPageRes.status === "fulfilled") {
+        setMixesCount(analysesPageRes.value.records.length);
+      } else {
+        setMixesCount(null);
       }
-      setFixesCompletedCount(totalFixes);
+
+      const localDawCount = countLocalDawProjects();
+      if (dawCountRes.status === "fulfilled") {
+        setDawProjectsCount(Math.max(dawCountRes.value, localDawCount));
+      } else {
+        setDawProjectsCount(localDawCount > 0 ? localDawCount : null);
+      }
+
+      if (analysesPageRes.status === "fulfilled") {
+        setFixesCompletedCount(countCompletedFixesFromAnalyses(analysesPageRes.value.records));
+      } else {
+        setFixesCompletedCount(null);
+      }
     } finally {
       setIsLoadingStats(false);
     }
@@ -159,7 +173,6 @@ export function ProfileView() {
       }
       setUser(nextUser);
       setAuthChecked(true);
-      void loadProfileData(nextUser);
     });
 
     const {
@@ -179,7 +192,13 @@ export function ProfileView() {
       active = false;
       subscription.unsubscribe();
     };
-  }, [loadProfileData, router]);
+  }, [router]);
+
+  // Gate stats & profile queries strictly on hydrated user.id
+  useEffect(() => {
+    if (!user?.id) return;
+    void loadProfileData(user);
+  }, [user, loadProfileData]);
 
   const handleToggleHeaderTheme = () => {
     const next = toggleStudioTheme();
@@ -414,7 +433,16 @@ export function ProfileView() {
                 data-testid="stat-mixes-analyzed"
                 className="mt-1 tabular-telemetry text-3xl font-extrabold text-[var(--text-primary)]"
               >
-                {isLoadingStats ? "—" : mixesCount}
+                {isLoadingStats ? (
+                  <span
+                    aria-label="Loading mixes count"
+                    className="inline-block h-7 w-12 animate-pulse bg-[var(--bg-inset)] align-middle"
+                  />
+                ) : mixesCount === null ? (
+                  "-"
+                ) : (
+                  mixesCount
+                )}
               </div>
             </div>
             <div className="p-4 sm:p-5">
@@ -425,7 +453,16 @@ export function ProfileView() {
                 data-testid="stat-daw-projects"
                 className="mt-1 tabular-telemetry text-3xl font-extrabold text-[#F0B44C]"
               >
-                {isLoadingStats ? "—" : dawProjectsCount}
+                {isLoadingStats ? (
+                  <span
+                    aria-label="Loading DAW projects count"
+                    className="inline-block h-7 w-12 animate-pulse bg-[var(--bg-inset)] align-middle"
+                  />
+                ) : dawProjectsCount === null ? (
+                  "-"
+                ) : (
+                  dawProjectsCount
+                )}
               </div>
             </div>
             <div className="p-4 sm:p-5">
@@ -436,7 +473,16 @@ export function ProfileView() {
                 data-testid="stat-fixes-completed"
                 className="mt-1 tabular-telemetry text-3xl font-extrabold text-[var(--studio-mint)]"
               >
-                {isLoadingStats ? "—" : fixesCompletedCount}
+                {isLoadingStats ? (
+                  <span
+                    aria-label="Loading fixes completed count"
+                    className="inline-block h-7 w-12 animate-pulse bg-[var(--bg-inset)] align-middle"
+                  />
+                ) : fixesCompletedCount === null ? (
+                  "-"
+                ) : (
+                  fixesCompletedCount
+                )}
               </div>
             </div>
           </div>

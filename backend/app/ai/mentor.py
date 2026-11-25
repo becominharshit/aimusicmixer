@@ -5,6 +5,8 @@ import json
 import logging
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -21,9 +23,11 @@ from app.schemas.report import (
 
 logger = logging.getLogger(__name__)
 
-GEMINI_REQUEST_TIMEOUT_SEC = 35.0
+GEMINI_PER_ATTEMPT_TIMEOUT_SEC = 15.0
+GEMINI_PER_ATTEMPT_TIMEOUT_MS = int(GEMINI_PER_ATTEMPT_TIMEOUT_SEC * 1000)
+GEMINI_REQUEST_TIMEOUT_SEC = 30.0
 GEMINI_REQUEST_TIMEOUT_MS = int(GEMINI_REQUEST_TIMEOUT_SEC * 1000)
-GEMINI_TRANSIENT_RETRY_DELAYS_SEC: tuple[float, ...] = (1.5, 3.0)
+GEMINI_TRANSIENT_RETRY_DELAYS_SEC: tuple[float, ...] = (1.5,)
 
 
 class MentorLLMOutput(BaseModel):
@@ -139,6 +143,8 @@ def build_deterministic_mentor_response(
     return MentorResponse(
         mode="deterministic_fallback",
         model_used="deterministic-dsp-mentor-v1",
+        fallback=True,
+        source="offline_deterministic",
         fallback_reason=fallback_reason,
         summary=summary,
         vision_alignment_note=_vision_note(report),
@@ -255,7 +261,9 @@ def _invoke_gemini_sync(
     valid_ids = _valid_evidence_ids(report)
     system_rules, user_prompt = _build_prompts(report, request)
 
-    http_options = types.HttpOptions(timeout=GEMINI_REQUEST_TIMEOUT_MS)
+    per_attempt_timeout_sec = min(GEMINI_PER_ATTEMPT_TIMEOUT_SEC, max(timeout_sec, 0.05))
+    per_attempt_timeout_ms = max(50, int(per_attempt_timeout_sec * 1000))
+    http_options = types.HttpOptions(timeout=per_attempt_timeout_ms)
     client = genai.Client(api_key=settings.gemini_api_key.strip(), http_options=http_options)
 
     contents: object = user_prompt
@@ -340,16 +348,27 @@ def _invoke_gemini_sync(
     response: object | None = None
     max_attempts = len(GEMINI_TRANSIENT_RETRY_DELAYS_SEC) + 1
     for attempt in range(max_attempts):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0.01:
+            raise TimeoutError("AI Mix Mentor total request budget exceeded")
+        attempt_timeout = min(per_attempt_timeout_sec, remaining)
+        pool = ThreadPoolExecutor(max_workers=1)
         try:
-            response = _generate_with_thinking_fallback()
+            future = pool.submit(_generate_with_thinking_fallback)
+            response = future.result(timeout=attempt_timeout)
             break
+        except (FuturesTimeoutError, TimeoutError) as timeout_exc:
+            # Never retry on timeouts — immediately fall back to Offline Deterministic Mentor.
+            raise TimeoutError(
+                f"Gemini SDK attempt timed out after {attempt_timeout:.1f}s"
+            ) from timeout_exc
         except Exception as exc:
             if attempt >= len(GEMINI_TRANSIENT_RETRY_DELAYS_SEC) or not _is_transient_gemini_error(exc):
                 raise
             delay = GEMINI_TRANSIENT_RETRY_DELAYS_SEC[attempt]
-            remaining = deadline - time.monotonic()
-            # Keep at least 0.5s after sleep inside the 35s request budget.
-            if remaining <= delay + 0.5:
+            remaining_after_err = deadline - time.monotonic()
+            # Keep at least 0.5s after sleep inside the 30s request budget.
+            if remaining_after_err <= delay + 0.5:
                 raise
             logger.warning(
                 "AI Mix Mentor transient %s (attempt %d/%d); retrying in %.1fs.",
@@ -359,6 +378,8 @@ def _invoke_gemini_sync(
                 delay,
             )
             time.sleep(delay)
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
 
     assert response is not None
 
@@ -388,6 +409,8 @@ def _invoke_gemini_sync(
     return MentorResponse(
         mode=mode,
         model_used=settings.gemini_model,
+        fallback=False,
+        source="gemini_live",
         fallback_reason=None,
         summary=parsed.summary,
         vision_alignment_note=parsed.vision_alignment_note,

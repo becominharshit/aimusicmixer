@@ -24,6 +24,7 @@ interface MentorPrivacyPanelProps {
   mentorError?: string | null;
   onDismissMentorError?: () => void;
   onAskMentor: (req: MentorRequest) => void;
+  onUseOfflineNow?: (req?: MentorRequest) => void;
   onSaveDawContext: (ctx: { daw: string; bus_routing: string; plugin_notes: string }) => void;
   onJumpToEvidence: (evidenceId: string) => void;
   privacyPrefs?: PrivacyPreferences;
@@ -39,6 +40,7 @@ export function MentorPrivacyPanel({
   mentorError = null,
   onDismissMentorError,
   onAskMentor,
+  onUseOfflineNow,
   onSaveDawContext,
   onJumpToEvidence,
   privacyPrefs,
@@ -66,9 +68,21 @@ export function MentorPrivacyPanel({
 
   const [question, setQuestion] = useState("");
   const [conversationHistory, setConversationHistory] = useState<MentorChatTurn[]>([]);
+  const [showSlowEscape, setShowSlowEscape] = useState(false);
   const lastAdviceRef = useRef<MentorResponse | null>(null);
   const lastRequestRef = useRef<MentorRequest | null>(null);
   const lastReportIdRef = useRef<string>(report.report_id);
+
+  useEffect(() => {
+    if (!isAskingMentor) {
+      setShowSlowEscape(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setShowSlowEscape(true);
+    }, 10_000);
+    return () => window.clearTimeout(timer);
+  }, [isAskingMentor]);
 
   useEffect(() => {
     if (lastReportIdRef.current !== report.report_id) {
@@ -289,6 +303,40 @@ export function MentorPrivacyPanel({
                   : "Get AI Suggestions (Metrics Only)"
                 : "Get Offline AI Suggestions"}
           </Button>
+
+          {isAskingMentor && showSlowEscape && (
+            <div
+              role="status"
+              data-testid="mentor-slow-escape-banner"
+              className="flex flex-wrap items-center justify-between gap-2 bg-[var(--bg-inset)] px-3 py-2 text-[11px] text-[var(--text-secondary)] hairline-border squircle-inner"
+            >
+              <span>Taking longer than 10s?</span>
+              <button
+                type="button"
+                data-testid="mentor-slow-offline-btn"
+                onClick={() => {
+                  const fallbackReq = lastRequestRef.current ?? {
+                    allow_metrics_ai: false,
+                    allow_audio_ai: false,
+                    allow_training_opt_in: allowTrainingOptIn,
+                    question: question.trim(),
+                    conversation_history: conversationHistory.slice(-8),
+                  };
+                  if (onUseOfflineNow) {
+                    onUseOfflineNow(fallbackReq);
+                  } else {
+                    submitQuestion(fallbackReq.question, {
+                      allowMetricsAi: false,
+                      allowAudioAi: false,
+                    });
+                  }
+                }}
+                className="bg-[var(--studio-mint-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--studio-mint)] hover:brightness-110 squircle-inner cursor-pointer"
+              >
+                Use Offline Mentor Now
+              </button>
+            </div>
+          )}
 
           {mentorError && (
             <div

@@ -802,10 +802,10 @@ def test_gemini_transient_503_retry_backoff_and_fallback(monkeypatch: pytest.Mon
     class _FakeModels:
         def generate_content(self, **kwargs):  # type: ignore[no-untyped-def]
             attempt_counter["count"] += 1
-            if mode_cfg["fail_all"] or attempt_counter["count"] <= 2:
+            if mode_cfg["fail_all"] or attempt_counter["count"] <= 1:
                 raise ServerError(503, "UNAVAILABLE: upstream model overloaded")
             payload = {
-                "summary": "Transient retry succeeded cleanly on attempt 3.",
+                "summary": "Transient retry succeeded cleanly on attempt 2.",
                 "vision_alignment_note": "Preserves dynamic punch.",
                 "prioritized_actions": [
                     {
@@ -856,10 +856,12 @@ def test_gemini_transient_503_retry_backoff_and_fallback(monkeypatch: pytest.Mon
         )
     )
     assert ok_resp.mode == "gemini_metrics_only"
-    assert attempt_counter["count"] == 3
-    assert sleep_calls == [1.5, 3.0]
+    assert ok_resp.fallback is False
+    assert ok_resp.source == "gemini_live"
+    assert attempt_counter["count"] == 2
+    assert sleep_calls == [1.5]
 
-    # Case B: Three consecutive 503 ServerErrors exhaust retries and fall back deterministically
+    # Case B: Two consecutive 503 ServerErrors exhaust the 1-retry cap and fall back deterministically
     sleep_calls.clear()
     attempt_counter["count"] = 0
     mode_cfg["fail_all"] = True
@@ -876,6 +878,59 @@ def test_gemini_transient_503_retry_backoff_and_fallback(monkeypatch: pytest.Mon
         )
     )
     assert fallback_resp.mode == "deterministic_fallback"
-    assert attempt_counter["count"] == 3
-    assert sleep_calls == [1.5, 3.0]
+    assert fallback_resp.fallback is True
+    assert fallback_resp.source == "offline_deterministic"
+    assert attempt_counter["count"] == 2
+    assert sleep_calls == [1.5]
     assert fallback_resp.fallback_reason is not None and "ServerError 503" in fallback_resp.fallback_reason
+
+
+def test_gemini_per_attempt_15s_timeout_triggers_offline_fallback_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    import google.genai as real_genai
+
+    from app.ai import mentor as mentor_mod
+    from app.api.v1.routes import standalone_ai_mentor
+    from app.schemas.report import MentorStandaloneRequest
+
+    mock_report = get_mock_report()
+    attempts = {"count": 0}
+
+    class SlowModels:
+        def generate_content(self, **kwargs):
+            attempts["count"] += 1
+            time.sleep(0.35)
+            return SimpleNamespace(text="{}")
+
+    class SlowClient:
+        def __init__(self, api_key: str, http_options=None) -> None:
+            self.models = SlowModels()
+
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key-123")
+    monkeypatch.setattr(real_genai, "Client", SlowClient)
+    monkeypatch.setattr(mentor_mod, "GEMINI_PER_ATTEMPT_TIMEOUT_SEC", 0.05)
+
+    async def _run_timed():
+        t0 = time.monotonic()
+        resp = await standalone_ai_mentor(
+            MentorStandaloneRequest(
+                report=mock_report,
+                allow_metrics_ai=True,
+                allow_audio_ai=False,
+                allow_training_opt_in=False,
+                question="Test per-attempt hang fallback",
+            ),
+            _fake_request(),  # type: ignore[arg-type]
+        )
+        return resp, time.monotonic() - t0
+
+    resp, elapsed = _run_coro_sync(_run_timed())
+    assert elapsed < 0.25
+    assert attempts["count"] == 1
+    assert resp.mode == "deterministic_fallback"
+    assert resp.fallback is True
+    assert resp.source == "offline_deterministic"
+    assert resp.fallback_reason is not None and "Timeout" in resp.fallback_reason

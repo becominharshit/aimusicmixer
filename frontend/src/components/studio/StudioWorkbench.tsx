@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import {
   COMPARE_REQUEST_TIMEOUT_MS,
+  MENTOR_REQUEST_TIMEOUT_MS,
   PRECISION_SYNC_TIMEOUT_MS,
   analyzeMixFile,
   askMentor,
@@ -182,6 +183,8 @@ export function StudioWorkbench() {
   const healthCycleRef = useRef(0);
   const healthStatusRef = useRef<HealthStatus>("checking");
   const uploadAbortRef = useRef<AbortController | null>(null);
+  const mentorAbortRef = useRef<AbortController | null>(null);
+  const mentorRequestSeqRef = useRef(0);
   const privacyDebounceRef = useRef<number | null>(null);
   const prevPrivacyPrefsRef = useRef<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
   const localObjectUrlRef = useRef<string | null>(null);
@@ -255,6 +258,10 @@ export function StudioWorkbench() {
     cancelBackgroundUpgrade();
     revokeLocalObjectUrl();
     uploadAbortRef.current?.abort();
+    mentorRequestSeqRef.current += 1;
+    mentorAbortRef.current?.abort();
+    mentorAbortRef.current = null;
+    setIsAskingMentor(false);
     activeAudioFileRef.current = null;
     studioAudioEngine.reset();
     setReport(null);
@@ -1585,30 +1592,52 @@ export function StudioWorkbench() {
     };
   };
 
+  useEffect(() => {
+    return () => {
+      mentorAbortRef.current?.abort();
+      mentorAbortRef.current = null;
+    };
+  }, []);
+
   const handleAskMentor = async (req: MentorRequest) => {
     if (!report) return;
+    const seq = ++mentorRequestSeqRef.current;
+    mentorAbortRef.current?.abort();
+    const controller = new AbortController();
+    mentorAbortRef.current = controller;
+
     setMentorError(null);
     setIsAskingMentor(true);
     try {
       const hasLiveSession = Boolean(report.session_id && !report.session_id.startsWith("local_"));
       let advice: MentorResponse;
       if (!hasLiveSession) {
-        advice = await askMentorStandalone(report, req);
+        advice = await askMentorStandalone(report, req, MENTOR_REQUEST_TIMEOUT_MS, controller.signal);
       } else {
         try {
-          advice = await askMentor(report.session_id, req);
+          advice = await askMentor(report.session_id, req, MENTOR_REQUEST_TIMEOUT_MS, controller.signal);
         } catch (sessionErr) {
+          if (controller.signal.aborted) {
+            throw sessionErr;
+          }
           const msg = sessionErr instanceof Error ? sessionErr.message.toLowerCase() : "";
           if (msg.includes("404") || msg.includes("expired") || msg.includes("not found")) {
-            advice = await askMentorStandalone(report, req);
+            advice = await askMentorStandalone(
+              report,
+              req,
+              MENTOR_REQUEST_TIMEOUT_MS,
+              controller.signal
+            );
           } else {
             throw sessionErr;
           }
         }
       }
+      if (seq !== mentorRequestSeqRef.current) return;
       setMentorAdvice(advice);
       setReport((prev) => (prev ? { ...prev, privacy_audit: advice.privacy_audit } : prev));
     } catch (err) {
+      if (seq !== mentorRequestSeqRef.current) return;
       if (!req.allow_metrics_ai) {
         const offlineFallback = buildLocalOfflineMentorFallback(
           report,
@@ -1627,8 +1656,38 @@ export function StudioWorkbench() {
         );
       }
     } finally {
-      setIsAskingMentor(false);
+      if (mentorAbortRef.current === controller) {
+        mentorAbortRef.current = null;
+      }
+      if (seq === mentorRequestSeqRef.current) {
+        setIsAskingMentor(false);
+      }
     }
+  };
+
+  const handleUseOfflineMentorNow = (req?: MentorRequest) => {
+    if (!report) return;
+    mentorRequestSeqRef.current += 1;
+    mentorAbortRef.current?.abort();
+    mentorAbortRef.current = null;
+    setIsAskingMentor(false);
+    setMentorError(null);
+    const offlineReq: MentorRequest = {
+      allow_metrics_ai: false,
+      allow_audio_ai: false,
+      allow_training_opt_in: req?.allow_training_opt_in ?? privacyPrefs.allowTrainingOptIn,
+      question: req?.question ?? "",
+      conversation_history: req?.conversation_history ?? [],
+    };
+    const offlineFallback = buildLocalOfflineMentorFallback(
+      report,
+      offlineReq,
+      "Switched to Offline Deterministic Mentor"
+    );
+    setMentorAdvice(offlineFallback);
+    setReport((prev) =>
+      prev ? { ...prev, privacy_audit: offlineFallback.privacy_audit } : prev
+    );
   };
 
   const handleSaveDawContext = async (ctx: {
@@ -2006,6 +2065,7 @@ export function StudioWorkbench() {
               privacySaveState={privacySaveState}
               isSignedIn={Boolean(supabaseUser)}
               onAskMentor={handleAskMentor}
+              onUseOfflineNow={handleUseOfflineMentorNow}
               onSaveDawContext={(ctx) => void handleSaveDawContext(ctx)}
               onJumpToEvidence={handleJumpEvidence}
             />

@@ -235,13 +235,20 @@ export function SimpleView({
                 <span className="text-[11px] font-normal text-[var(--text-muted)]">dBTP</span>
               </div>
             </div>
-            <div className="min-w-0 bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
+            <div data-testid="kpi-card-plr-lra" className="min-w-0 bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">
               <div className="text-[11px] font-medium text-[var(--text-secondary)]">PLR / LRA</div>
-              <div className="mt-1 whitespace-nowrap text-lg font-semibold text-[var(--text-primary)] tabular-telemetry">
+              <div
+                data-testid="kpi-value-plr-lra"
+                className="mt-1 whitespace-nowrap text-lg font-semibold text-[var(--text-primary)] tabular-telemetry"
+              >
                 <AnimatedMetricValue value={plr} decimals={1} />{" "}
-                <span className="text-[11px] font-normal text-[var(--text-muted)]">
-                  dB / <AnimatedMetricValue value={m.loudness_range_lu} decimals={1} /> LU
-                </span>
+                <span className="text-[11px] font-normal text-[var(--text-muted)]">dB</span>
+              </div>
+              <div
+                data-testid="kpi-secondary-plr-lra"
+                className="mt-0.5 whitespace-nowrap text-[11px] text-[var(--text-secondary)] tabular-telemetry"
+              >
+                LRA <AnimatedMetricValue value={m.loudness_range_lu} decimals={1} /> LU
               </div>
             </div>
             <div className="min-w-0 bg-[var(--bg-elevated)] p-3.5 hairline-border squircle-inner">

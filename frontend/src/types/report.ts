@@ -270,6 +270,8 @@ export interface MentorRequest {
 export interface MentorResponse {
   mode: "deterministic_fallback" | "gemini_metrics_only" | "gemini_multimodal_audio";
   model_used: string;
+  fallback?: boolean;
+  source?: "gemini_live" | "offline_deterministic";
   fallback_reason?: string | null;
   summary: string;
   vision_alignment_note: string;

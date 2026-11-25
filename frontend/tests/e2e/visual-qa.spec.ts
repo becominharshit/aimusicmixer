@@ -513,12 +513,51 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
 
     await saveShot(page, "06-studio-simple-1440.png", false);
 
-    // Capture expanded sidebar screenshot too
-    await page.getByTestId("sidebar-toggle-btn").click();
-    await page.waitForTimeout(320);
-    await saveShot(page, "06b-studio-sidebar-expanded-1440.png", false);
-    await page.getByTestId("sidebar-toggle-btn").click();
-    await page.waitForTimeout(300);
+    // Fix 3 & Fix 4 QA at 1280x800 and 1440x900: Simple PLR/LRA zero clipping + Mono dock button containment (sidebar collapsed & expanded)
+    const assertMonoDockContained = async (vp: { width: number; height: number }, sidebarState: string) => {
+      const monoBtn = page.getByTestId("dock-stereo-group").getByRole("button", { name: /^Mono$/i });
+      await expect(monoBtn).toBeVisible();
+      const [monoBox, metrics] = await Promise.all([
+        monoBtn.boundingBox(),
+        page.evaluate(() => ({
+          innerWidth: window.innerWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        })),
+      ]);
+      expect(monoBox, `Mono button missing at ${vp.width}x${vp.height} (${sidebarState})`).not.toBeNull();
+      expect(
+        monoBox!.x + monoBox!.width,
+        `Mono button clipped right edge at ${vp.width}x${vp.height} (${sidebarState})`
+      ).toBeLessThanOrEqual(metrics.innerWidth - 8);
+      expect(
+        metrics.scrollWidth,
+        `Horizontal page overflow at ${vp.width}x${vp.height} (${sidebarState})`
+      ).toBeLessThanOrEqual(metrics.innerWidth);
+    };
+
+    for (const vp of [
+      { width: 1280, height: 800 },
+      { width: 1440, height: 900 },
+    ]) {
+      await page.setViewportSize(vp);
+      await page.waitForTimeout(200);
+      const plrClip = await page.getByTestId("kpi-value-plr-lra").evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      }));
+      expect(plrClip.scrollWidth, `PLR/LRA primary clipped at ${vp.width}x${vp.height}`).toBeLessThanOrEqual(
+        plrClip.clientWidth + 1
+      );
+      await assertMonoDockContained(vp, "collapsed");
+      await page.getByTestId("sidebar-toggle-btn").click();
+      await page.waitForTimeout(300);
+      await assertMonoDockContained(vp, "expanded");
+      if (vp.width === 1440) {
+        await saveShot(page, "06b-studio-sidebar-expanded-1440.png", false);
+      }
+      await page.getByTestId("sidebar-toggle-btn").click();
+      await page.waitForTimeout(280);
+    }
 
     // Auto-Fix Preview toggle
     const autoFixBtn = page.getByTestId("dock-autofix-btn");
@@ -528,7 +567,7 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await autoFixBtn.click();
     await expect(autoFixBtn).toHaveAttribute("aria-pressed", "false");
 
-    // Advanced Mix Check: verify smooth transition (opacity === 1) + live animating Spectrum & Vectorscope
+    // Advanced Mix Check: verify smooth transition (opacity === 1) + live animating Spectrum & Vectorscope + zero KPI clipping at 1280x800 & 1440x900
     await advBtn.click();
     await expect(page.getByTestId("flaw-timeline-bar")).toBeVisible();
     await expect(page.getByTestId("live-spectral-graph")).toBeVisible();
@@ -537,6 +576,30 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     expect(
       await page.getByTestId("live-spectral-graph").evaluate((el) => getComputedStyle(el).opacity)
     ).toBe("1");
+    for (const vp of [
+      { width: 1280, height: 800 },
+      { width: 1440, height: 900 },
+    ]) {
+      await page.setViewportSize(vp);
+      await page.waitForTimeout(180);
+      for (const id of [
+        "adv-kpi-value-lufs",
+        "adv-kpi-value-true-peak",
+        "adv-kpi-value-plr-lra",
+        "adv-kpi-value-stereo",
+        "adv-kpi-value-spotify",
+        "adv-kpi-label-tempo-spotify",
+      ]) {
+        const boxInfo = await page.getByTestId(id).evaluate((el) => ({
+          scrollWidth: el.scrollWidth,
+          clientWidth: el.clientWidth,
+        }));
+        expect(
+          boxInfo.scrollWidth,
+          `Advanced KPI ${id} clipped at ${vp.width}x${vp.height}`
+        ).toBeLessThanOrEqual(boxInfo.clientWidth + 1);
+      }
+    }
     await assertNoButtonOverlap(
       page.getByTestId("flaw-marker-rail"),
       "Advanced FlawTimelineBar (1440px)",
@@ -544,14 +607,20 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     );
     await saveShot(page, "07-studio-advanced-1440.png", false);
 
-    // AI Suggestions Drawer privacy defaults (zero "Gemini 4 Hydrogen" strings)
+    // AI Suggestions Drawer privacy defaults + Get AI Suggestions (Metrics Only) resolves cleanly without hanging on STAGE 5
     await page.getByTestId("header-ai-suggestions-btn").click();
-    await expect(
-      page.getByRole("switch", { name: /Toggle A Metrics-Only AI Mentor/i })
-    ).toHaveAttribute("aria-checked", "false");
+    const toggleA = page.getByRole("switch", { name: /Toggle A Metrics-Only AI Mentor/i });
+    await expect(toggleA).toHaveAttribute("aria-checked", "false");
     await expect(
       page.getByRole("switch", { name: /Toggle B Direct Audio Listening Opt-In/i })
     ).toBeDisabled();
+    await toggleA.click();
+    await expect(toggleA).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("button", { name: /Get AI Suggestions \(Metrics Only\)/i }).click();
+    await expect(page.getByText(/Stage 5: AI Suggestions Complete/i)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: /Generating Suggestions\.\.\./i })).toHaveCount(0);
+    await toggleA.click();
+    await expect(toggleA).toHaveAttribute("aria-checked", "false");
     await page.getByRole("button", { name: /Close AI Suggestions/i }).click();
 
     // Tick first DAW Repair Checklist checkbox and verify History badge updated live (>= 1)

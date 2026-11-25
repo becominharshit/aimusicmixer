@@ -454,7 +454,7 @@ export async function updateDawContext(
   });
 }
 
-export const MENTOR_REQUEST_TIMEOUT_MS = 42_000;
+export const MENTOR_REQUEST_TIMEOUT_MS = 35_000;
 
 function mapMentorFetchError(err: unknown, timeoutMs: number): Error {
   if (isAbortOrTimeoutError(err)) {
@@ -475,9 +475,18 @@ function mapMentorFetchError(err: unknown, timeoutMs: number): Error {
 export async function askMentor(
   sessionId: string,
   payload: MentorRequest,
-  timeoutMs: number = MENTOR_REQUEST_TIMEOUT_MS
+  timeoutMs: number = MENTOR_REQUEST_TIMEOUT_MS,
+  signal?: AbortSignal
 ): Promise<MentorResponse> {
   const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", onExternalAbort, { once: true });
+    }
+  }
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
@@ -492,15 +501,25 @@ export async function askMentor(
     throw mapMentorFetchError(err, timeoutMs);
   } finally {
     clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", onExternalAbort);
   }
 }
 
 export async function askMentorStandalone(
   report: AnalysisReport,
   payload: MentorRequest,
-  timeoutMs: number = MENTOR_REQUEST_TIMEOUT_MS
+  timeoutMs: number = MENTOR_REQUEST_TIMEOUT_MS,
+  signal?: AbortSignal
 ): Promise<MentorResponse> {
   const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", onExternalAbort, { once: true });
+    }
+  }
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
@@ -519,6 +538,7 @@ export async function askMentorStandalone(
     throw mapMentorFetchError(err, timeoutMs);
   } finally {
     clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", onExternalAbort);
   }
 }
 

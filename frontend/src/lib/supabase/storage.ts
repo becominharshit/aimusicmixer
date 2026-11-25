@@ -233,19 +233,58 @@ export async function fetchSavedAnalyses(
   };
 }
 
+export async function fetchUserAnalysesCount(userId: string): Promise<number> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase || !userId) {
+    throw new Error("Supabase client or user ID unavailable.");
+  }
+  const { count, error } = await supabase
+    .from("analyses")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (error) {
+    throw new Error(error.message || "Failed to query analyses count.");
+  }
+  return typeof count === "number" ? count : 0;
+}
+
 export async function fetchUserDawProjectCount(userId: string): Promise<number> {
   const supabase = getSupabaseBrowserClient();
-  if (!supabase || !userId) return 0;
-  try {
-    const { count, error } = await supabase
-      .from("daw_projects")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId);
-    if (!error && typeof count === "number") return count;
-  } catch {
-    // Table may not exist yet or local fallback is active
+  if (!supabase || !userId) {
+    throw new Error("Supabase client or user ID unavailable.");
   }
-  return 0;
+  const { count, error } = await supabase
+    .from("daw_projects")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (error) {
+    const code = (error as { code?: string }).code ?? "";
+    const msg = (error.message || "").toLowerCase();
+    const tableMissing =
+      code === "42P01" ||
+      code === "PGRST205" ||
+      msg.includes("does not exist") ||
+      msg.includes("could not find the table");
+    if (tableMissing) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[Mixit] daw_projects table not present yet; degrading DAW Projects count to 0.");
+      }
+      return 0;
+    }
+    throw new Error(error.message || "Failed to query DAW projects count.");
+  }
+  return typeof count === "number" ? count : 0;
+}
+
+export function countCompletedFixesFromAnalyses(records: SavedAnalysisRecord[]): number {
+  let totalFixes = 0;
+  for (const rec of records) {
+    const steps = rec.checklist_progress ?? rec.report_json?.completed_repair_steps ?? {};
+    for (const checked of Object.values(steps)) {
+      if (checked) totalFixes += 1;
+    }
+  }
+  return totalFixes;
 }
 
 export async function uploadMixProxyToStorage(params: {

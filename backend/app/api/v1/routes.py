@@ -1172,7 +1172,7 @@ async def _run_mentor_with_guaranteed_fallback(
     primary_audio_path: Path | None = None,
     fallback_proxy_path: Path | None = None,
 ) -> MentorResponse:
-    """Invoke generate_mentor_advice_async under the shared 35.0s asyncio.wait_for guard."""
+    """Invoke generate_mentor_advice_async under the shared 30.0s asyncio.wait_for guard."""
     try:
         return await asyncio.wait_for(
             generate_mentor_advice_async(
@@ -1182,7 +1182,7 @@ async def _run_mentor_with_guaranteed_fallback(
                 fallback_proxy_path=fallback_proxy_path,
                 timeout_sec=GEMINI_REQUEST_TIMEOUT_SEC,
             ),
-            timeout=GEMINI_REQUEST_TIMEOUT_SEC + 0.5,
+            timeout=GEMINI_REQUEST_TIMEOUT_SEC,
         )
     except (asyncio.TimeoutError, TimeoutError):
         return build_deterministic_mentor_response(

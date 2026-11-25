@@ -109,14 +109,20 @@ export function AdvancedWorkbench({
       )}
 
       {/* Five Core Deterministic Telemetry Cards with Smooth Animated Counters */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div
+        data-testid="advanced-kpi-grid"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5"
+      >
         <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
           <div className="text-[11px] font-medium text-[var(--text-secondary)]">Integrated LUFS</div>
-          <div className="mt-1 whitespace-nowrap text-xl font-semibold text-[var(--text-primary)] tabular-telemetry">
+          <div
+            data-testid="adv-kpi-value-lufs"
+            className="mt-1 whitespace-nowrap text-xl font-semibold text-[var(--text-primary)] tabular-telemetry"
+          >
             <AnimatedMetricValue value={m.integrated_lufs} decimals={1} />{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">LUFS</span>
           </div>
-          <div className="mt-1 truncate text-[11px] text-[var(--text-secondary)] tabular-telemetry">
+          <div className="mt-1 text-[11px] text-[var(--text-secondary)] tabular-telemetry">
             ST Max {m.short_term_max_lufs.toFixed(1)} · Mom {m.momentary_max_lufs.toFixed(1)}
           </div>
         </div>
@@ -124,6 +130,7 @@ export function AdvancedWorkbench({
         <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
           <div className="text-[11px] font-medium text-[var(--text-secondary)]">4x True Peak</div>
           <div
+            data-testid="adv-kpi-value-true-peak"
             className={`mt-1 whitespace-nowrap text-xl font-semibold tabular-telemetry ${
               m.true_peak_dbtp > -0.1
                 ? "text-[var(--studio-vermilion)]"
@@ -135,7 +142,7 @@ export function AdvancedWorkbench({
             <AnimatedMetricValue value={m.true_peak_dbtp} decimals={2} signed />{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">dBTP</span>
           </div>
-          <div className="mt-1 truncate text-[11px] text-[var(--text-secondary)] tabular-telemetry">
+          <div className="mt-1 text-[11px] text-[var(--text-secondary)] tabular-telemetry">
             Sample peak {m.sample_peak_dbfs >= 0 ? "+" : ""}
             {m.sample_peak_dbfs.toFixed(2)} dBFS
           </div>
@@ -143,22 +150,23 @@ export function AdvancedWorkbench({
 
         <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
           <div className="text-[11px] font-medium text-[var(--text-secondary)]">PLR / LRA</div>
-          <div className="mt-1 whitespace-nowrap text-xl font-semibold text-[var(--text-primary)] tabular-telemetry">
+          <div
+            data-testid="adv-kpi-value-plr-lra"
+            className="mt-1 whitespace-nowrap text-xl font-semibold text-[var(--text-primary)] tabular-telemetry"
+          >
             <AnimatedMetricValue value={plr} decimals={1} />{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">dB</span>
-            <span className="mx-1 text-[var(--text-muted)]">/</span>
-            <AnimatedMetricValue value={m.loudness_range_lu} decimals={1} />{" "}
-            <span className="text-xs font-normal text-[var(--text-muted)]">LU</span>
           </div>
           <div
-            className="mt-1 truncate text-[11px] text-[var(--text-secondary)] tabular-telemetry"
-            title={`PSR ${m.psr_db.toFixed(1)} dB · Crest ${m.crest_factor_db.toFixed(1)} dB${
+            className="mt-1 text-[11px] text-[var(--text-secondary)] tabular-telemetry"
+            title={`LRA ${m.loudness_range_lu.toFixed(1)} LU · PSR ${m.psr_db.toFixed(1)} dB · Crest ${m.crest_factor_db.toFixed(1)} dB${
               typeof m.transient_punch_db === "number" && m.transient_punch_db > 0
                 ? ` · Punch ${m.transient_punch_db.toFixed(1)} dB`
                 : ""
             }`}
           >
-            PSR {m.psr_db.toFixed(1)} · Crest {m.crest_factor_db.toFixed(1)}
+            LRA {m.loudness_range_lu.toFixed(1)} LU · PSR {m.psr_db.toFixed(1)} · Crest{" "}
+            {m.crest_factor_db.toFixed(1)}
             {typeof m.transient_punch_db === "number" && m.transient_punch_db > 0
               ? ` · Punch ${m.transient_punch_db.toFixed(1)} dB`
               : " dB"}
@@ -168,6 +176,7 @@ export function AdvancedWorkbench({
         <div className="min-w-0 bg-[var(--bg-elevated)] p-4 hairline-border squircle-inner">
           <div className="text-[11px] font-medium text-[var(--text-secondary)]">Stereo &amp; Sub Phase</div>
           <div
+            data-testid="adv-kpi-value-stereo"
             className={`mt-1 whitespace-nowrap text-xl font-semibold tabular-telemetry ${
               m.phase_correlation_avg < 0
                 ? "text-[var(--studio-vermilion)]"
@@ -177,19 +186,19 @@ export function AdvancedWorkbench({
             }`}
           >
             <AnimatedMetricValue value={m.phase_correlation_avg} decimals={2} signed />
-            {typeof subCorr === "number" && (
-              <span
-                className={`ml-1.5 text-xs font-medium ${
-                  subCorr < 0.3 ? "text-[var(--studio-amber)]" : "text-[var(--text-secondary)]"
-                }`}
-              >
-                (Sub {subCorr >= 0 ? "+" : ""}
-                {subCorr.toFixed(2)})
-              </span>
-            )}
           </div>
-          <div className="mt-1 truncate text-[11px] text-[var(--text-secondary)] tabular-telemetry">
-            M/S width {m.stereo_width_ratio.toFixed(2)} · 20–120 Hz bandpass
+          <div className="mt-1 text-[11px] text-[var(--text-secondary)] tabular-telemetry">
+            {typeof subCorr === "number" ? (
+              <span
+                className={
+                  subCorr < 0.3 ? "font-medium text-[var(--studio-amber)]" : "text-[var(--text-secondary)]"
+                }
+              >
+                Sub {subCorr >= 0 ? "+" : ""}
+                {subCorr.toFixed(2)} ·{" "}
+              </span>
+            ) : null}
+            M/S width {m.stereo_width_ratio.toFixed(2)}
           </div>
         </div>
 
@@ -200,11 +209,11 @@ export function AdvancedWorkbench({
             "Estimated under Spotify Normal (-14 LUFS) target with -1.0 dBTP limiter check."
           }
         >
-          <div className="flex items-center justify-between gap-1 text-[11px] font-medium text-[var(--text-secondary)]">
-            <span className="truncate">
+          <div className="flex items-center justify-between gap-1.5 text-[11px] font-medium text-[var(--text-secondary)]">
+            <span data-testid="adv-kpi-label-tempo-spotify">
               {typeof report.audio_metadata.bpm === "number" && report.audio_metadata.bpm > 0
-                ? "Tempo / Spotify Est."
-                : "Spotify -14 LUFS Est."}
+                ? "Tempo & Spotify"
+                : "Spotify -14 LUFS"}
             </span>
             {spotifyWarning ? (
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--studio-amber)]" aria-hidden="true" />
@@ -213,22 +222,24 @@ export function AdvancedWorkbench({
             )}
           </div>
           <div
+            data-testid="adv-kpi-value-spotify"
             className={`mt-1 whitespace-nowrap text-xl font-semibold tabular-telemetry ${
               spotifyWarning ? "text-[var(--studio-amber)]" : "text-[var(--text-primary)]"
             }`}
           >
             <AnimatedMetricValue value={spotifyGain} decimals={1} signed />{" "}
             <span className="text-xs font-normal text-[var(--text-muted)]">dB</span>
-            {typeof report.audio_metadata.bpm === "number" && report.audio_metadata.bpm > 0 && (
-              <span className="ml-2 text-xs font-medium text-[var(--studio-yellow)]">
-                · <AnimatedMetricValue value={Math.round(report.audio_metadata.bpm)} decimals={0} /> BPM
-              </span>
-            )}
           </div>
-          <div className="mt-1 line-clamp-1 text-[11px] text-[var(--text-secondary)]">
-            {spotifyWarning
-              ? "Normal mode (-14): limiter risk"
-              : "Assumes Normal -14 LUFS target"}
+          <div className="mt-1 text-[11px] text-[var(--text-secondary)] tabular-telemetry">
+            {typeof report.audio_metadata.bpm === "number" && report.audio_metadata.bpm > 0 ? (
+              <>
+                <span className="font-semibold text-[var(--studio-yellow)]">
+                  {Math.round(report.audio_metadata.bpm)} BPM
+                </span>
+                {" · "}
+              </>
+            ) : null}
+            {spotifyWarning ? "Normal (-14): limiter risk" : "Normal -14 LUFS target"}
           </div>
         </div>
       </div>

@@ -98,11 +98,11 @@ export function BottomTransportDock({
     <div
       role="region"
       aria-label="Persistent Mixit Transport and Device Translation Lab"
-      className="no-print sticky bottom-0 z-30 w-full border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)]/96 backdrop-blur-md"
+      className="no-print sticky bottom-0 z-30 w-full max-w-full min-w-0 box-border overflow-x-auto border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)]/96 backdrop-blur-md lg:overflow-x-visible"
     >
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2.5 px-3 py-2.5 sm:px-5 lg:flex-nowrap">
+      <div className="mx-auto flex w-full max-w-[1440px] min-w-0 box-border flex-wrap items-center justify-between gap-2 px-3 py-2.5 lg:gap-2.5 lg:px-4 xl:flex-nowrap xl:gap-3 xl:px-5">
         {/* Playback + Seek Cluster */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:min-w-[230px] sm:gap-2.5">
+        <div className="flex min-w-[180px] flex-1 items-center gap-2 sm:gap-2.5">
           <motion.button
             type="button"
             whileTap={hasPrimary ? TACTILE_TAP : undefined}

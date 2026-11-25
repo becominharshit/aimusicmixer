@@ -18,6 +18,7 @@ interface MentorDrawerProps {
   mentorError?: string | null;
   onDismissMentorError?: () => void;
   onAskMentor: (req: MentorRequest) => void | Promise<void>;
+  onUseOfflineNow?: (req?: MentorRequest) => void;
   onSaveDawContext: (ctx: { daw: string; bus_routing: string; plugin_notes: string }) => void;
   onJumpToEvidence: (evidenceId: string) => void;
   privacyPrefs?: PrivacyPreferences;
@@ -35,6 +36,7 @@ export function MentorDrawer({
   mentorError = null,
   onDismissMentorError,
   onAskMentor,
+  onUseOfflineNow,
   onSaveDawContext,
   onJumpToEvidence,
   privacyPrefs,
@@ -160,6 +162,11 @@ export function MentorDrawer({
                 onDismissMentorError?.();
               }}
               onAskMentor={(req) => void handleAskMentorSafe(req)}
+              onUseOfflineNow={(req) => {
+                setLocalLoading(false);
+                setLocalError(null);
+                onUseOfflineNow?.(req);
+              }}
               onSaveDawContext={onSaveDawContext}
               privacyPrefs={privacyPrefs}
               onPrivacyPrefsChange={onPrivacyPrefsChange}

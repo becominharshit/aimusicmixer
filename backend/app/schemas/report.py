@@ -250,6 +250,8 @@ class MentorRequest(BaseModel):
 class MentorResponse(BaseModel):
     mode: Literal["deterministic_fallback", "gemini_metrics_only", "gemini_multimodal_audio"]
     model_used: str
+    fallback: bool = False
+    source: Literal["gemini_live", "offline_deterministic"] = "gemini_live"
     fallback_reason: str | None = None
     summary: str
     vision_alignment_note: str
