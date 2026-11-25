@@ -16,9 +16,9 @@ export interface DspPipelineStep {
 export const DEFAULT_DSP_PIPELINE_STEPS: Array<{ id: string; label: string; shortLabel: string }> = [
   { id: "decode", label: "1. Decode", shortLabel: "1. Decode" },
   { id: "loudness", label: "2. Loudness", shortLabel: "2. Loudness" },
-  { id: "peak_phase", label: "3. Peaks & Phase", shortLabel: "3. Peaks & Phase" },
+  { id: "peak_phase", label: "3. Peaks & Phase", shortLabel: "3. Peaks" },
   { id: "spectral", label: "4. Spectrum", shortLabel: "4. Spectrum" },
-  { id: "mentor", label: "5. AI Suggestions", shortLabel: "5. AI Suggestions" },
+  { id: "mentor", label: "5. AI Suggestions", shortLabel: "5. AI Ready" },
 ];
 
 interface DspStepTrackerProps {
@@ -34,6 +34,8 @@ interface DspStepTrackerProps {
   mentorCompleted?: boolean;
   /** Optional status caption. */
   statusLabel?: string;
+  /** Optional override for the compact mentor step label (defaults to "5. AI Ready"). */
+  mentorShortLabel?: string;
   /** Compact mode for embedding inside MentorDrawer. */
   compact?: boolean;
   /** Instant cancel handler during long uploads/analyses. */
@@ -48,6 +50,7 @@ export function DspStepTracker({
   mentorActive = false,
   mentorCompleted = false,
   statusLabel,
+  mentorShortLabel,
   compact = false,
   onCancel,
   className = "",
@@ -164,14 +167,18 @@ export function DspStepTracker({
                       `0${index + 1}`
                     )}
                   </span>
-                  <span className="text-[11px] font-bold leading-tight text-[var(--text-primary)] whitespace-nowrap">
-                    {compact ? step.shortLabel : step.label}
+                  <span className="whitespace-nowrap text-[11px] font-bold leading-tight text-[var(--text-primary)]">
+                    {compact
+                      ? step.id === "mentor" && mentorShortLabel
+                        ? mentorShortLabel
+                        : step.shortLabel
+                      : step.label}
                   </span>
                 </div>
               </div>
 
-              <div className="mt-1.5 flex items-center justify-between">
-                <span className="tabular-telemetry text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              <div className="mt-1.5 flex items-center justify-between gap-1">
+                <span className="whitespace-nowrap tabular-telemetry text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                   {isDone ? "Verified" : isActive ? "Running" : isMentor ? "Opt-In" : "Queued"}
                 </span>
                 {typeof step.elapsedMs === "number" && step.elapsedMs > 0 ? (

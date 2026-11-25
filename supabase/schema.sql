@@ -18,6 +18,18 @@ create table if not exists public.profiles (
 );
 
 alter table public.profiles
+  add column if not exists allow_metrics_ai boolean not null default false;
+alter table public.profiles
+  add column if not exists allow_audio_ai boolean not null default false;
+alter table public.profiles
+  add column if not exists allow_dataset_retention boolean not null default false;
+alter table public.profiles
+  alter column allow_metrics_ai set default false;
+alter table public.profiles
+  alter column allow_audio_ai set default false;
+alter table public.profiles
+  alter column allow_dataset_retention set default false;
+alter table public.profiles
   add column if not exists preferred_daw text default 'Mixit Web DAW';
 alter table public.profiles
   add column if not exists default_theme text default 'dark';

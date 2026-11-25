@@ -18,8 +18,14 @@ import {
   type DeviceProfile,
   type StereoMode,
 } from "@/audio/StudioAudioEngine";
-import { STUDIO_SPRING, TACTILE_TAP } from "@/lib/motion";
+import { TACTILE_TAP } from "@/lib/motion";
 import { formatTimecode } from "@/lib/utils";
+
+const DOCK_PILL_SPRING = {
+  type: "spring" as const,
+  stiffness: 460,
+  damping: 38,
+};
 
 interface BottomTransportDockProps {
   durationSec: number;
@@ -169,7 +175,7 @@ export function BottomTransportDock({
         <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
           <div
             data-testid="dock-source-group"
-            className="inline-flex shrink-0 flex-nowrap items-center gap-0.5 rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
+            className="relative isolate inline-flex shrink-0 flex-nowrap items-center gap-0.5 overflow-hidden rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
             role="group"
             aria-label="Audio source A/B switcher"
           >
@@ -187,7 +193,7 @@ export function BottomTransportDock({
                   type="button"
                   disabled={!src.enabled}
                   onClick={() => onChangeSource(src.id)}
-                  className={`relative z-10 inline-flex shrink-0 items-center whitespace-nowrap rounded-[3px] px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                  className={`relative z-10 inline-flex h-7 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] px-2.5 text-[11px] font-bold leading-none transition-colors ${
                     active
                       ? "text-[#111318]"
                       : src.enabled
@@ -198,7 +204,7 @@ export function BottomTransportDock({
                   {active && (
                     <motion.span
                       layoutId="dock-source-pill"
-                      transition={STUDIO_SPRING}
+                      transition={DOCK_PILL_SPRING}
                       className="pointer-events-none absolute inset-0 -z-10 rounded-[3px] bg-[#F0B44C]"
                     />
                   )}
@@ -262,7 +268,7 @@ export function BottomTransportDock({
         <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
           <div
             data-testid="dock-stereo-group"
-            className="inline-flex shrink-0 flex-nowrap items-center gap-0.5 rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
+            className="relative isolate inline-flex shrink-0 flex-nowrap items-center gap-0.5 overflow-hidden rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
             role="group"
             aria-label="Stereo or Mono fold"
           >
@@ -273,7 +279,7 @@ export function BottomTransportDock({
                   key={s}
                   type="button"
                   onClick={() => onChangeStereo(s)}
-                  className={`relative z-10 inline-flex shrink-0 items-center whitespace-nowrap rounded-[3px] px-2.5 py-1 text-[11px] font-bold capitalize cursor-pointer transition-colors ${
+                  className={`relative z-10 inline-flex h-7 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] px-2.5 text-[11px] font-bold capitalize leading-none cursor-pointer transition-colors ${
                     active
                       ? "text-[#111318]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -282,7 +288,8 @@ export function BottomTransportDock({
                   {active && (
                     <motion.span
                       layoutId="dock-stereo-pill"
-                      transition={STUDIO_SPRING}
+                      data-testid="dock-stereo-active-pill"
+                      transition={DOCK_PILL_SPRING}
                       className="pointer-events-none absolute inset-0 -z-10 rounded-[3px] bg-[#F0B44C]"
                     />
                   )}
@@ -294,7 +301,7 @@ export function BottomTransportDock({
 
           <div
             data-testid="dock-device-group"
-            className="inline-flex shrink-0 flex-nowrap items-center gap-0.5 rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
+            className="relative isolate inline-flex shrink-0 flex-nowrap items-center gap-0.5 overflow-hidden rounded-[4px] border border-[var(--border-hairline)] bg-[var(--bg-inset)] p-0.5"
             role="group"
             aria-label="Device Translation Lab"
           >
@@ -313,7 +320,7 @@ export function BottomTransportDock({
                   type="button"
                   onClick={() => onChangeDevice(dev.id)}
                   title={dev.sub ? `${dev.label} (${dev.sub})` : dev.label}
-                  className={`relative z-10 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-[3px] px-2.5 py-1 text-[11px] font-bold cursor-pointer transition-colors ${
+                  className={`relative z-10 inline-flex h-7 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-[3px] px-2.5 text-[11px] font-bold leading-none cursor-pointer transition-colors ${
                     active
                       ? "text-[#111318]"
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -322,7 +329,8 @@ export function BottomTransportDock({
                   {active && (
                     <motion.span
                       layoutId="dock-device-pill"
-                      transition={STUDIO_SPRING}
+                      data-testid="dock-device-active-pill"
+                      transition={DOCK_PILL_SPRING}
                       className="pointer-events-none absolute inset-0 -z-10 rounded-[3px] bg-[#F0B44C]"
                     />
                   )}

@@ -14,6 +14,24 @@ export const DEFAULT_PRIVACY_PREFERENCES: PrivacyPreferences = {
   allowTrainingOptIn: false,
 };
 
+/**
+ * Normalize persisted profile privacy flags so missing, null, or brand-new
+ * records strictly default all opt-ins—especially allow_dataset_retention
+ * (Toggle 3: Model Training Permission)—to false.
+ */
+export function normalizePrivacyPreferences(
+  profile?: Partial<
+    Pick<UserProfileRecord, "allow_metrics_ai" | "allow_audio_ai" | "allow_dataset_retention">
+  > | null
+): PrivacyPreferences {
+  const allowMetricsAi = profile?.allow_metrics_ai === true;
+  return {
+    allowMetricsAi,
+    allowAudioAi: allowMetricsAi && profile?.allow_audio_ai === true,
+    allowTrainingOptIn: profile?.allow_dataset_retention === true,
+  };
+}
+
 export type PreferredDaw = "Mixit Web DAW" | "FL Studio" | "Ableton Live" | "Logic Pro";
 
 export interface UserProfileRecord {
@@ -73,7 +91,13 @@ export async function fetchOrCreateUserProfile(user: User): Promise<UserProfileR
     return null;
   }
   if (data) {
-    return data as UserProfileRecord;
+    const prefs = normalizePrivacyPreferences(data as UserProfileRecord);
+    return {
+      ...(data as UserProfileRecord),
+      allow_metrics_ai: prefs.allowMetricsAi,
+      allow_audio_ai: prefs.allowAudioAi,
+      allow_dataset_retention: prefs.allowTrainingOptIn,
+    };
   }
 
   const fallbackName =

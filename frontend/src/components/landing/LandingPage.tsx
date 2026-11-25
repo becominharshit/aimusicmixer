@@ -17,6 +17,7 @@ import { FlawTimelineBar } from "@/components/studio/FlawTimelineBar";
 import { LiveSpectralGraph } from "@/components/studio/LiveSpectralGraph";
 import { SpinningDiscPlayer } from "@/components/studio/SpinningDiscPlayer";
 import { checkBackendHealth } from "@/lib/api";
+import { hasVisitedAppSession, markAppSessionVisited } from "@/lib/landingSession";
 import { STUDIO_EASE, TACTILE_TAP } from "@/lib/motion";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import type { BackendHealth, Finding, SpectralBand } from "@/types/report";
@@ -166,8 +167,14 @@ export function LandingPage() {
   const [health, setHealth] = useState<BackendHealth | null>(null);
   const [healthOnline, setHealthOnline] = useState<boolean | null>(null);
   const [cookieBannerVisible, setCookieBannerVisible] = useState(true);
+  const [skipHeroClip] = useState(() => hasVisitedAppSession());
 
   const supabaseReady = isSupabaseConfigured();
+
+  // Record in-session visit on mount so back-navigation from legal/status pages renders H1 statically
+  useEffect(() => {
+    markAppSessionVisited();
+  }, []);
 
   // Sync dynamic footer bottom padding with floating Cookie Consent Banner visibility
   useEffect(() => {
@@ -482,6 +489,7 @@ export function LandingPage() {
               <KineticHeadline
                 lines={["HEAR EVERY", "FLAW. PROVE", "EVERY FIX."]}
                 className="font-brut text-[clamp(3.25rem,6.4vw,6.25rem)] leading-[0.91] tracking-[-0.015em] text-[#14171F]"
+                skipInitialAnimation={skipHeroClip}
               />
 
               <div className="flex items-start gap-2.5 pt-1">
@@ -993,7 +1001,10 @@ export function LandingPage() {
           </div>
 
           {/* Column 3: Global Launch Pledge */}
-          <div className="flex flex-col justify-between gap-3 p-6 md:col-span-3 sm:p-8">
+          <div
+            data-testid="landing-footer-pledge"
+            className="flex flex-col justify-between gap-3 p-6 md:col-span-3 sm:p-8"
+          >
             <span className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#14171F]">
               MIXIT STUDIO · 100% FREE
             </span>

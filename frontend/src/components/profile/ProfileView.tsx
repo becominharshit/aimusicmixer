@@ -26,6 +26,7 @@ import {
   fetchOrCreateUserProfile,
   fetchSavedAnalyses,
   fetchUserDawProjectCount,
+  normalizePrivacyPreferences,
   purgeUserAccountData,
   saveProfilePrivacyPreferences,
   saveUserProfilePreferences,
@@ -119,12 +120,9 @@ export function ProfileView() {
           applyStudioTheme(profile.default_theme);
           setIsDarkTheme(profile.default_theme === "dark");
         }
-        setPrivacyPrefs({
-          allowMetricsAi: Boolean(profile.allow_metrics_ai),
-          allowAudioAi: Boolean(profile.allow_metrics_ai && profile.allow_audio_ai),
-          allowTrainingOptIn: Boolean(profile.allow_dataset_retention),
-        });
+        setPrivacyPrefs(normalizePrivacyPreferences(profile));
       } else {
+        setPrivacyPrefs({ ...DEFAULT_PRIVACY_PREFERENCES });
         setDisplayName(activeUser.email?.split("@")[0] || "");
       }
 

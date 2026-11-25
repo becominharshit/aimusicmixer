@@ -77,8 +77,11 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     ).toBeVisible();
 
     if (hasMockAuth) {
-      // Switch to Sign Up and verify explicit consent checkbox is required
+      // Switch to Sign Up and verify Sign Up subtitle + explicit consent checkbox requirement
       await page.getByRole("button", { name: /Need an account\? Sign up/i }).click();
+      await expect(
+        page.getByText(/Create your free Mixit account to save mixes and Web DAW projects\./i)
+      ).toBeVisible();
       const createBtn = page.getByRole("button", { name: /Create Account/i });
       const consentBox = page.getByTestId("signup-consent-checkbox");
       await expect(consentBox).toBeVisible();
@@ -138,6 +141,7 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
         { label: "System Status", locator: legalNav.getByRole("link", { name: /^System Status$/i }) },
         { label: "MIXIT STUDIO · 100% FREE", locator: footer.getByText(/MIXIT STUDIO · 100% FREE/i) },
         { label: "ZERO AD TRACKERS.", locator: footer.getByText(/ZERO AD TRACKERS\./i) },
+        { label: "landing-footer-pledge", locator: page.getByTestId("landing-footer-pledge") },
       ];
 
       for (const target of footerCheckTargets) {
@@ -235,6 +239,15 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await expect(heroHeading).toBeVisible();
     expect(await heroHeading.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
     expect(await primaryCta.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+    const backNavLineTransform = await heroHeading
+      .locator("span > span")
+      .first()
+      .evaluate((el) => ({
+        transform: getComputedStyle(el).transform,
+        opacity: getComputedStyle(el).opacity,
+      }));
+    expect(backNavLineTransform.transform).toBe("none");
+    expect(backNavLineTransform.opacity).toBe("1");
 
     // Verify clickable frequency band zone selector on LiveSpectralGraph + clustered FlawTimelineBar
     const subZoneBtn = page.getByRole("button", { name: "SUB", exact: true });
@@ -373,11 +386,17 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     const collapsedBox = await sidebar.boundingBox();
     expect(collapsedBox!.width).toBeLessThanOrEqual(72);
 
-    // Expand collapsible sidebar smoothly to 240px and verify labels appear cleanly
+    // Expand collapsible sidebar smoothly to 264px and verify labels (including System Status) appear cleanly with zero truncation
     await page.getByTestId("sidebar-toggle-btn").click();
     await page.waitForTimeout(300);
     const expandedBox = await sidebar.boundingBox();
-    expect(expandedBox!.width).toBeGreaterThanOrEqual(220);
+    expect(expandedBox!.width).toBeGreaterThanOrEqual(240);
+    const sysStatusLabel = page.getByTestId("sidebar-system-status-label");
+    await expect(sysStatusLabel).toBeVisible();
+    const sysStatusTrunc = await sysStatusLabel.evaluate(
+      (el) => el.scrollWidth - el.clientWidth
+    );
+    expect(sysStatusTrunc, "Sidebar System Status label must not truncate").toBeLessThanOrEqual(1);
 
     const themeToggle = page.getByTestId("theme-toggle");
     await expect(themeToggle).toBeVisible();
@@ -400,15 +419,15 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     const addAudioBtn = page.getByTestId("add-audio-btn");
     await expect(addAudioBtn).toBeVisible();
     await addAudioBtn.click();
-    await expect(page.getByTestId("add-audio-modal")).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("add-audio-modal")).toBeHidden();
+    const addAudioModal = page.getByTestId("add-audio-modal");
+    await expect(addAudioModal).toBeVisible();
 
     const advBtn = page.getByRole("button", { name: "Advanced Mix Check", exact: true });
     await assertNoTextClipping(advBtn, "Advanced Mix Check button");
 
-    // Load Sample Flawed Mix
-    await page.getByRole("button", { name: /Try Sample Flawed Mix/i }).click();
+    // Clicking Load Sample Mix inside AddAudioModal auto-closes the modal and loads the sample mix
+    await addAudioModal.getByRole("button", { name: /Load Sample Mix/i }).click();
+    await expect(addAudioModal).toBeHidden({ timeout: 5_000 });
     await expect(page.getByRole("heading", { name: /demo-flawed-v1\.wav/i })).toBeVisible({
       timeout: 25_000,
     });
@@ -437,11 +456,43 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await assertNoButtonOverlap(page.getByTestId("dock-stereo-group"), "Dock Stereo Group (1440px)");
     await assertNoButtonOverlap(page.getByTestId("dock-device-group"), "Dock Device Group (1440px)");
 
-    // Switch device profiles and ensure zero pill clipping on Full Range / Smartphone / Laptop
+    // Switch stereo/mono + device profiles and ensure yellow active pill stays flush inside container (zero overflow)
+    const assertPillContained = async (group: Locator, pill: Locator, context: string) => {
+      const [gBox, pBox] = await Promise.all([group.boundingBox(), pill.boundingBox()]);
+      expect(gBox, `${context}: group bounding box missing`).not.toBeNull();
+      expect(pBox, `${context}: pill bounding box missing`).not.toBeNull();
+      expect(pBox!.x, `${context}: pill overflowed left edge`).toBeGreaterThanOrEqual(gBox!.x - 1);
+      expect(pBox!.y, `${context}: pill overflowed top edge`).toBeGreaterThanOrEqual(gBox!.y - 1);
+      expect(pBox!.x + pBox!.width, `${context}: pill overflowed right edge`).toBeLessThanOrEqual(
+        gBox!.x + gBox!.width + 1
+      );
+      expect(pBox!.y + pBox!.height, `${context}: pill overflowed bottom edge`).toBeLessThanOrEqual(
+        gBox!.y + gBox!.height + 1
+      );
+    };
+
+    const dockStereoGroup = page.getByTestId("dock-stereo-group");
+    for (const modeLabel of ["Mono", "Stereo"]) {
+      await dockStereoGroup.getByRole("button", { name: new RegExp(`^${modeLabel}$`, "i") }).click();
+      await page.waitForTimeout(180);
+      await assertNoButtonOverlap(dockStereoGroup, `Dock Stereo Group (${modeLabel} active)`);
+      await assertPillContained(
+        dockStereoGroup,
+        dockStereoGroup.getByTestId("dock-stereo-active-pill"),
+        `Dock Stereo Pill (${modeLabel})`
+      );
+    }
+
     const dockDeviceGroup = page.getByTestId("dock-device-group");
     for (const label of ["Smartphone", "Laptop", "Full Range"]) {
       await dockDeviceGroup.getByRole("button", { name: new RegExp(label, "i") }).click();
+      await page.waitForTimeout(180);
       await assertNoButtonOverlap(dockDeviceGroup, `Dock Device Group (${label} active)`);
+      await assertPillContained(
+        dockDeviceGroup,
+        dockDeviceGroup.getByTestId("dock-device-active-pill"),
+        `Dock Device Pill (${label})`
+      );
     }
 
     // Export / Share dropdown in sidebar exposes EQ Preset, JSON, Scorecard PNG, and PDF cleanly
@@ -670,6 +721,9 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     await expect(page.getByTestId("profile-page")).toBeVisible({ timeout: 15_000 });
     await page.reload();
     await expect(page.getByTestId("profile-page")).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByRole("switch", { name: /Allow future model training opt-in/i })
+    ).toHaveAttribute("aria-checked", "false");
     await expect(page.getByTestId("stat-mixes-analyzed")).toHaveText("1");
     await expect(page.getByTestId("stat-fixes-completed")).toHaveText("1");
     await page.fill("#profile-display-name", "Harshit Mastering");
@@ -739,6 +793,47 @@ test.describe("Mixit Commercial Studio Visual, Auth & Compliance QA", () => {
     const termsRes = await page.goto("/terms");
     expect(termsRes?.status()).toBe(200);
     await expect(page.getByRole("heading", { name: /Mixit Terms of Use/i })).toBeVisible();
+
+    // Verify floating Cookie Consent card clears section 04 & bottom links on /terms at 1440x900 and 1024x768
+    await page.evaluate(() => window.localStorage.removeItem("mixit_cookie_consent_v1"));
+    await page.reload();
+    const termsCookieBanner = page.getByTestId("cookie-consent-banner");
+    await expect(termsCookieBanner).toBeVisible();
+    for (const vp of [
+      { width: 1440, height: 900 },
+      { width: 1024, height: 768 },
+    ]) {
+      await page.setViewportSize(vp);
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.waitForTimeout(200);
+      const bBox = await termsCookieBanner.boundingBox();
+      expect(bBox).not.toBeNull();
+      for (const id of ["terms-section-04", "terms-footer"]) {
+        const elBox = await page.getByTestId(id).boundingBox();
+        expect(elBox).not.toBeNull();
+        const hOverlap =
+          Math.min(bBox!.x + bBox!.width, elBox!.x + elBox!.width) - Math.max(bBox!.x, elBox!.x);
+        const vOverlap =
+          Math.min(bBox!.y + bBox!.height, elBox!.y + elBox!.height) - Math.max(bBox!.y, elBox!.y);
+        expect(
+          hOverlap > 1 && vOverlap > 1,
+          `Cookie banner overlapped ${id} on /terms at ${vp.width}x${vp.height}`
+        ).toBe(false);
+      }
+    }
+
+    // Back-navigation via link from /terms -> / renders H1 statically without entrance clip flash
+    await page.getByRole("link", { name: /Back to Mixit/i }).click();
+    await expect(page).toHaveURL(/\/$/);
+    const termsBackH1 = await page
+      .locator("h1 span > span")
+      .first()
+      .evaluate((el) => ({
+        transform: getComputedStyle(el).transform,
+        opacity: getComputedStyle(el).opacity,
+      }));
+    expect(termsBackH1.transform).toBe("none");
+    expect(termsBackH1.opacity).toBe("1");
 
     const cookiesRes = await page.goto("/cookies");
     expect(cookiesRes?.status()).toBe(200);

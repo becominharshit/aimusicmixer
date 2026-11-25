@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { ShieldCheck, X } from "lucide-react";
+import { markAppSessionVisited } from "@/lib/landingSession";
 import { STUDIO_EASE } from "@/lib/motion";
 
 export const COOKIE_CONSENT_KEY = "mixit_cookie_consent_v1";
@@ -17,6 +18,7 @@ export function CookieConsentBanner() {
     Boolean(pathname?.startsWith("/studio")) || Boolean(pathname?.startsWith("/daw"));
 
   useEffect(() => {
+    markAppSessionVisited();
     try {
       const saved = window.localStorage.getItem(COOKIE_CONSENT_KEY);
       if (!saved) {
@@ -63,12 +65,12 @@ export function CookieConsentBanner() {
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 20, opacity: 0 }}
           transition={{ duration: 0.2, ease: STUDIO_EASE }}
-          className={`no-print fixed right-4 z-40 w-[calc(100%-2rem)] max-w-sm border-[1.5px] border-[#14171F] bg-[#F9F8F4] text-[#14171F] shadow-lg ${
-            aboveTransportDock ? "bottom-20" : "bottom-4"
+          className={`no-print fixed right-4 z-40 w-[calc(100%-2rem)] max-w-[336px] border-[1.5px] border-[#14171F] bg-[#F9F8F4] text-[#14171F] shadow-lg ${
+            aboveTransportDock ? "bottom-20" : "bottom-3"
           }`}
         >
           {/* Compact Header Row with Neutral Dismiss (×) */}
-          <div className="flex items-center justify-between gap-2 border-b-[1.5px] border-[#14171F] bg-[#F2EFE7] px-3 py-2">
+          <div className="flex items-center justify-between gap-2 border-b-[1.5px] border-[#14171F] bg-[#F2EFE7] px-2.5 py-1.5">
             <span className="inline-flex items-center gap-1.5 border border-[#14171F] bg-[#F5C451] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#14171F]">
               <ShieldCheck className="h-3 w-3 shrink-0" aria-hidden="true" />
               Essential Cookies Only
@@ -78,14 +80,14 @@ export function CookieConsentBanner() {
               onClick={() => persistChoice("dismissed")}
               aria-label="Dismiss cookie notice"
               title="Dismiss cookie notice"
-              className="inline-flex h-6 w-6 items-center justify-center border border-transparent text-[#14171F] transition-colors hover:border-[#14171F] hover:bg-[#FFFFFF] cursor-pointer"
+              className="inline-flex h-5 w-5 items-center justify-center border border-transparent text-[#14171F] transition-colors hover:border-[#14171F] hover:bg-[#FFFFFF] cursor-pointer"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
 
           {/* Concise Privacy Copy */}
-          <div className="px-3.5 py-2.5 text-xs leading-snug text-[#14171F]">
+          <div className="px-3 py-2 text-[11px] leading-snug text-[#14171F]">
             Mixit uses strictly essential Supabase session cookies. Zero ad or cross-site trackers.{" "}
             <Link
               href="/cookies"
@@ -101,7 +103,7 @@ export function CookieConsentBanner() {
               type="button"
               onClick={() => persistChoice("essential_only")}
               aria-label="Use essential cookies only"
-              className="border-r-[1.5px] border-[#14171F] bg-[#FFFFFF] px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.06em] text-[#14171F] transition-colors hover:bg-[#F2EFE7] cursor-pointer"
+              className="border-r-[1.5px] border-[#14171F] bg-[#FFFFFF] px-2.5 py-2 text-[10px] font-bold uppercase tracking-[0.06em] text-[#14171F] transition-colors hover:bg-[#F2EFE7] cursor-pointer"
             >
               Essential Only
             </button>
@@ -109,7 +111,7 @@ export function CookieConsentBanner() {
               type="button"
               onClick={() => persistChoice("essential_accepted")}
               aria-label="Accept essential cookies"
-              className="bg-[#F5C451] px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#14171F] transition-colors hover:bg-[#14171F] hover:text-[#F5C451] cursor-pointer"
+              className="bg-[#F5C451] px-2.5 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#14171F] transition-colors hover:bg-[#14171F] hover:text-[#F5C451] cursor-pointer"
             >
               Accept
             </button>
@@ -117,5 +119,41 @@ export function CookieConsentBanner() {
         </motion.aside>
       ) : null}
     </AnimatePresence>
+  );
+}
+
+export function CookieBottomClearance({
+  children,
+  className = "",
+  dismissedPaddingClass = "pb-12",
+}: {
+  children: React.ReactNode;
+  className?: string;
+  dismissedPaddingClass?: string;
+}) {
+  const [bannerVisible, setBannerVisible] = useState(true);
+
+  useEffect(() => {
+    const syncState = () => {
+      try {
+        setBannerVisible(!window.localStorage.getItem(COOKIE_CONSENT_KEY));
+      } catch {
+        setBannerVisible(true);
+      }
+    };
+    syncState();
+    const handleConsentChange = () => setBannerVisible(false);
+    window.addEventListener(COOKIE_CONSENT_EVENT, handleConsentChange);
+    window.addEventListener("storage", syncState);
+    return () => {
+      window.removeEventListener(COOKIE_CONSENT_EVENT, handleConsentChange);
+      window.removeEventListener("storage", syncState);
+    };
+  }, []);
+
+  return (
+    <div className={`${className} ${bannerVisible ? "pb-36" : dismissedPaddingClass}`}>
+      {children}
+    </div>
   );
 }

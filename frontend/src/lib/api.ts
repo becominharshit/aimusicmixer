@@ -80,6 +80,7 @@ export async function uploadWithProgress<T>(params: {
   formData: FormData;
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<T> {
   const authHeaders = await getOptionalAuthHeaders();
 
@@ -95,6 +96,7 @@ export async function uploadWithProgress<T>(params: {
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", params.url, true);
+    xhr.timeout = params.timeoutMs ?? PRECISION_SYNC_TIMEOUT_MS;
     if (authHeaders.Authorization) {
       xhr.setRequestHeader("Authorization", authHeaders.Authorization);
     }
@@ -147,6 +149,13 @@ export async function uploadWithProgress<T>(params: {
       reject(new Error("Network error while uploading audio to MixBench DSP backend."));
     };
 
+    xhr.ontimeout = () => {
+      params.signal?.removeEventListener("abort", handleAbort);
+      const err = new Error("Precision DSP request timed out before the server responded.");
+      err.name = "TimeoutError";
+      reject(err);
+    };
+
     xhr.onabort = () => {
       params.signal?.removeEventListener("abort", handleAbort);
       reject(new DOMException("Upload cancelled by user.", "AbortError"));
@@ -180,7 +189,7 @@ export async function fetchPublicDemoFile(demoUrlPath: string, filename: string)
   return new File([blob], filename, { type: "audio/wav" });
 }
 
-export const PRECISION_SYNC_TIMEOUT_MS = 45_000;
+export const PRECISION_SYNC_TIMEOUT_MS = 120_000;
 export const COMPARE_REQUEST_TIMEOUT_MS = 30_000;
 
 export async function analyzeMixFile(params: {
@@ -309,6 +318,7 @@ export async function compareRevisedMix(
       formData: form,
       onProgress: options?.onProgress,
       signal: controller.signal,
+      timeoutMs,
     });
   } catch (err) {
     if (timedOut) {

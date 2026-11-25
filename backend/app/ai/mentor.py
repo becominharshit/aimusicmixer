@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import tempfile
+import time
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 GEMINI_REQUEST_TIMEOUT_SEC = 35.0
 GEMINI_REQUEST_TIMEOUT_MS = int(GEMINI_REQUEST_TIMEOUT_SEC * 1000)
+GEMINI_TRANSIENT_RETRY_DELAYS_SEC: tuple[float, ...] = (1.5, 3.0)
 
 
 class MentorLLMOutput(BaseModel):
@@ -214,16 +216,42 @@ def _extract_audio_bytes_and_cleanup(
             path.unlink(missing_ok=True)
 
 
+def _is_transient_gemini_error(exc: Exception) -> bool:
+    """Return True when an upstream GenAI error is a transient 429/503 capacity/availability spike."""
+    code = getattr(exc, "code", None)
+    if code is None:
+        code = getattr(exc, "status_code", None)
+    if code in (429, 503):
+        return True
+    msg = f"{type(exc).__name__}: {exc}".lower()
+    return any(
+        token in msg
+        for token in (
+            "503",
+            "429",
+            "unavailable",
+            "resource_exhausted",
+            "rate limit",
+            "too many requests",
+            "service unavailable",
+            "overloaded",
+            "high demand",
+        )
+    )
+
+
 def _invoke_gemini_sync(
     report: AnalysisReport,
     request: MentorRequest,
     clip_source: Path | None,
     use_audio: bool,
+    timeout_sec: float = GEMINI_REQUEST_TIMEOUT_SEC,
 ) -> MentorResponse:
     """Synchronous Google GenAI SDK invocation executed off the event loop via asyncio.to_thread."""
     from google import genai
     from google.genai import types
 
+    deadline = time.monotonic() + max(timeout_sec, 0.05)
     valid_ids = _valid_evidence_ids(report)
     system_rules, user_prompt = _build_prompts(report, request)
 
@@ -267,46 +295,72 @@ def _invoke_gemini_sync(
             )
         )
 
-    try:
-        config = _build_config("minimal")
+    def _generate_with_thinking_fallback() -> object:
         try:
-            response = client.models.generate_content(
-                model=settings.gemini_model,
-                contents=contents,
-                config=config,
-            )
-        except Exception as minimal_exc:
-            if not _is_unsupported_thinking_level_error(minimal_exc):
-                raise
+            config = _build_config("minimal")
+            try:
+                return client.models.generate_content(
+                    model=settings.gemini_model,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as minimal_exc:
+                if not _is_unsupported_thinking_level_error(minimal_exc):
+                    raise
+                logger.info(
+                    "AI Mix Mentor thinking_level='minimal' rejected (%s: %s); retrying once with thinking_level='low'.",
+                    type(minimal_exc).__name__,
+                    minimal_exc,
+                )
+                try:
+                    low_config = _build_config("low")
+                except Exception:
+                    low_config = _build_config(None)
+                return client.models.generate_content(
+                    model=settings.gemini_model,
+                    contents=contents,
+                    config=low_config,
+                )
+        except (TypeError, ValueError) as cfg_exc:
             logger.info(
-                "AI Mix Mentor thinking_level='minimal' rejected (%s: %s); retrying once with thinking_level='low'.",
-                type(minimal_exc).__name__,
-                minimal_exc,
+                "AI Mix Mentor SDK rejected thinking_level='minimal' (%s: %s); falling back to thinking_level='low'.",
+                type(cfg_exc).__name__,
+                cfg_exc,
             )
             try:
                 low_config = _build_config("low")
             except Exception:
                 low_config = _build_config(None)
-            response = client.models.generate_content(
+            return client.models.generate_content(
                 model=settings.gemini_model,
                 contents=contents,
                 config=low_config,
             )
-    except (TypeError, ValueError) as cfg_exc:
-        logger.info(
-            "AI Mix Mentor SDK rejected thinking_level='minimal' (%s: %s); falling back to thinking_level='low'.",
-            type(cfg_exc).__name__,
-            cfg_exc,
-        )
+
+    response: object | None = None
+    max_attempts = len(GEMINI_TRANSIENT_RETRY_DELAYS_SEC) + 1
+    for attempt in range(max_attempts):
         try:
-            low_config = _build_config("low")
-        except Exception:
-            low_config = _build_config(None)
-        response = client.models.generate_content(
-            model=settings.gemini_model,
-            contents=contents,
-            config=low_config,
-        )
+            response = _generate_with_thinking_fallback()
+            break
+        except Exception as exc:
+            if attempt >= len(GEMINI_TRANSIENT_RETRY_DELAYS_SEC) or not _is_transient_gemini_error(exc):
+                raise
+            delay = GEMINI_TRANSIENT_RETRY_DELAYS_SEC[attempt]
+            remaining = deadline - time.monotonic()
+            # Keep at least 0.5s after sleep inside the 35s request budget.
+            if remaining <= delay + 0.5:
+                raise
+            logger.warning(
+                "AI Mix Mentor transient %s (attempt %d/%d); retrying in %.1fs.",
+                type(exc).__name__,
+                attempt + 1,
+                max_attempts,
+                delay,
+            )
+            time.sleep(delay)
+
+    assert response is not None
 
     raw_output = (getattr(response, "text", None) or "").strip() or "{}"
     parsed = MentorLLMOutput.model_validate_json(raw_output)
@@ -440,7 +494,7 @@ async def generate_mentor_advice_async(
 
     try:
         return await asyncio.wait_for(
-            asyncio.to_thread(_invoke_gemini_sync, report, request, clip_source, use_audio),
+            asyncio.to_thread(_invoke_gemini_sync, report, request, clip_source, use_audio, timeout_sec),
             timeout=timeout_sec,
         )
     except (asyncio.TimeoutError, TimeoutError):

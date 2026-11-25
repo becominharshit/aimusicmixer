@@ -1,6 +1,36 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+const supabaseTestState = vi.hoisted(() => ({
+  forceConfigured: false,
+}));
+
+vi.mock("@/lib/supabase/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/supabase/client")>(
+    "@/lib/supabase/client"
+  );
+  return {
+    ...actual,
+    isSupabaseConfigured: () =>
+      supabaseTestState.forceConfigured || actual.isSupabaseConfigured(),
+    getSupabaseBrowserClient: () =>
+      supabaseTestState.forceConfigured
+        ? ({ auth: { signInWithPassword: vi.fn(), signUp: vi.fn() } } as never)
+        : actual.getSupabaseBrowserClient(),
+  };
+});
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    refresh: vi.fn(),
+    back: vi.fn(),
+  }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
 import { MotionConfig } from "motion/react";
 import { StudioAudioEngine } from "@/audio/StudioAudioEngine";
 import { BottomTransportDock } from "@/components/BottomTransportDock";
@@ -20,9 +50,22 @@ import { SpinningDiscPlayer } from "@/components/studio/SpinningDiscPlayer";
 import { StudioSidebar } from "@/components/studio/StudioSidebar";
 import { AddAudioModal } from "@/components/studio/AddAudioModal";
 import { CookieConsentBanner } from "@/components/compliance/CookieConsentBanner";
+import { AuthModal } from "@/components/auth/AuthModal";
+import { KineticHeadline } from "@/components/motion/KineticHeadline";
 import { KeyboardShortcutsModal } from "@/components/shared/KeyboardShortcutsModal";
 import { WorkspaceSubNav } from "@/components/workspace/WorkspaceSubNav";
-import { askMentor, askMentorStandalone, compareDemoRevision } from "@/lib/api";
+import {
+  PRECISION_SYNC_TIMEOUT_MS,
+  askMentor,
+  askMentorStandalone,
+  compareDemoRevision,
+  uploadWithProgress,
+} from "@/lib/api";
+import {
+  hasVisitedAppSession,
+  markAppSessionVisited,
+  resetAppSessionVisitedForTests,
+} from "@/lib/landingSession";
 import { analyzePcmChannelsLocal } from "@/lib/clientWebAudioDsp";
 import {
   cacheStudioAudioBlob,
@@ -42,6 +85,7 @@ import { buildDawRepairSteps } from "@/lib/repairChecklist";
 import { SCORECARD_HEIGHT, SCORECARD_WIDTH, renderScorecardToCanvas } from "@/lib/scorecardPng";
 import { PLUGIN_LIST } from "@/daw";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { normalizePrivacyPreferences } from "@/lib/supabase/storage";
 import { computeTransientPunchDb } from "@/server/dsp/dynamics";
 import { computeStereoMetrics } from "@/server/dsp/stereo";
 import { analyzeSongStructure } from "@/server/dsp/structure";
@@ -1191,5 +1235,129 @@ describe("MixBench UI & Privacy Contracts", () => {
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+});
+
+describe("Final 8-fix surgical polish pass", () => {
+  it("sets PRECISION_SYNC_TIMEOUT_MS to 120000 and handles XMLHttpRequest timeout cleanly", async () => {
+    expect(PRECISION_SYNC_TIMEOUT_MS).toBe(120_000);
+
+    const OriginalXHR = globalThis.XMLHttpRequest;
+    let capturedTimeout = 0;
+
+    class MockTimeoutXHR {
+      timeout = 0;
+      upload: { onprogress?: ((ev: ProgressEvent) => void) | null } = {};
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      ontimeout: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      open() {}
+      setRequestHeader() {}
+      abort() {}
+      send() {
+        capturedTimeout = this.timeout;
+        this.ontimeout?.();
+      }
+    }
+
+    globalThis.XMLHttpRequest = MockTimeoutXHR as unknown as typeof XMLHttpRequest;
+    try {
+      const form = new FormData();
+      let rejected: unknown = null;
+      try {
+        await uploadWithProgress({
+          url: "http://localhost:8000/api/v1/analyze",
+          formData: form,
+        });
+      } catch (err) {
+        rejected = err;
+      }
+      expect(capturedTimeout).toBe(120_000);
+      expect(rejected).toBeInstanceOf(Error);
+      expect((rejected as Error).name).toBe("TimeoutError");
+    } finally {
+      globalThis.XMLHttpRequest = OriginalXHR;
+    }
+  });
+
+  it("strictly defaults allow_dataset_retention (Toggle 3) to false for missing or partial profiles", () => {
+    expect(normalizePrivacyPreferences(null)).toEqual({
+      allowMetricsAi: false,
+      allowAudioAi: false,
+      allowTrainingOptIn: false,
+    });
+    expect(
+      normalizePrivacyPreferences({
+        allow_metrics_ai: true,
+        allow_audio_ai: true,
+        allow_dataset_retention: undefined as unknown as boolean,
+      })
+    ).toEqual({
+      allowMetricsAi: true,
+      allowAudioAi: true,
+      allowTrainingOptIn: false,
+    });
+    expect(
+      normalizePrivacyPreferences({
+        allow_metrics_ai: false,
+        allow_audio_ai: true,
+        allow_dataset_retention: false,
+      })
+    ).toEqual({
+      allowMetricsAi: false,
+      allowAudioAi: false,
+      allowTrainingOptIn: false,
+    });
+  });
+
+  it("shows dedicated Sign Up subtitle in AuthModal and '5. AI Ready' compact label in DspStepTracker", () => {
+    supabaseTestState.forceConfigured = true;
+    try {
+      render(
+        <AuthModal
+          open={true}
+          onOpenChange={vi.fn()}
+          onAuthSuccess={vi.fn()}
+        />
+      );
+      expect(
+        screen.getByText(/Sign in to launch Mixit Studio and save your mix diagnostics\./i)
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /Need an account\? Sign up/i }));
+      expect(
+        screen.getByText(/Create your free Mixit account to save mixes and Web DAW projects\./i)
+      ).toBeInTheDocument();
+    } finally {
+      supabaseTestState.forceConfigured = false;
+    }
+
+    const { rerender } = render(
+      <DspStepTracker activeStageIndex={4} mentorCompleted={true} compact />
+    );
+    expect(screen.getByText("5. AI Ready")).toBeInTheDocument();
+    expect(screen.queryByText("5. AI Suggestions")).not.toBeInTheDocument();
+
+    rerender(<DspStepTracker activeStageIndex={4} mentorCompleted={true} compact={false} />);
+    expect(screen.getByText("5. AI Suggestions")).toBeInTheDocument();
+  });
+
+  it("skips KineticHeadline entrance clip transform when skipInitialAnimation is true and tracks session visit flag", () => {
+    resetAppSessionVisitedForTests();
+    expect(hasVisitedAppSession()).toBe(false);
+    markAppSessionVisited();
+    expect(hasVisitedAppSession()).toBe(true);
+
+    const { container } = render(
+      <KineticHeadline
+        lines={["HEAR EVERY", "FLAW. PROVE", "EVERY FIX."]}
+        skipInitialAnimation={true}
+      />
+    );
+    const firstLineSpan = container.querySelector("h1 > span > span") as HTMLElement | null;
+    expect(firstLineSpan).not.toBeNull();
+    expect(firstLineSpan!.style.transform).toBe("none");
+    expect(firstLineSpan!.style.opacity).toBe("1");
   });
 });

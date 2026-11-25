@@ -2,6 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { ArrowLeft, Scale } from "lucide-react";
 import { MixitLogo } from "@/components/brand/MixitLogo";
+import { CookieBottomClearance } from "@/components/compliance/CookieConsentBanner";
 
 export const metadata = {
   title: "Terms of Use | Mixit",
@@ -11,8 +12,11 @@ export const metadata = {
 
 export default function TermsOfUsePage() {
   return (
-    <div className="min-h-screen bg-[#FFFFFF] text-[#0A0A0A]">
-      <div className="mx-auto min-h-screen max-w-4xl border-x-[1.5px] border-[#0A0A0A]">
+    <CookieBottomClearance
+      className="min-h-screen bg-[#FFFFFF] text-[#0A0A0A]"
+      dismissedPaddingClass="pb-8"
+    >
+      <div className="mx-auto max-w-4xl border-x-[1.5px] border-b-[1.5px] border-[#0A0A0A]">
         <header className="flex flex-wrap items-center justify-between border-b-[1.5px] border-[#0A0A0A]">
           <Link
             href="/"
@@ -77,7 +81,10 @@ export default function TermsOfUsePage() {
             </p>
           </section>
 
-          <section className="p-6 sm:p-8 space-y-3 text-sm leading-relaxed text-[#3F3F46]">
+          <section
+            data-testid="terms-section-04"
+            className="p-6 sm:p-8 space-y-3 text-sm leading-relaxed text-[#3F3F46]"
+          >
             <h2 className="font-condensed text-xl font-extrabold text-[#0A0A0A]">
               04 · Ephemeral Storage &amp; Service Availability
             </h2>
@@ -88,7 +95,10 @@ export default function TermsOfUsePage() {
             </p>
           </section>
 
-          <footer className="grid grid-cols-1 divide-y-[1.5px] divide-[#0A0A0A] sm:grid-cols-3 sm:divide-x-[1.5px] sm:divide-y-0 text-xs font-bold uppercase tracking-[0.06em]">
+          <footer
+            data-testid="terms-footer"
+            className="grid grid-cols-1 divide-y-[1.5px] divide-[#0A0A0A] sm:grid-cols-3 sm:divide-x-[1.5px] sm:divide-y-0 text-xs font-bold uppercase tracking-[0.06em]"
+          >
             <Link
               href="/privacy"
               className="p-4 text-center text-[#0A0A0A] transition-colors hover:bg-[#F0B44C]"
@@ -110,6 +120,6 @@ export default function TermsOfUsePage() {
           </footer>
         </main>
       </div>
-    </div>
+    </CookieBottomClearance>
   );
 }

@@ -10,13 +10,15 @@ interface KineticHeadlineProps {
   as?: "h1" | "h2" | "h3";
   inView?: boolean;
   staggerSec?: number;
+  skipInitialAnimation?: boolean;
 }
 
 /**
  * Editorial Kinetic Mask-Reveal Typography:
  * - Keeps the outer heading element permanently at opacity: 1 (so hero text NEVER
  *   gets stuck invisible on initial mount or browser back-navigation).
- * - Hero headlines perform an immediate mask-wipe reveal on mount; scroll-revealed
+ * - Hero headlines perform an immediate mask-wipe reveal on mount (or render statically
+ *   when skipInitialAnimation is true after in-session navigation); scroll-revealed
  *   section headings start visible at subtle y-offset (never clipped invisible when
  *   jumping directly to the footer).
  * - Strictly honors prefers-reduced-motion.
@@ -27,15 +29,17 @@ export function KineticHeadline({
   as = "h1",
   inView = false,
   staggerSec = 0.065,
+  skipInitialAnimation = false,
 }: KineticHeadlineProps) {
   const prefersReducedMotion = useReducedMotion();
+  const bypassEntrance = Boolean(prefersReducedMotion || skipInitialAnimation);
   const HeadingTag = as;
 
   return (
     <HeadingTag className={className} style={{ opacity: 1 }}>
       {lines.map((line, lineIdx) =>
         inView ? (
-          prefersReducedMotion ? (
+          bypassEntrance ? (
             <span key={`${line}-${lineIdx}`} className="block">
               {line}
             </span>
@@ -56,9 +60,14 @@ export function KineticHeadline({
             </motion.span>
           )
         ) : (
-          <span key={`${line}-${lineIdx}`} className="block overflow-hidden pb-[0.04em]">
-            {prefersReducedMotion ? (
-              <span className="block">{line}</span>
+          <span
+            key={`${line}-${lineIdx}`}
+            className={bypassEntrance ? "block pb-[0.04em]" : "block overflow-hidden pb-[0.04em]"}
+          >
+            {bypassEntrance ? (
+              <span className="block" style={{ transform: "none", opacity: 1 }}>
+                {line}
+              </span>
             ) : (
               <motion.span
                 className="block will-change-transform"

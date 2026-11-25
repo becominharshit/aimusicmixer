@@ -141,6 +141,7 @@ export function MentorDrawer({
                 mentorActive={combinedLoading}
                 mentorCompleted={!combinedLoading && Boolean(mentorAdvice)}
                 compact
+                mentorShortLabel="5. AI Ready"
                 statusLabel={
                   combinedLoading
                     ? "Stage 5: Generating AI Suggestions"

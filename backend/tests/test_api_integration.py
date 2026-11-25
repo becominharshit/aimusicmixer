@@ -698,9 +698,9 @@ def test_standalone_mentor_timeout_and_evicted_session_fallback(monkeypatch) -> 
     monkeypatch.setattr(mentor_mod, "GEMINI_REQUEST_TIMEOUT_SEC", 0.05)
     monkeypatch.setattr(routes_mod, "GEMINI_REQUEST_TIMEOUT_SEC", 0.05)
 
-    started = time.monotonic()
-    timeout_resp = _run_coro_sync(
-        standalone_ai_mentor(
+    async def _timed_standalone_call():
+        started = time.monotonic()
+        resp = await standalone_ai_mentor(
             MentorStandaloneRequest(
                 session_id="sess_evicted_123",
                 report=mock_report,
@@ -711,8 +711,9 @@ def test_standalone_mentor_timeout_and_evicted_session_fallback(monkeypatch) -> 
             ),
             _fake_request(),  # type: ignore[arg-type]
         )
-    )
-    elapsed = time.monotonic() - started
+        return resp, time.monotonic() - started
+
+    timeout_resp, elapsed = _run_coro_sync(_timed_standalone_call())
     assert elapsed < 0.35
     assert timeout_resp.mode == "deterministic_fallback"
     assert timeout_resp.fallback_reason is not None and "Timeout" in timeout_resp.fallback_reason
@@ -777,3 +778,104 @@ def test_compare_demo_evicted_session_and_stateless_compare_fallback() -> None:
     with pytest.raises(HTTPException) as exc_info:
         compare_demo_revised_mix("sess_evicted_no_baseline", req)  # type: ignore[arg-type]
     assert exc_info.value.status_code == 404
+
+
+def test_gemini_transient_503_retry_backoff_and_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+    import sys
+    import types as py_types
+
+    from app.ai import mentor as mentor_mod
+    from app.api.v1.routes import standalone_ai_mentor
+    from app.schemas.report import MentorStandaloneRequest
+
+    class ServerError(Exception):
+        def __init__(self, code: int, message: str) -> None:
+            super().__init__(message)
+            self.code = code
+
+    mock_report = get_mock_report()
+    sleep_calls: list[float] = []
+    attempt_counter = {"count": 0}
+    mode_cfg = {"fail_all": False}
+
+    class _FakeModels:
+        def generate_content(self, **kwargs):  # type: ignore[no-untyped-def]
+            attempt_counter["count"] += 1
+            if mode_cfg["fail_all"] or attempt_counter["count"] <= 2:
+                raise ServerError(503, "UNAVAILABLE: upstream model overloaded")
+            payload = {
+                "summary": "Transient retry succeeded cleanly on attempt 3.",
+                "vision_alignment_note": "Preserves dynamic punch.",
+                "prioritized_actions": [
+                    {
+                        "evidence_id": mock_report.findings[0].evidence_id,
+                        "priority": 1,
+                        "headline": "Trim sub-bass rumble",
+                        "coaching_note": "Excess sub energy lowers headroom.",
+                        "daw_experiment": "High-pass non-bass elements at 85 Hz.",
+                        "verification_step": "Confirm sub phase correlation improves.",
+                    }
+                ],
+            }
+            return py_types.SimpleNamespace(text=json.dumps(payload))
+
+    class _FakeClient:
+        def __init__(self, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            self.models = _FakeModels()
+
+    fake_types = py_types.SimpleNamespace(
+        HttpOptions=lambda **kw: kw,
+        ThinkingConfig=lambda **kw: kw,
+        GenerateContentConfig=lambda **kw: kw,
+        Part=py_types.SimpleNamespace(from_bytes=lambda **kw: kw),
+    )
+    fake_genai = py_types.ModuleType("google.genai")
+    fake_genai.Client = _FakeClient  # type: ignore[attr-defined]
+    fake_genai.types = fake_types  # type: ignore[attr-defined]
+
+    fake_google = py_types.ModuleType("google")
+    fake_google.genai = fake_genai  # type: ignore[attr-defined]
+
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setattr(mentor_mod.settings, "gemini_api_key", "test-key-present")
+    monkeypatch.setattr(mentor_mod.time, "sleep", lambda sec: sleep_calls.append(sec))
+
+    # Case A: Two transient 503 ServerErrors followed by success on attempt 3
+    ok_resp = _run_coro_sync(
+        standalone_ai_mentor(
+            MentorStandaloneRequest(
+                report=mock_report,
+                allow_metrics_ai=True,
+                allow_audio_ai=False,
+                allow_training_opt_in=False,
+                question="Test 503 retry recovery",
+            ),
+            _fake_request(),  # type: ignore[arg-type]
+        )
+    )
+    assert ok_resp.mode == "gemini_metrics_only"
+    assert attempt_counter["count"] == 3
+    assert sleep_calls == [1.5, 3.0]
+
+    # Case B: Three consecutive 503 ServerErrors exhaust retries and fall back deterministically
+    sleep_calls.clear()
+    attempt_counter["count"] = 0
+    mode_cfg["fail_all"] = True
+    fallback_resp = _run_coro_sync(
+        standalone_ai_mentor(
+            MentorStandaloneRequest(
+                report=mock_report,
+                allow_metrics_ai=True,
+                allow_audio_ai=False,
+                allow_training_opt_in=False,
+                question="Test 503 retry exhaustion fallback",
+            ),
+            _fake_request(),  # type: ignore[arg-type]
+        )
+    )
+    assert fallback_resp.mode == "deterministic_fallback"
+    assert attempt_counter["count"] == 3
+    assert sleep_calls == [1.5, 3.0]
+    assert fallback_resp.fallback_reason is not None and "ServerError 503" in fallback_resp.fallback_reason

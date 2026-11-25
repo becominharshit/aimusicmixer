@@ -238,7 +238,7 @@ export function StudioSidebar({
   const userInitial = (userEmail || "S").charAt(0).toUpperCase();
 
   const renderRailContent = (isExpanded: boolean, isMobile: boolean) => {
-    const itemBase = `group relative flex h-10 w-full items-center gap-3 rounded-[4px] px-2.5 text-xs font-semibold transition-colors cursor-pointer ${
+    const itemBase = `group relative flex h-10 w-full items-center gap-2.5 rounded-[4px] px-2.5 text-xs font-semibold transition-colors cursor-pointer ${
       isExpanded ? "justify-start" : "justify-center"
     }`;
 
@@ -526,10 +526,12 @@ export function StudioSidebar({
                   />
                 </span>
                 {isExpanded && (
-                  <span className="flex flex-1 items-center justify-between gap-2 truncate">
-                    <span className="truncate">System Status</span>
+                  <span className="flex flex-1 items-center justify-between gap-2 whitespace-nowrap">
+                    <span data-testid="sidebar-system-status-label" className="whitespace-nowrap">
+                      System Status
+                    </span>
                     <span
-                      className={`tabular-telemetry text-[10px] font-bold ${
+                      className={`tabular-telemetry shrink-0 text-[10px] font-bold ${
                         healthStatus === "online"
                           ? "text-[var(--studio-mint)]"
                           : healthStatus === "waking"
@@ -796,13 +798,13 @@ export function StudioSidebar({
 
   return (
     <>
-      {/* Desktop Collapsible Left Icon Rail (64px <-> 240px) */}
+      {/* Desktop Collapsible Left Icon Rail (64px <-> 264px) */}
       <motion.aside
         data-testid="studio-sidebar"
         data-expanded={expanded ? "true" : "false"}
         aria-label="Studio navigation sidebar"
         initial={false}
-        animate={{ width: expanded ? 240 : 64 }}
+        animate={{ width: expanded ? 264 : 64 }}
         transition={prefersReducedMotion ? { duration: 0 } : STUDIO_SPRING}
         className="no-print sticky top-0 z-40 hidden h-screen shrink-0 flex-col border-r border-[var(--border-hairline)] bg-[var(--bg-surface)] md:flex"
       >

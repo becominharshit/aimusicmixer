@@ -80,6 +80,7 @@ import {
   fetchSavedAnalyses,
   fetchSignedMixProxyBlob,
   getSignedMixProxyUrl,
+  normalizePrivacyPreferences,
   purgeUserAccountData,
   saveProfilePrivacyPreferences,
   saveUserAnalysis,
@@ -267,6 +268,7 @@ export function StudioWorkbench() {
     setCompletedRepairSteps({});
     completedRepairStepsRef.current = {};
     setMissingArchivedAudio(false);
+    setAddAudioOpen(false);
     setMentorOpen(false);
     setHistoryOpen(false);
   }, [cancelBackgroundUpgrade, revokeLocalObjectUrl]);
@@ -468,11 +470,7 @@ export function StudioWorkbench() {
         fetchSavedAnalyses(user.id, 0, 25),
       ]);
       if (profile) {
-        const nextPrefs: PrivacyPreferences = {
-          allowMetricsAi: Boolean(profile.allow_metrics_ai),
-          allowAudioAi: Boolean(profile.allow_metrics_ai && profile.allow_audio_ai),
-          allowTrainingOptIn: Boolean(profile.allow_dataset_retention),
-        };
+        const nextPrefs = normalizePrivacyPreferences(profile);
         setPrivacyPrefs(nextPrefs);
         prevPrivacyPrefsRef.current = nextPrefs;
 
@@ -736,6 +734,7 @@ export function StudioWorkbench() {
       setIsUpgradingPrecision(false);
       studioAudioEngine.reset();
     }
+    setAddAudioOpen(false);
     studioAudioEngine.setAutoFixPreview(false, []);
 
     const hydratedSteps = {
@@ -1019,6 +1018,7 @@ export function StudioWorkbench() {
     userClearedRef.current = false;
     activeAudioFileRef.current = file;
     cancelBackgroundUpgrade();
+    setAddAudioOpen(false);
     setUploadError(null);
     setIsAnalyzing(true);
     setUploadProgress(0);
@@ -1119,6 +1119,7 @@ export function StudioWorkbench() {
   const handleLoadDemo = async () => {
     userClearedRef.current = false;
     cancelBackgroundUpgrade();
+    setAddAudioOpen(false);
     setUploadError(null);
     setIsAnalyzing(true);
     setUploadProgress(null);
@@ -2018,8 +2019,14 @@ export function StudioWorkbench() {
             stage={stage}
             onStageChange={setStage}
             isAnalyzing={isAnalyzing}
-            onAnalyzeFile={handleAnalyzeFile}
-            onLoadDemo={handleLoadDemo}
+            onAnalyzeFile={(file) => {
+              setAddAudioOpen(false);
+              return handleAnalyzeFile(file);
+            }}
+            onLoadDemo={() => {
+              setAddAudioOpen(false);
+              return handleLoadDemo();
+            }}
           />
 
           <AuthModal

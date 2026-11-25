@@ -158,7 +158,9 @@ export function AuthModal({
             {authMode === "signin" ? "Sign In to Mixit Studio" : "Create Mixit Account"}
           </DialogTitle>
           <p id="auth-modal-desc" className="text-xs leading-relaxed text-[var(--text-secondary)]">
-            {promptReason || "Sign in to launch Mixit Studio and save your mix diagnostics."}
+            {authMode === "signup"
+              ? "Create your free Mixit account to save mixes and Web DAW projects."
+              : promptReason || "Sign in to launch Mixit Studio and save your mix diagnostics."}
           </p>
         </div>
 
